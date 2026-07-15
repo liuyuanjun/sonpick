@@ -21,7 +21,7 @@
             {{ stats.song_count }} 首 · {{ stats.artist_count }} 位艺术家 · {{ stats.album_count }} 张专辑
           </n-text>
         </div>
-        <n-space>
+        <n-space class="content-actions">
           <n-button v-if="section === 'playlists'" type="primary" @click="showCreatePlaylist = true">
             新建歌单
           </n-button>
@@ -585,8 +585,8 @@ onMounted(async () => {
   align-items: stretch;
   grid-template-columns: 168px minmax(260px, 0.9fr) minmax(420px, 1.25fr);
   gap: 0;
-  height: calc(100vh - 64px - 84px);
-  min-height: calc(100vh - 64px - 84px);
+  height: calc(100vh - 56px - 84px);
+  min-height: calc(100vh - 56px - 84px);
   margin: 0;
   background:
     radial-gradient(1000px 420px at 85% -8%, rgba(24, 160, 88, 0.10), transparent 58%),
@@ -633,6 +633,15 @@ onMounted(async () => {
   min-width: 0;
   max-width: 100%;
   height: 100%;
+  position: relative;
+}
+.content-actions {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: 0 0 8px 8px;
+  margin: -2px -2px 0 0;
+  background: var(--n-color);
 }
 .content-head {
   display: flex;

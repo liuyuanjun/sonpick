@@ -817,6 +817,11 @@ async function toggleFavorite() {
   padding-left: 0;
   padding-right: clamp(10px, 2cqw, 22px);
   background: transparent;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.blend-lyrics :deep(.lyrics::-webkit-scrollbar) {
+  display: none;
 }
 /* stronger text legibility over blurred vinyl */
 .blend-lyrics :deep(.line) {

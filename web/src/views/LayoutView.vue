@@ -44,7 +44,7 @@
         </n-space>
       </n-layout-header>
 
-      <n-layout-content class="content" :native-scrollbar="false">
+      <n-layout-content class="content" :class="{ 'player-content': activeKey === '/player' }" :native-scrollbar="false">
         <router-view />
       </n-layout-content>
 
@@ -148,6 +148,12 @@ function logout() {
 }
 .content {
   padding: 16px 20px 96px;
+}
+.content.player-content {
+  padding: 0 0 84px;
+}
+.content.player-content {
+  padding: 0 0 84px;
 }
 .footer {
   position: sticky;
