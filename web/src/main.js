@@ -1,0 +1,84 @@
+import { createApp } from 'vue'
+import { createPinia } from 'pinia'
+import {
+  create,
+  NAlert,
+  NButton,
+  NButtonGroup,
+  NCard,
+  NConfigProvider,
+  NDataTable,
+  NDivider,
+  NDropdown,
+  NEllipsis,
+  NForm,
+  NFormItem,
+  NGi,
+  NGrid,
+  NH1,
+  NH2,
+  NH3,
+  NIcon,
+  NInput,
+  NInputNumber,
+  NLayout,
+  NLayoutContent,
+  NLayoutFooter,
+  NLayoutHeader,
+  NLayoutSider,
+  NLoadingBarProvider,
+  NMenu,
+  NMessageProvider,
+  NDialogProvider,
+  NModal,
+  NBreadcrumb,
+  NBreadcrumbItem,
+  NCollapseTransition,
+  NEmpty,
+  NResult,
+  NList,
+  NListItem,
+  NThing,
+  NP,
+  NPageHeader,
+  NPagination,
+  NProgress,
+  NRadio,
+  NRadioButton,
+  NRadioGroup,
+  NSelect,
+  NSlider,
+  NSpace,
+  NSpin,
+  NSwitch,
+  NTabPane,
+  NTabs,
+  NTag,
+  NText,
+  NTooltip,
+  darkTheme,
+  lightTheme,
+} from 'naive-ui'
+import App from './App.vue'
+import router from './router'
+
+const naive = create({
+  components: [
+    NAlert, NButton, NButtonGroup, NCard, NConfigProvider, NDataTable, NDivider,
+  NDropdown, NEllipsis,
+    NForm, NFormItem, NGi, NGrid, NH1, NH2, NH3, NIcon, NInput, NInputNumber,
+    NLayout, NLayoutContent, NLayoutFooter, NLayoutHeader, NLayoutSider,
+    NLoadingBarProvider, NMenu, NMessageProvider,
+  NDialogProvider, NModal,
+    NBreadcrumb, NBreadcrumbItem, NCollapseTransition, NEmpty, NResult, NList, NListItem, NThing,
+    NP, NPageHeader,
+    NPagination, NProgress, NRadio, NRadioButton, NRadioGroup, NSelect, NSlider, NSpace,
+    NSpin, NSwitch, NTabPane, NTabs, NTag, NText, NTooltip,
+  ],
+})
+
+const app = createApp(App)
+app.use(createPinia())
+app.use(router)
+app.use(naive)
+app.mount('#app')

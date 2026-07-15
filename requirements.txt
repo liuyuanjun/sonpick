@@ -1,0 +1,29 @@
+# Music NAS Web 后端依赖
+# 请先激活 venv，然后安装：
+#   pip install -r requirements.txt
+#   pip install -e ./musicdl
+
+# 核心框架
+fastapi>=0.111
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+python-jose[cryptography]>=3.3
+passlib[bcrypt]>=1.7
+pydantic-settings>=2.2
+jinja2>=3.1
+
+# 数据库
+sqlalchemy>=2.0
+
+# WebDAV & HTTP 客户端
+aiohttp>=3.9
+aiofiles>=23.0
+webdavclient3>=3.14
+
+# musicdl 本身依赖（已列在 musicdl/requirements.txt 中）
+# 安装时请一并安装 musicdl 的 requirements.txt
+
+# 音频元数据（时长/内嵌封面）
+mutagen>=1.47
+tinytag>=2.2
+

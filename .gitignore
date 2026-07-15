@@ -1,0 +1,27 @@
+# runtime / secrets
+.env
+deploy/.env
+data/
+downloads/
+logs/
+deploy/data/
+deploy/downloads/
+deploy/logs/
+*.log
+
+# frontend
+web/dist/
+web/node_modules/
+
+# python
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+
+# local
+.DS_Store
+batch_download.log
+
+web/.npm-cache
