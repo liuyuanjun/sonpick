@@ -23,5 +23,7 @@ __pycache__/
 # local
 .DS_Store
 batch_download.log
-
+local-docs
+logs
+tmp
 web/.npm-cache

@@ -1,5 +1,5 @@
 <template>
-  <div class="player-page" :class="{ 'queue-open': player.showQueue }">
+  <div class="player-page" :class="{ 'queue-open': player.showQueue, 'is-dark': themeStore.isDark }" :style="playerPageStyle">
     <aside class="side-nav">
       <div
         v-for="item in menus"
@@ -232,7 +232,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useMessage, useDialog } from 'naive-ui'
 import {
   Heart,
@@ -245,9 +245,11 @@ import {
 } from '@vicons/ionicons5'
 import { useAuthStore } from '@/stores/auth'
 import { usePlayerStore } from '@/stores/player'
+import { useThemeStore } from '@/stores/theme'
 import SongTable from '@/components/player/SongTable.vue'
 import PlayerPanel from '@/components/player/PlayerPanel.vue'
 import PlayerQueue from '@/components/player/PlayerQueue.vue'
+import { extractAccentFromImage } from '@/utils/color'
 import {
   addSongsToPlaylist,
   coverUrl,
@@ -272,6 +274,7 @@ import {
 
 const player = usePlayerStore()
 const auth = useAuthStore()
+const themeStore = useThemeStore()
 const message = useMessage()
 const dialog = useDialog()
 
@@ -284,6 +287,7 @@ const albums = ref([])
 const playlists = ref([])
 const history = ref([])
 const stats = ref(null)
+const pageAccent = ref(null)
 
 const selectedArtist = ref(null)
 const artistSongs = ref([])
@@ -316,6 +320,29 @@ const menus = [
 const sectionTitle = computed(() => menus.find((m) => m.key === section.value)?.label || '播放器')
 const playlistOptions = computed(() => playlists.value.map((p) => ({ label: p.name, value: p.id })))
 const isLibraryEmpty = computed(() => !stats.value || !stats.value.song_count)
+const playerPageStyle = computed(() => {
+  const fallback = themeStore.isDark ? { r: 56, g: 189, b: 139 } : { r: 24, g: 160, b: 88 }
+  const { r, g, b } = pageAccent.value || fallback
+  const dark = themeStore.isDark
+  return {
+    '--cover-accent': `rgb(${r}, ${g}, ${b})`,
+    '--cover-accent-seam': `rgba(${r}, ${g}, ${b}, ${dark ? 0.20 : 0.18})`,
+    '--cover-accent-seam-soft': `rgba(${r}, ${g}, ${b}, ${dark ? 0.12 : 0.10})`,
+    '--cover-accent-glow': `rgba(${r}, ${g}, ${b}, ${dark ? 0.18 : 0.13})`,
+    '--cover-accent-wash': `rgba(${r}, ${g}, ${b}, ${dark ? 0.18 : 0.12})`,
+    '--cover-accent-wash-soft': `rgba(${r}, ${g}, ${b}, ${dark ? 0.10 : 0.08})`,
+  }
+})
+
+watch(
+  () => player.cover,
+  async (url) => {
+    pageAccent.value = null
+    if (!url) return
+    pageAccent.value = await extractAccentFromImage(url)
+  },
+  { immediate: true }
+)
 
 function coverOf(songId) {
   return coverUrl(songId, auth.token)
@@ -581,6 +608,23 @@ onMounted(async () => {
 
 <style scoped>
 .player-page {
+  --player-surface: rgba(250, 252, 255, 0.74);
+  --player-surface-strong: rgba(255, 255, 255, 0.86);
+  --player-surface-soft: rgba(238, 243, 250, 0.50);
+  --cover-accent: rgb(24, 160, 88);
+  --cover-accent-seam: rgba(24, 160, 88, 0.18);
+  --cover-accent-seam-soft: rgba(24, 160, 88, 0.10);
+  --cover-accent-glow: rgba(24, 160, 88, 0.13);
+  --cover-accent-wash: rgba(24, 160, 88, 0.12);
+  --cover-accent-wash-soft: rgba(24, 160, 88, 0.08);
+  --player-seam: var(--cover-accent-seam);
+  --player-seam-soft: var(--cover-accent-seam-soft);
+  --player-stage-wash: color-mix(in srgb, var(--cover-accent-wash) 34%, rgba(245, 248, 252, 0.70));
+  --player-stage-wash-soft: color-mix(in srgb, var(--cover-accent-wash-soft) 42%, rgba(245, 248, 252, 0.18));
+  --player-panel-glow: var(--cover-accent-glow);
+  --player-scrollbar-thumb: rgba(86, 99, 118, 0.24);
+  --player-scrollbar-thumb-hover: rgba(24, 160, 88, 0.46);
+  --player-scrollbar-track: rgba(255, 255, 255, 0.18);
   display: grid;
   align-items: stretch;
   grid-template-columns: 168px minmax(260px, 0.9fr) minmax(420px, 1.25fr);
@@ -589,22 +633,58 @@ onMounted(async () => {
   min-height: calc(100vh - 56px - 84px);
   margin: 0;
   background:
-    radial-gradient(1000px 420px at 85% -8%, rgba(24, 160, 88, 0.10), transparent 58%),
-    radial-gradient(800px 360px at 8% 100%, rgba(64, 128, 255, 0.06), transparent 55%);
+    radial-gradient(980px 440px at 78% -12%, var(--player-panel-glow), transparent 60%),
+    radial-gradient(760px 360px at 10% 100%, rgba(64, 128, 255, 0.07), transparent 58%),
+    var(--n-color);
   position: relative;
   overflow: hidden;
   border-radius: 0;
   border: none;
+}
+.player-page.is-dark {
+  --player-surface: rgba(20, 24, 31, 0.72);
+  --player-surface-strong: rgba(30, 34, 43, 0.82);
+  --player-surface-soft: rgba(34, 40, 52, 0.38);
+  --player-seam: var(--cover-accent-seam);
+  --player-seam-soft: var(--cover-accent-seam-soft);
+  --player-stage-wash: color-mix(in srgb, var(--cover-accent-wash) 36%, rgba(18, 22, 30, 0.78));
+  --player-stage-wash-soft: color-mix(in srgb, var(--cover-accent-wash-soft) 42%, rgba(18, 22, 30, 0.22));
+  --player-panel-glow: var(--cover-accent-glow);
+  --player-scrollbar-thumb: rgba(172, 190, 214, 0.24);
+  --player-scrollbar-thumb-hover: rgba(56, 189, 139, 0.48);
+  --player-scrollbar-track: rgba(255, 255, 255, 0.06);
 }
 .player-page.queue-open {
   grid-template-columns: 168px minmax(240px, 0.8fr) minmax(600px, 1.4fr);
 }
 
 .side-nav {
-  border-right: 1px solid var(--n-border-color);
+  border-right: 1px solid rgba(127, 127, 127, 0.10);
   padding: 16px 10px;
-  background: rgba(127, 127, 127, 0.035);
+  background: linear-gradient(180deg, var(--player-surface-strong), var(--player-surface));
   overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--player-scrollbar-thumb) transparent;
+}
+.side-nav::-webkit-scrollbar,
+.content::-webkit-scrollbar {
+  width: 8px;
+}
+.side-nav::-webkit-scrollbar-track,
+.content::-webkit-scrollbar-track {
+  background: transparent;
+}
+.side-nav::-webkit-scrollbar-thumb,
+.content::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--player-scrollbar-thumb);
+  background-clip: padding-box;
+}
+.side-nav::-webkit-scrollbar-thumb:hover,
+.content::-webkit-scrollbar-thumb:hover {
+  background: var(--player-scrollbar-thumb-hover);
+  background-clip: padding-box;
 }
 .nav-item {
   display: flex;
@@ -628,20 +708,41 @@ onMounted(async () => {
 }
 
 .content {
-  padding: 16px 14px 20px;
+  padding: 18px 14px 22px 16px;
   overflow: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--player-scrollbar-thumb) transparent;
   min-width: 0;
   max-width: 100%;
   height: 100%;
   position: relative;
+  background:
+    linear-gradient(90deg, var(--player-surface-strong) 0%, var(--player-surface) 72%, var(--player-surface-soft) 100%),
+    radial-gradient(520px 280px at 92% 16%, var(--player-panel-glow), transparent 66%);
+  backdrop-filter: blur(20px) saturate(1.06);
+  box-shadow: inset -1px 0 0 rgba(127, 127, 127, 0.08);
+}
+.content::before {
+  content: '';
+  position: absolute;
+  inset: 0 -54px 0 auto;
+  width: 108px;
+  pointer-events: none;
+  z-index: 1;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0), var(--player-seam-soft) 40%, rgba(255, 255, 255, 0)),
+    radial-gradient(180px 70% at 100% 48%, var(--player-seam), transparent 72%);
 }
 .content-actions {
   position: sticky;
   top: 0;
   z-index: 5;
-  padding: 0 0 8px 8px;
-  margin: -2px -2px 0 0;
-  background: var(--n-color);
+  padding: 0 0 10px 10px;
+  margin: -4px -4px 0 0;
+  border-radius: 0 0 0 18px;
+  background: linear-gradient(180deg, var(--player-surface-strong), rgba(255, 255, 255, 0));
+  backdrop-filter: blur(16px);
 }
 .content-head {
   display: flex;
@@ -666,14 +767,33 @@ onMounted(async () => {
 }
 
 .stage {
-  border-left: 1px solid rgba(0, 0, 0, 0.2);
   display: flex;
   flex-direction: row;
   min-width: 0;
   min-height: 0;
   height: 100%;
-  background: #0b0c10;
+  position: relative;
+  background:
+    linear-gradient(90deg, var(--player-stage-wash) 0%, var(--player-stage-wash-soft) 11%, rgba(0, 0, 0, 0) 30%),
+    #0b0c10;
   overflow: hidden;
+}
+.stage::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 118px;
+  pointer-events: none;
+  z-index: 2;
+  background:
+    linear-gradient(90deg, var(--player-surface-soft), rgba(255, 255, 255, 0)),
+    radial-gradient(180px 72% at 0 48%, var(--player-seam), transparent 72%);
+  mix-blend-mode: screen;
+  opacity: 0.58;
+}
+.player-page.is-dark .stage::before {
+  mix-blend-mode: normal;
+  opacity: 0.76;
 }
 .stage-main {
   flex: 1 1 auto;

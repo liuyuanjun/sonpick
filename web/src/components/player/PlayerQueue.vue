@@ -54,8 +54,10 @@ const player = usePlayerStore()
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: transparent;
-  backdrop-filter: blur(12px);
+  background:
+    linear-gradient(180deg, var(--player-surface-strong, var(--n-card-color)) 0%, var(--player-surface, var(--n-card-color)) 100%),
+    radial-gradient(260px 220px at 12% 0%, var(--player-panel-glow, rgba(24, 160, 88, 0.10)), transparent 68%);
+  backdrop-filter: blur(18px) saturate(1.06);
   color: var(--n-text-color);
 }
 .queue-head {
@@ -64,7 +66,8 @@ const player = usePlayerStore()
   justify-content: space-between;
   gap: 8px;
   padding: 14px 14px 10px;
-  border-bottom: 1px solid var(--n-border-color);
+  border-bottom: 1px solid rgba(127, 127, 127, 0.12);
+  background: linear-gradient(180deg, var(--player-surface-strong, transparent), transparent);
 }
 .queue-title {
   font-weight: 700;
@@ -84,6 +87,24 @@ const player = usePlayerStore()
   min-height: 0;
   overflow: auto;
   padding: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--player-scrollbar-thumb, rgba(127, 127, 127, 0.28)) transparent;
+}
+.queue-list::-webkit-scrollbar {
+  width: 8px;
+}
+.queue-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.queue-list::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--player-scrollbar-thumb, rgba(127, 127, 127, 0.28));
+  background-clip: padding-box;
+}
+.queue-list::-webkit-scrollbar-thumb:hover {
+  background: var(--player-scrollbar-thumb-hover, rgba(24, 160, 88, 0.46));
+  background-clip: padding-box;
 }
 .queue-item {
   display: grid;
@@ -97,13 +118,13 @@ const player = usePlayerStore()
   color: var(--n-text-color);
 }
 .queue-item:hover {
-  background: var(--n-button-color-hover, rgba(127, 127, 127, 0.1));
+  background: color-mix(in srgb, var(--cover-accent, var(--n-primary-color)) 10%, transparent);
 }
 .queue-item.active {
-  background: color-mix(in srgb, var(--n-primary-color) 16%, transparent);
+  background: color-mix(in srgb, var(--cover-accent, var(--n-primary-color)) 18%, transparent);
 }
 .queue-item.active .q-title {
-  color: var(--n-primary-color);
+  color: var(--cover-accent, var(--n-primary-color));
 }
 .q-idx {
   font-size: 12px;
@@ -112,7 +133,7 @@ const player = usePlayerStore()
   font-variant-numeric: tabular-nums;
 }
 .queue-item.active .q-idx {
-  color: var(--n-primary-color);
+  color: var(--cover-accent, var(--n-primary-color));
 }
 .meta {
   min-width: 0;
