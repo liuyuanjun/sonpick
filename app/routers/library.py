@@ -222,36 +222,27 @@ def convert_song(
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """创建异步转码任务：立即返回 task_id，转码进度在任务中心查看。"""
+    from app.models import Task
+    from app.services.task_worker import worker
+
     song = db.get(Song, song_id)
     if not song:
         raise HTTPException(status_code=404, detail="Song not found")
-    try:
-        svc = ConvertService(db)
-        mp3_file = svc.convert_song_to_mp3(song)
-        song.updated_at = datetime.now(timezone.utc)
-        db.commit()
-        write_log(
-            db,
-            action="convert",
-            target="local",
-            status="success",
-            title=f"{song.artist or ''} - {song.title}".strip(" -"),
-            message="转码为 MP3",
-            local_path=str(mp3_file.local_path),
-            song_id=song.id,
-        )
-        return {"local_path": str(mp3_file.local_path), "format": mp3_file.format}
-    except Exception as e:
-        write_log(
-            db,
-            action="convert",
-            target="local",
-            status="failed",
-            title=f"{song.artist or ''} - {song.title}".strip(" -") if song else None,
-            message=str(e),
-            song_id=song_id,
-        )
-        raise HTTPException(status_code=500, detail=str(e))
+    task = Task(
+        type="convert",
+        status="pending",
+        payload_json=json.dumps({"song_id": song_id}, ensure_ascii=False),
+        progress_json=json.dumps({"message": "等待执行", "percent": 0}, ensure_ascii=False),
+        result_json="{}",
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    worker.enqueue(task.id)
+    return {"async": True, "task_id": task.id, "status": task.status}
 
 
 @router.post("/{song_id}/upload-webdav")

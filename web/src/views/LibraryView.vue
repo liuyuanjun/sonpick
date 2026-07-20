@@ -660,7 +660,21 @@ async function runScrape() {
     else { scrapeResult.value = data; scrapeLoading.value = false; message.success('刮削完成'); await loadSources(); await loadSongs() }
   } catch (err) { scrapeLoading.value = false; message.error(formatApiError(err, '刮削失败')) }
 }
-async function onConvert(row) { try { await convertSong(row.id); message.success('转码完成'); await loadSongs() } catch (err) { message.error(formatApiError(err, '转码失败')) } }
+async function onConvert(row) {
+  try {
+    const res = await convertSong(row.id)
+    const taskId = res.data?.task_id
+    if (!taskId) { message.success('转码完成'); await loadSongs(); return }
+    message.info(`转码任务 #${taskId} 已创建，可在右上角任务中心查看进度`)
+    waitTask(taskId, { timeoutMs: 30 * 60 * 1000 })
+      .then(async (task) => {
+        if (task?.status === 'completed') { message.success(`「${row.title}」转码完成`) }
+        else { message.error(`「${row.title}」转码失败`) }
+        await loadSongs()
+      })
+      .catch(() => loadSongs())
+  } catch (err) { message.error(formatApiError(err, '转码失败')) }
+}
 async function onUpload(row, sourceId) { try { const res = await uploadSongToWebdav(row.id, sourceId); message.success(`上传完成：${res.data?.status || 'ok'}`); await loadSongs() } catch (err) { message.error(formatApiError(err, '上传失败')) } }
 async function onDeleteSong(row) {
   if (!window.confirm(`删除「${row.title}」？`)) return

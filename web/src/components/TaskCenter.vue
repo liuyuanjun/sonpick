@@ -44,7 +44,9 @@
               processing
               style="margin: 6px 0 4px"
             />
-            <n-text depth="3" class="task-message" :title="taskMessage(task)">{{ taskMessage(task) || '等待执行' }}</n-text>
+            <n-text depth="3" class="task-message" :title="taskMessage(task)">
+              {{ taskMessage(task) || '等待执行' }} · 已耗时 {{ elapsedText(task) }}
+            </n-text>
           </div>
         </div>
 
@@ -60,7 +62,7 @@
               <n-tag size="small" :type="statusTagType(task.status)" :bordered="false">{{ statusLabel(task.status) }}</n-tag>
             </div>
             <n-text depth="3" class="task-message" :title="taskMessage(task)">
-              {{ taskMessage(task) || task.error_message || '-' }} · {{ formatTime(task.updated_at) }}
+              {{ taskMessage(task) || task.error_message || '-' }} · 耗时 {{ elapsedText(task) }} · {{ formatTime(task.updated_at) }}
             </n-text>
           </div>
         </div>
@@ -80,6 +82,7 @@ const message = useMessage()
 const show = ref(false)
 const loading = ref(false)
 const tasks = ref([])
+const now = ref(Date.now())
 
 const ACTIVE_STATUSES = ['pending', 'running']
 const TERMINAL_STATUSES = ['completed', 'failed', 'cancelled']
@@ -91,6 +94,7 @@ const TYPE_LABELS = {
   search_download: '搜索下载',
   batch_download: '批量下载',
   scrape: '刮削',
+  convert: '转码',
 }
 const STATUS_LABELS = {
   pending: '排队中',
@@ -118,6 +122,7 @@ function taskTitle(task) {
     return kws.length ? `批量下载 ${kws.length} 首：${kws[0]}${kws.length > 1 ? ' 等' : ''}` : `批量下载 #${task.id}`
   }
   if (task.type === 'scrape') return `刮削曲库 #${payload.source_id ?? task.id}`
+  if (task.type === 'convert') return `转码歌曲 #${payload.song_id ?? task.id}`
   return `任务 #${task.id}`
 }
 function taskPercent(task) {
@@ -132,6 +137,21 @@ function formatTime(value) {
   try {
     return new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
   } catch { return '' }
+}
+function elapsedText(task) {
+  if (!task?.created_at) return '-'
+  const start = new Date(task.created_at).getTime()
+  if (Number.isNaN(start)) return '-'
+  const end = TERMINAL_STATUSES.includes(task.status) && task.updated_at
+    ? new Date(task.updated_at).getTime()
+    : now.value
+  const sec = Math.max(0, Math.round((end - start) / 1000))
+  const h = Math.floor(sec / 3600)
+  const m = Math.floor((sec % 3600) / 60)
+  const s = sec % 60
+  if (h) return `${h}时${m}分${s}秒`
+  if (m) return `${m}分${s}秒`
+  return `${s}秒`
 }
 
 function upsertTask(partial) {
@@ -192,14 +212,16 @@ useWebSocket((data) => {
   }
 })
 
-// 抽屉打开时每 10s 兜底刷新一次（WS 为主，避免高频轮询）
+// 抽屉打开时每 10s 兜底刷新一次（WS 为主，避免高频轮询）；每秒刷新已耗时显示
 let pollTimer = null
+let tickTimer = null
 watch(show, (visible) => {
   if (visible) {
     pollTimer = setInterval(loadTasks, 10000)
-  } else if (pollTimer) {
-    clearInterval(pollTimer)
-    pollTimer = null
+    tickTimer = setInterval(() => { now.value = Date.now() }, 1000)
+  } else {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+    if (tickTimer) { clearInterval(tickTimer); tickTimer = null }
   }
 })
 

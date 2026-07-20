@@ -9,7 +9,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, get_engine
-from app.models import AppSettings, Task
+from app.models import AppSettings, Song, Task
 from app.services.musicdl_service import MusicDLService
 from app.services.operation_log_service import write_log
 from app.services.webdav_service import WebDAVService
@@ -225,6 +225,50 @@ class TaskWorker:
                 task.updated_at = datetime.now(timezone.utc)
                 db.commit()
                 self.emit(task_id, "刮削完成", 100)
+                return
+
+            if task.type == "convert":
+                from app.services.convert_service import ConvertService
+
+                song_id = int(payload.get("song_id") or 0)
+                song = db.get(Song, song_id)
+                if not song:
+                    raise RuntimeError(f"歌曲不存在: {song_id}")
+                title = f"{song.artist or ''} - {song.title}".strip(" -")
+                self.emit(task_id, f"转码 MP3: {title}", 10)
+                try:
+                    mp3_file = ConvertService(db).convert_song_to_mp3(song)
+                    song.updated_at = datetime.now(timezone.utc)
+                    db.commit()
+                    write_log(
+                        db,
+                        action="convert",
+                        target="local",
+                        status="success",
+                        title=title,
+                        message="转码为 MP3",
+                        local_path=str(mp3_file.local_path),
+                        song_id=song.id,
+                        task_id=task_id,
+                    )
+                    task.result_json = json.dumps({"ok": True, "local_path": str(mp3_file.local_path), "format": mp3_file.format}, ensure_ascii=False)
+                    task.status = "completed"
+                    status = "completed"
+                    task.updated_at = datetime.now(timezone.utc)
+                    db.commit()
+                    self.emit(task_id, f"转码完成: {title}", 100)
+                except Exception as exc:
+                    write_log(
+                        db,
+                        action="convert",
+                        target="local",
+                        status="failed",
+                        title=title,
+                        message=str(exc),
+                        song_id=song_id,
+                        task_id=task_id,
+                    )
+                    raise
                 return
 
             music = MusicDLService(db, emit=self.emit)
