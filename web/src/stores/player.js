@@ -36,6 +36,7 @@ export const usePlayerStore = defineStore('player', () => {
   const queue = ref([])
   const currentIndex = ref(-1)
   const mode = ref(localStorage.getItem('sonpick-play-mode') || 'loop')
+  const losslessPreferred = ref(localStorage.getItem('sonpick-lossless-preferred') === '1')
   const volume = ref(Number(localStorage.getItem('sonpick-volume') ?? 0.8))
   const muted = ref(false)
   const currentTime = ref(0)
@@ -58,10 +59,15 @@ export const usePlayerStore = defineStore('player', () => {
     return useAuthStore().token || ''
   }
 
+  function toggleLosslessPreferred() {
+    losslessPreferred.value = !losslessPreferred.value
+    if (current.value?.id) src.value = streamUrl(current.value.id, token(), losslessPreferred.value)
+  }
+
   function applySong(song, autoplay = true) {
     if (!song?.id) return
     current.value = song
-    src.value = streamUrl(song.id, token())
+    src.value = streamUrl(song.id, token(), losslessPreferred.value)
     cover.value = song.cover_path ? coverUrl(song.id, token()) : ''
     showPlayer.value = true
     playing.value = !!autoplay
@@ -295,15 +301,17 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   watch(mode, (v) => localStorage.setItem('sonpick-play-mode', v))
+  watch(losslessPreferred, (v) => localStorage.setItem('sonpick-lossless-preferred', v ? '1' : '0'))
   watch(stageView, (v) => localStorage.setItem('sonpick-stage-view', normalizeStageView(v)))
   watch(lyricFontSize, (v) => localStorage.setItem('sonpick-lyric-font-size', String(v)))
 
   return {
     current, src, cover, playing, showPlayer, queue, currentIndex, mode, modeLabel,
+    losslessPreferred,
     volume, muted, currentTime, duration, lyrics, lyricIndex, showQueue, expanded,
     stageView, showLyrics, lyricFontSize,
     hasPrev, hasNext, play, playList, enqueue, removeFromQueue, clearQueue, jumpTo,
-    next, prev, toggleMode, setVolume, toggleMute, pause, resume, togglePlay, toggle,
+    next, prev, toggleMode, toggleLosslessPreferred, setVolume, toggleMute, pause, resume, togglePlay, toggle,
     setProgress, setStageView, cycleStageView, setShowLyrics, toggleShowLyrics, setLyricFontSize, loadLyrics,
     scrapeCurrent, waitScrapeTask, close,
   }

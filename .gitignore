@@ -4,14 +4,12 @@ deploy/.env
 data/
 downloads/
 logs/
-deploy/data/
-deploy/downloads/
-deploy/logs/
 *.log
 
 # frontend
 web/dist/
 web/node_modules/
+web/package-lock.json
 
 # python
 venv/
@@ -22,8 +20,11 @@ __pycache__/
 
 # local
 .DS_Store
+*.bak
 batch_download.log
 local-docs
-logs
 tmp
 web/.npm-cache
+
+# musicdl test / intermediate outputs
+musicdl_outputs/

@@ -135,6 +135,27 @@ def search_netease(keyword: str, *, limit: int = 8, timeout: float = 12.0) -> li
     return out
 
 
+def fetch_netease_song_cover(song_id: Any, *, timeout: float = 12.0) -> dict[str, Any]:
+    """Fetch a NetEase song detail when search results omit album artwork."""
+    if not song_id:
+        return {"ok": False, "error": "missing netease song id"}
+    url = "https://music.163.com/api/song/detail/?" + urllib.parse.urlencode({"ids": f"[{song_id}]"})
+    try:
+        payload = _http_json(url, timeout=timeout)
+        song = (payload.get("songs") or [{}])[0]
+        album = song.get("album") or song.get("al") or {}
+        cover_url = album.get("picUrl") or album.get("blurPicUrl") or album.get("pic_str") if isinstance(album, dict) else None
+        return {
+            "ok": bool(cover_url),
+            "song_id": song_id,
+            "cover_url": cover_url,
+            "album": album.get("name") if isinstance(album, dict) else None,
+            "source": "netease.song_detail.album.picUrl",
+        }
+    except Exception as exc:
+        return {"ok": False, "song_id": song_id, "error": f"{type(exc).__name__}: {exc}"}
+
+
 def fetch_netease_lyric(song_id: Any, *, timeout: float = 10.0) -> str:
     if not song_id:
         return ""

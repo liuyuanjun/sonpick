@@ -180,6 +180,12 @@
     <div class="controls">
       <n-tooltip>
         <template #trigger>
+          <n-button quaternary circle class="ctrl" :type="player.losslessPreferred ? 'primary' : 'default'" @click="player.toggleLosslessPreferred()">{{ player.losslessPreferred ? 'FLAC' : 'MP3' }}</n-button>
+        </template>
+        {{ player.losslessPreferred ? '无损优先：优先 FLAC' : 'MP3 优先：缺失时自动回退' }}
+      </n-tooltip>
+      <n-tooltip>
+        <template #trigger>
           <n-button quaternary circle class="ctrl" @click="player.toggleMode()">
             <n-icon size="20">
               <shuffle v-if="player.mode === 'shuffle'" />
@@ -240,6 +246,14 @@
 
     <n-modal v-model:show="scrapeModalVisible" preset="card" title="刮削当前歌曲" style="width: 980px; max-width: 96vw">
       <n-space vertical size="medium">
+        <n-form label-placement="top" size="small">
+          <n-form-item label="歌曲文件">
+            <n-input :value="scrapeSongPath" readonly />
+          </n-form-item>
+          <n-form-item label="检索关键词">
+            <n-input v-model:value="scrapeKeyword" placeholder="可手动修改歌名、歌手后再检索" clearable />
+          </n-form-item>
+        </n-form>
         <n-radio-group v-model:value="scrapeMode" size="small">
           <n-radio-button value="auto">自动评分</n-radio-button>
           <n-radio-button value="manual">手动选择源</n-radio-button>
@@ -257,7 +271,7 @@
 </template>
 
 <script setup>
-import { computed, h, ref, watch } from 'vue'
+import { computed, h, onMounted, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import {
   MusicalNotes,
@@ -281,6 +295,7 @@ import {
   VolumeMute,
 } from '@vicons/ionicons5'
 import { addFavorite, removeFavorite, applyScrapeCandidate, fetchScrapeCandidates, fetchSongTags } from '@/api/music'
+import api from '@/api/client'
 import { usePlayerStore } from '@/stores/player'
 import { useThemeStore } from '@/stores/theme'
 import { formatTime } from '@/utils/lrc'
@@ -300,13 +315,10 @@ const tagData = ref(null)
 const scrapeModalVisible = ref(false)
 const scrapeMode = ref('auto')
 const scrapeSource = ref('netease')
+const scrapeKeyword = ref('')
 const scrapeCandidates = ref([])
 const scrapeQuery = ref(null)
-const scrapeSourceOptions = [
-  { label: '网易云', value: 'netease' },
-  { label: '咪咕', value: 'migu' },
-  { label: 'QQ 音乐', value: 'qq' },
-]
+const scrapeSourceOptions = ref([])
 
 const isDark = computed(() => themeStore.isDark)
 const stageViewLabel = computed(() => {
@@ -337,6 +349,11 @@ const tagRows = computed(() => {
     { key: 'tag_lyrics', label: '内嵌歌词', value: em.lyrics ? `${String(em.lyrics).slice(0, 120)}...` : '' },
     { key: 'path', label: '文件路径', value: tagData.value?.local_path },
   ]
+})
+
+const scrapeSongPath = computed(() => {
+  const song = player.current || {}
+  return song.local_path || `${song.artist || ''} - ${song.title || song.name || ''}`.replace(/^\s*-\s*|\s*-\s*$/g, '')
 })
 
 const scrapeQueryText = computed(() => {
@@ -383,6 +400,22 @@ watch(
   { immediate: true },
 )
 
+async function loadScrapeSourceOptions() {
+  try {
+    const { data } = await api.get('/settings')
+    scrapeSourceOptions.value = (data.scrape_sources || [])
+      .filter(source => source.enabled && source.id !== 'acoustid')
+      .map(source => ({ label: source.name, value: source.id }))
+    if (!scrapeSourceOptions.value.some(option => option.value === scrapeSource.value)) {
+      scrapeSource.value = scrapeSourceOptions.value[0]?.value || ''
+    }
+  } catch (_) {
+    scrapeSourceOptions.value = []
+  }
+}
+
+onMounted(loadScrapeSourceOptions)
+
 function onCoverLoad() {
   coverBroken.value = false
 }
@@ -406,15 +439,20 @@ function openScrapeModal() {
   scrapeModalVisible.value = true
   scrapeCandidates.value = []
   scrapeQuery.value = null
+  scrapeKeyword.value = `${player.current.title || player.current.song_name || ''} ${player.current.artist || player.current.singers || ''}`.trim()
 }
 
 async function searchScrapeCandidates() {
   if (!player.current?.id || scraping.value) return
+  if (!scrapeKeyword.value.trim()) {
+    message.warning('请输入检索关键词')
+    return
+  }
   scraping.value = true
   scrapeHint.value = '检索中'
   try {
     const source = scrapeMode.value === 'auto' ? 'auto' : scrapeSource.value
-    const res = await fetchScrapeCandidates(player.current.id, { source, limit: 12 })
+    const res = await fetchScrapeCandidates(player.current.id, { source, keyword: scrapeKeyword.value.trim(), limit: 12 })
     const data = res.data || res || {}
     scrapeQuery.value = data.query || null
     scrapeCandidates.value = data.candidates || []

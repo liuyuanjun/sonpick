@@ -15,7 +15,7 @@ from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
-from app.models import MediaSource, Song
+from app.models import AppSettings, MediaSource, Song, SongFile
 from app.services.library_layout import (
     UNKNOWN_ALBUM,
     UNKNOWN_ARTIST,
@@ -85,6 +85,32 @@ def _copy_local(src: Path, dst: Path) -> Path:
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(str(src), str(dst))
     return dst
+
+
+def _sync_song_file_path(db: Session, song: Song, old_candidates: set[str], new_path: Path) -> None:
+    """整理移动文件后同步更新 SongFile 版本行（0.6.0 起转换/播放以 SongFile 为准）。"""
+    normalized = {c.replace("\\", "/") for c in old_candidates if c}
+    rows = (
+        db.query(SongFile)
+        .filter(SongFile.song_id == song.id, SongFile.local_path.isnot(None))
+        .all()
+    )
+    for sf in rows:
+        lp = (sf.local_path or "").replace("\\", "/")
+        if lp in normalized or (lp.endswith(new_path.name) and not Path(lp).exists()):
+            owner = (
+                db.query(SongFile)
+                .filter(SongFile.local_path == str(new_path), SongFile.id != sf.id)
+                .first()
+            )
+            if owner is not None:
+                # 已有版本行指向新路径（local_path 唯一约束），当前行冗余
+                db.delete(sf)
+                continue
+            sf.local_path = str(new_path)
+            if new_path.exists():
+                sf.file_size = new_path.stat().st_size
+            db.add(sf)
 
 
 def _parse_filename_meta(path: Path) -> dict[str, Optional[str]]:
@@ -332,6 +358,34 @@ class LibraryOrganizeService:
             raise ValueError("源不存在")
         return source
 
+    def _format_base_dirs(self) -> dict[str, Path]:
+        """无损/MP3 存放目录（绝对路径），用于按格式归档整理。"""
+        from app.services.convert_service import (
+            resolve_lossless_output_dir,
+            resolve_mp3_output_dir,
+        )
+
+        settings = self.db.get(AppSettings, 1)
+        storage = getattr(settings, "storage_path", None) if settings else None
+        return {
+            "lossless": Path(resolve_lossless_output_dir(
+                getattr(settings, "lossless_output_path", None) if settings else None,
+                storage,
+            )),
+            "mp3": Path(resolve_mp3_output_dir(
+                getattr(settings, "mp3_output_path", None) if settings else None,
+                storage,
+            )),
+        }
+
+    @staticmethod
+    def _target_base(fmt_dirs: dict[str, Path] | None, ext: str, root: Path) -> Path:
+        if fmt_dirs is None:
+            return root
+        from app.services.convert_service import LOSSLESS_FORMATS
+
+        return fmt_dirs["lossless" if (ext or "").lower().lstrip(".") in LOSSLESS_FORMATS else "mp3"]
+
 
     def _scrape_album_if_missing(
         self,
@@ -430,6 +484,7 @@ class LibraryOrganizeService:
         relative_dir: str = "",
         include_failed: bool = False,
         allow_network: bool = False,
+        relocate_format_dirs: bool = False,
     ) -> dict[str, Any]:
         source = self.get_source(source_id)
         if source.type == "local":
@@ -439,6 +494,7 @@ class LibraryOrganizeService:
                 relative_dir=relative_dir,
                 include_failed=include_failed,
                 allow_network=allow_network,
+                relocate_format_dirs=relocate_format_dirs,
             )
         if source.type == "webdav":
             return self._preview_webdav(
@@ -458,6 +514,7 @@ class LibraryOrganizeService:
         relative_dir: str = "",
         include_failed: bool = False,
         allow_network: bool = False,
+        relocate_format_dirs: bool = False,
     ) -> dict[str, Any]:
         source = self.get_source(source_id)
         if source.type == "local":
@@ -467,6 +524,7 @@ class LibraryOrganizeService:
                 relative_dir=relative_dir,
                 include_failed=include_failed,
                 allow_network=allow_network,
+                relocate_format_dirs=relocate_format_dirs,
             )
         elif source.type == "webdav":
             result = self._apply_webdav(
@@ -570,6 +628,7 @@ class LibraryOrganizeService:
         relative_dir: str = "",
         include_failed: bool = False,
         allow_network: bool = False,
+        relocate_format_dirs: bool = False,
     ) -> dict[str, Any]:
         import logging
         import time
@@ -577,6 +636,7 @@ class LibraryOrganizeService:
         log = logging.getLogger("sonpick.reorganize")
         t0 = time.monotonic()
         root = _source_root_local(source)
+        fmt_dirs = self._format_base_dirs() if relocate_format_dirs else None
         rel = (relative_dir or "").strip().strip("/")
         # Early-stop walk: only collect up to limit files
         max_files = int(limit) if limit and limit > 0 else 0
@@ -628,10 +688,12 @@ class LibraryOrganizeService:
                 continue
             rel_dir = library_relative_dir(meta.get("artist"), meta.get("album"))
             stem = track_stem(meta.get("title"), path.stem)
-            target = root / rel_dir / f"{stem}{path.suffix.lower()}"
+            target = self._target_base(fmt_dirs, path.suffix, root) / rel_dir / f"{stem}{path.suffix.lower()}"
             actions = []
             if path.resolve() != target.resolve():
                 actions.append("move_audio")
+                if fmt_dirs is not None:
+                    actions.append("relocate_format_dir")
             else:
                 actions.append("keep_audio")
             if meta.get("scraped"):
@@ -660,6 +722,7 @@ class LibraryOrganizeService:
             "relative_dir": rel,
             "include_failed": bool(include_failed),
             "allow_network": bool(allow_network),
+            "relocate_format_dirs": bool(relocate_format_dirs),
             "limit": int(limit or 0),
             "scanned": scanned,
             "total": len(items),
@@ -679,6 +742,7 @@ class LibraryOrganizeService:
         relative_dir: str = "",
         include_failed: bool = False,
         allow_network: bool = False,
+        relocate_format_dirs: bool = False,
     ) -> dict[str, Any]:
         import logging
         import time
@@ -686,6 +750,7 @@ class LibraryOrganizeService:
         log = logging.getLogger("sonpick.reorganize")
         t0 = time.monotonic()
         root = _source_root_local(source)
+        fmt_dirs = self._format_base_dirs() if relocate_format_dirs else None
         rel = (relative_dir or "").strip().strip("/")
         max_files = int(limit) if limit and limit > 0 else 0
         files = _iter_local_audio(
@@ -752,7 +817,7 @@ class LibraryOrganizeService:
 
                 rel_dir = library_relative_dir(meta.get("artist"), meta.get("album"))
                 stem = track_stem(meta.get("title"), path.stem)
-                target = root / rel_dir / f"{stem}{path.suffix.lower()}"
+                target = self._target_base(fmt_dirs, path.suffix, root) / rel_dir / f"{stem}{path.suffix.lower()}"
 
                 lrc_src = find_lrc_sidecar(path)
                 track_cover = find_track_cover_file(path)
@@ -764,6 +829,8 @@ class LibraryOrganizeService:
                 if path.resolve() != target.resolve():
                     new_audio = _move_local(path, target)
                     actions.append("moved_audio")
+                    if fmt_dirs is not None:
+                        actions.append("relocate_format_dir")
                     moved += 1
                 else:
                     new_audio = path
@@ -795,6 +862,11 @@ class LibraryOrganizeService:
                             actions.append("copied_cover")
 
                 if song:
+                    old_path_candidates = {
+                        str(original_path),
+                        str(original_path.resolve()),
+                        song.local_path or "",
+                    }
                     song.local_path = str(new_audio)
                     song.title = str(meta.get("title") or song.title)
                     if meta.get("artist") and not is_generic_dir_name(meta["artist"]):
@@ -810,6 +882,7 @@ class LibraryOrganizeService:
                     if cover_dst.is_file():
                         song.cover_path = str(cover_dst)
                     self.db.add(song)
+                    _sync_song_file_path(self.db, song, old_path_candidates, new_audio)
 
                 results.append(
                     _plan_item(
@@ -862,6 +935,12 @@ class LibraryOrganizeService:
                     )
                 )
                 if song and fail_target and Path(str(fail_target)).exists():
+                    _sync_song_file_path(
+                        self.db,
+                        song,
+                        {str(original_path), str(original_path.resolve()), song.local_path or ""},
+                        Path(str(fail_target)),
+                    )
                     song.local_path = str(fail_target)
                     self.db.add(song)
 
@@ -872,6 +951,7 @@ class LibraryOrganizeService:
             "root": str(root),
             "relative_dir": rel,
             "include_failed": bool(include_failed),
+            "relocate_format_dirs": bool(relocate_format_dirs),
             "limit": int(limit or 0),
             "mode": "apply",
             "total": len(results),

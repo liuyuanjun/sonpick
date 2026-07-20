@@ -233,6 +233,8 @@ class TaskWorker:
                 keywords = payload.get("keywords") or [payload.get("keyword")]
                 keywords = [k for k in keywords if k]
                 prefer = payload.get("prefer", "any")
+                selected_source = str(payload.get("source") or "all").strip()
+                music_sources = None if selected_source == "all" else [selected_source]
                 total = max(len(keywords), 1)
                 storage = Path(settings.storage_path if settings else "./downloads")
                 storage.mkdir(parents=True, exist_ok=True)
@@ -247,7 +249,7 @@ class TaskWorker:
                     pct = int(idx / total * 100)
                     self.emit(task_id, f"搜索: {kw}", pct)
                     try:
-                        results = music.search(kw, prefer=prefer)
+                        results = music.search(kw, prefer=prefer, music_sources=music_sources)
                     except Exception as e:
                         self.emit(task_id, f"搜索失败: {e}", pct)
                         write_log(
@@ -288,7 +290,11 @@ class TaskWorker:
                             singers=singers,
                             prefer=prefer,
                             output_dir=storage,
+                            music_sources=music_sources,
+                            picked=item,
                         )
+                        if song is None:
+                            raise RuntimeError("未找到可下载版本，或下载文件落盘失败")
                         write_log(
                             db,
                             action="download",
@@ -319,15 +325,11 @@ class TaskWorker:
                         )
                         continue
 
-                    if settings and settings.auto_convert_mp3 and song.format != "mp3":
+                    if settings and not settings.lossless_preferred and settings.auto_convert_when_lossless_not_preferred:
                         try:
                             from app.services.convert_service import ConvertService
                             self.emit(task_id, "转码 MP3...", pct)
-                            cs = ConvertService(db)
-                            new_path = cs.convert_to_mp3(song.local_path, song_id=song.id)
-                            song.local_path = str(new_path)
-                            song.format = "mp3"
-                            db.commit()
+                            mp3_file = ConvertService(db).convert_song_to_mp3(song)
                             write_log(
                                 db,
                                 action="convert",
@@ -335,7 +337,7 @@ class TaskWorker:
                                 status="success",
                                 title=f"{song.artist or ''} - {song.title}".strip(" -"),
                                 message="自动转码 MP3",
-                                local_path=str(new_path),
+                                local_path=str(mp3_file.local_path),
                                 song_id=song.id,
                                 task_id=task_id,
                             )
@@ -348,34 +350,6 @@ class TaskWorker:
                                 status="failed",
                                 title=f"{song.artist or ''} - {song.title}".strip(" -"),
                                 message=str(e),
-                                song_id=song.id,
-                                task_id=task_id,
-                            )
-
-                    if settings and settings.auto_upload_webdav:
-                        try:
-                            self.emit(task_id, "上传 WebDAV...", pct)
-
-                            def _cb(msg: str, _pct=pct):
-                                self.emit(task_id, msg, _pct)
-
-                            ws = WebDAVService(db)
-                            result = ws.upload_song(song, task_id=task_id, progress_cb=_cb)
-                            self.emit(
-                                task_id,
-                                f"上传完成: {result.get('webdav_path')} ({result.get('status')})",
-                                pct,
-                            )
-                        except Exception as e:
-                            self.emit(task_id, f"上传失败: {e}", pct)
-                            write_log(
-                                db,
-                                action="upload",
-                                target="webdav",
-                                status="failed",
-                                title=f"{song.artist or ''} - {song.title}".strip(" -"),
-                                message=str(e),
-                                local_path=song.local_path,
                                 song_id=song.id,
                                 task_id=task_id,
                             )

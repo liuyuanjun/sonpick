@@ -10,7 +10,7 @@ from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
-from app.models import AppSettings, MediaSource, Song
+from app.models import AppSettings, MediaSource, Song, SongFile
 from app.routers.settings import (
     DEFAULT_SCAN_EXCLUDE,
     DEFAULT_SCAN_EXTS,
@@ -215,6 +215,46 @@ class LibraryScanService:
             _parse_json_list(getattr(self.cfg, "scan_exclude_globs", None), DEFAULT_SCAN_EXCLUDE)
         )
 
+    def _mp3_output_globs(self, roots: list[Path]) -> list[str]:
+        """Exclude the configured MP3 output directory when it lives inside a scan root."""
+        from app.services.convert_service import resolve_mp3_output_dir
+
+        settings = self.db.get(AppSettings, 1)
+        mp3_root = resolve_mp3_output_dir(
+            getattr(settings, "mp3_output_path", None) if settings else None,
+            settings.storage_path if settings else None,
+        )
+        try:
+            mp3_path = Path(mp3_root).expanduser().resolve()
+        except Exception:
+            return []
+        globs: list[str] = []
+        for root in roots:
+            try:
+                rel = mp3_path.relative_to(root.expanduser().resolve())
+            except Exception:
+                continue
+            rel_s = str(rel).replace("\\", "/").strip("/")
+            if rel_s:
+                globs.append(f"{rel_s}/**")
+        return globs
+
+    def _find_logical_song(self, meta: dict[str, Optional[str]], duration: int | None) -> Song | None:
+        title = (meta.get("title") or "").strip()
+        if not title:
+            return None
+        query = self.db.query(Song).filter(Song.title == title)
+        artist = (meta.get("artist") or "").strip()
+        album = (meta.get("album") or "").strip()
+        if artist:
+            query = query.filter(Song.artist == artist)
+        if album:
+            query = query.filter(Song.album == album)
+        candidates = query.all()
+        if duration:
+            candidates = [song for song in candidates if not song.duration or abs((song.duration or 0) - duration) <= 3]
+        return candidates[0] if candidates else None
+
     def _upsert_local(self, path: Path, source_id: int, stats: dict[str, Any]) -> None:
         stats["scanned"] += 1
         abs_path = str(path.resolve()) if path.exists() else str(path)
@@ -242,13 +282,8 @@ class LibraryScanService:
             lrc = audio_meta.get("lrc_path") or _find_sidecar_local(path, SIDE_LRC_EXTS)
             lrc = _maybe_write_embedded_lyrics(path, audio_meta.get("lyrics"), lrc)
 
-            song = self.db.query(Song).filter(Song.local_path == abs_path).one_or_none()
-            if song is None:
-                song = (
-                    self.db.query(Song)
-                    .filter(Song.local_path.is_(None), Song.webdav_path.isnot(None), Song.title == meta["title"])
-                    .first()
-                )
+            song_file = self.db.query(SongFile).filter(SongFile.local_path == abs_path).one_or_none()
+            song = self.db.get(Song, song_file.song_id) if song_file else self._find_logical_song(meta, duration)
 
             if song is None:
                 song = Song(
@@ -269,6 +304,8 @@ class LibraryScanService:
                 )
                 self.db.add(song)
                 self.db.flush()
+                song_file = SongFile(song_id=song.id, format=ext, local_path=abs_path, library_source_id=source_id, duration=duration, file_size=size)
+                self.db.add(song_file)
                 if cover and path.exists():
                     refined = enrich_local_audio(path, song_id=song.id, existing_cover=cover)
                     if refined.get("cover_path"):
@@ -277,6 +314,15 @@ class LibraryScanService:
                         song.duration = refined["duration"]
                 stats["added"] += 1
             else:
+                if song_file is None:
+                    song_file = SongFile(song_id=song.id, format=ext, local_path=abs_path, library_source_id=source_id, duration=duration, file_size=size)
+                    self.db.add(song_file)
+                else:
+                    song_file.format = ext
+                    song_file.library_source_id = source_id
+                    song_file.duration = duration or song_file.duration
+                    song_file.file_size = size or song_file.file_size
+                    song_file.updated_at = _now()
                 changed = False
                 if not song.local_path:
                     song.local_path = abs_path
@@ -360,12 +406,8 @@ class LibraryScanService:
             cover = bucket.get("cover")
             lrc = bucket.get("lrc")
 
-            song = self.db.query(Song).filter(Song.webdav_path == rel).one_or_none()
-            if song is None and meta["title"]:
-                q = self.db.query(Song).filter(Song.webdav_path.is_(None), Song.title == meta["title"])
-                if meta["artist"]:
-                    q = q.filter(Song.artist == meta["artist"])
-                song = q.first()
+            song_file = self.db.query(SongFile).filter(SongFile.webdav_path == rel, SongFile.library_source_id == source_id).one_or_none()
+            song = self.db.get(Song, song_file.song_id) if song_file else self._find_logical_song(meta, None)
 
             if song is None:
                 song = Song(
@@ -384,8 +426,18 @@ class LibraryScanService:
                     updated_at=_now(),
                 )
                 self.db.add(song)
+                self.db.flush()
+                song_file = SongFile(song_id=song.id, format=ext, webdav_path=rel, library_source_id=source_id, file_size=size)
+                self.db.add(song_file)
                 stats["added"] += 1
             else:
+                if song_file is None:
+                    song_file = SongFile(song_id=song.id, format=ext, webdav_path=rel, library_source_id=source_id, file_size=size)
+                    self.db.add(song_file)
+                else:
+                    song_file.format = ext
+                    song_file.file_size = size or song_file.file_size
+                    song_file.updated_at = _now()
                 changed = False
                 if not song.webdav_path:
                     song.webdav_path = rel
@@ -476,7 +528,7 @@ class LibraryScanService:
             return stats
 
         exts = self._audio_exts(source)
-        globs = self._exclude_globs(source)
+        globs = self._exclude_globs(source) + self._mp3_output_globs(roots)
         seen: set[str] = set()
 
         for root in roots:
@@ -617,6 +669,12 @@ class LibraryScanService:
             total_updated += stats.get("updated", 0) or 0
             total_skipped += stats.get("skipped", 0) or 0
             total_errors += stats.get("errors", 0) or 0
+
+        try:
+            from app.services.convert_service import ConvertService
+            ConvertService(self.db).auto_convert_missing_mp3()
+        except Exception:
+            pass
 
         duration_ms = int((time.time() - started) * 1000)
         msg_parts = []

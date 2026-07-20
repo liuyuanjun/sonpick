@@ -43,7 +43,10 @@ class SettingsUpdate(BaseModel):
     webdav_username: Optional[str] = None
     webdav_password: Optional[str] = None
     prefer_format: Optional[str] = Field(default=None, pattern="^(flac|mp3|m4a|any)$")
-    auto_convert_mp3: Optional[bool] = None
+    mp3_output_path: Optional[str] = None
+    lossless_output_path: Optional[str] = None
+    lossless_preferred: Optional[bool] = None
+    auto_convert_when_lossless_not_preferred: Optional[bool] = None
     auto_upload_webdav: Optional[bool] = None
     webdav_delete_local_after_upload: Optional[bool] = None
     webdav_upload_sidecar: Optional[bool] = None
@@ -55,6 +58,8 @@ class SettingsUpdate(BaseModel):
     scan_webdav_dirs: Optional[list[str]] = None
     scan_exclude_globs: Optional[list[str]] = None
     scan_audio_exts: Optional[str] = None
+    scrape_sources: Optional[list[dict[str, Any]]] = None
+    acoustid_api_key: Optional[str] = Field(default=None, max_length=512)
 
 
 class SettingsResponse(BaseModel):
@@ -63,7 +68,10 @@ class SettingsResponse(BaseModel):
     webdav_username: Optional[str]
     webdav_password: Optional[str]
     prefer_format: str
-    auto_convert_mp3: bool
+    mp3_output_path: str
+    lossless_output_path: str = ""
+    lossless_preferred: bool = False
+    auto_convert_when_lossless_not_preferred: bool = False
     auto_upload_webdav: bool
     webdav_delete_local_after_upload: bool
     webdav_upload_sidecar: bool
@@ -75,6 +83,9 @@ class SettingsResponse(BaseModel):
     scan_webdav_dirs: list[str] = Field(default_factory=lambda: [""])
     scan_exclude_globs: list[str] = Field(default_factory=list)
     scan_audio_exts: str = "mp3,flac,m4a,wav,ogg,aac,ape,wma"
+    scrape_sources: list[dict[str, Any]] = Field(default_factory=list)
+    acoustid_ready: bool = False
+    acoustid_message: Optional[str] = None
     updated_at: Optional[str]
 
 
@@ -112,11 +123,13 @@ class LibraryScanResponse(BaseModel):
 class DownloadRequest(BaseModel):
     keyword: str
     prefer: str = "any"
+    source: str = "all"
 
 
 class BatchDownloadRequest(BaseModel):
     content: str
     prefer: str = "any"
+    source: str = "all"
 
 
 class SearchResultItem(BaseModel):
@@ -159,6 +172,8 @@ class SongOut(BaseModel):
     status: str
     play_count: int = 0
     is_favorite: bool = False
+    versions: list[dict[str, Any]] = Field(default_factory=list)
+    available_formats: list[str] = Field(default_factory=list)
     created_at: Optional[str]
     updated_at: Optional[str]
 

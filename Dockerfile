@@ -18,7 +18,7 @@ RUN set -eux; \
       sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list; \
     fi; \
     apt-get update && apt-get install -y --no-install-recommends \
-      ffmpeg gcc libffi-dev libssl-dev \
+      ffmpeg gcc libffi-dev libssl-dev libchromaprint-tools \
     && rm -rf /var/lib/apt/lists/*
 
 COPY musicdl/requirements.txt /tmp/musicdl-requirements.txt

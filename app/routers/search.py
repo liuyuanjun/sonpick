@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.routers.auth import get_current_user
 from app.schemas import SearchPageOut, SearchResultItem
-from app.services.musicdl_service import MusicDLService
+from app.services.musicdl_service import DEFAULT_DOWNLOAD_SOURCES, SOURCE_LABELS, MusicDLService
 
 router = APIRouter(prefix="/search", tags=["search"])
 
@@ -16,12 +16,21 @@ def search(
     q: str = Query(..., min_length=1),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    source: str = Query("all"),
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     try:
         service = MusicDLService(db)
-        items = service.search(q)
+        requested_source = (source or "all").strip()
+        music_sources = None if requested_source == "all" else [requested_source]
+        if music_sources and requested_source not in DEFAULT_DOWNLOAD_SOURCES:
+            raise HTTPException(status_code=422, detail="不支持的音乐源")
+        source_label = SOURCE_LABELS.get(requested_source, requested_source)
+        try:
+            items = service.search(q, music_sources=music_sources)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"{source_label} 搜索失败：{exc}") from exc
         total = len(items)
         start = (page - 1) * page_size
         end = start + page_size

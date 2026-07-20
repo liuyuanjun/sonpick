@@ -1,7 +1,7 @@
 <template>
-  <n-grid cols="1 l:8" responsive="screen" :x-gap="16" :y-gap="16">
-    <n-gi span="1 l:3">
-      <n-card title="曲库" size="small">
+    <div class="library-layout">
+    <div class="library-side">
+      <n-card class="source-panel" title="曲库来源" size="small">
         <template #header-extra>
           <n-space size="small">
             <n-dropdown trigger="click" :options="createOptions" @select="openCreate">
@@ -14,15 +14,15 @@
         <n-empty v-if="!sources.length && !sourcesLoading" description="暂无曲库" />
         <n-spin :show="sourcesLoading">
           <n-space vertical size="small">
-            <n-card
-              v-for="source in sources"
-              :key="source.id"
-              class="source-card"
-              :class="{ active: selectedSourceId === source.id }"
-              size="small"
-              hoverable
-              @click="selectSource(source)"
-            >
+              <n-card
+                v-for="source in sources"
+                :key="source.id"
+                class="source-card"
+                :class="{ active: selectedSourceId === source.id }"
+                size="small"
+                hoverable
+                @click="selectSource(source)"
+              >
               <n-space vertical size="small">
                 <n-space justify="space-between" align="center">
                   <n-space size="small" align="center">
@@ -55,22 +55,29 @@
           </n-space>
         </n-spin>
       </n-card>
-    </n-gi>
+    </div>
 
-    <n-gi span="1 l:5">
-      <n-card :title="selectedSource ? selectedSource.name : '曲库内容'">
+    <div class="library-main">
+      <n-card class="content-panel" :title="selectedSource ? selectedSource.name : '曲库内容'" size="small">
         <template #header-extra>
-          <n-tabs v-model:value="mode" type="segment" size="small" @update:value="onModeChange">
-            <n-tab-pane name="songs" tab="歌曲" />
-            <n-tab-pane name="browse" tab="浏览" />
+          <n-tabs v-model:value="mode" class="library-mode-tabs" type="segment" size="medium" @update:value="onModeChange">
+            <n-tab-pane name="songs">
+              <template #tab><span class="mode-tab-label"><n-icon size="16"><MusicalNotesOutline /></n-icon>歌曲列表</span></template>
+            </n-tab-pane>
+            <n-tab-pane name="browse">
+              <template #tab><span class="mode-tab-label"><n-icon size="16"><FolderOpenOutline /></n-icon>浏览文件</span></template>
+            </n-tab-pane>
           </n-tabs>
         </template>
 
         <template v-if="mode === 'songs'">
           <n-space vertical size="medium">
-            <n-space justify="space-between">
-              <n-input v-model:value="q" clearable placeholder="搜索歌名/歌手" style="max-width: 260px" @keydown.enter="loadSongs" />
-              <n-button @click="loadSongs" :loading="songsLoading">刷新</n-button>
+            <n-space class="library-toolbar" justify="space-between" align="center" wrap>
+              <n-input v-model:value="q" clearable placeholder="搜索歌名/歌手" style="width: min(100%, 320px)" @keydown.enter="loadSongs" />
+              <n-space size="small" wrap>
+                <n-button @click="loadSongs" :loading="songsLoading">刷新歌曲</n-button>
+                <n-button v-if="songs.length" type="primary" secondary @click="openScrape(selectedSource)">刮削曲库</n-button>
+              </n-space>
             </n-space>
             <n-data-table :columns="songColumns" :data="songs" :loading="songsLoading" :row-key="(r) => r.id" />
           </n-space>
@@ -106,8 +113,8 @@
           </n-space>
         </template>
       </n-card>
-    </n-gi>
-  </n-grid>
+    </div>
+  </div>
 
   <n-modal v-model:show="showForm" preset="card" :title="formTitle" style="width: 640px">
     <n-form label-placement="left" label-width="130px">
@@ -203,6 +210,12 @@
       <n-form-item label="包含失败目录">
         <n-switch v-model:value="reorgForm.include_failed" />
       </n-form-item>
+      <n-form-item label="按格式归档">
+        <n-space align="center">
+          <n-switch v-model:value="reorgForm.relocate_format_dirs" />
+          <n-text depth="3" style="font-size: 12px">开启后，整理时会把错放的无损文件（FLAC/APE/WAV 等）移入「无损存放目录」、MP3 等有损文件移入「MP3 存放目录」下对应的艺术家/专辑位置（目录在设置页配置，默认不开启）。仅本地曲库生效。</n-text>
+        </n-space>
+      </n-form-item>
       <n-form-item label="允许网络补全">
         <n-switch v-model:value="reorgForm.allow_network" />
       </n-form-item>
@@ -254,14 +267,17 @@
 
 <script setup>
 import { computed, h, onMounted, reactive, ref } from 'vue'
-import { NButton, NDropdown, NSpace, NTag, useMessage } from 'naive-ui'
+import { NButton, NDropdown, NIcon, NSpace, NTag, NTooltip, useMessage } from 'naive-ui'
+import { FolderOpenOutline, MusicalNotesOutline, PlayOutline, TrashOutline, CloudUploadOutline, SwapHorizontalOutline } from '@vicons/ionicons5'
 import {
   applyReorganize,
   browseLocalSource,
   convertSong,
   createSource,
+  deleteBrowseItem,
   deleteSong,
   deleteSource,
+  deleteWebdavItem,
   fetchSongs,
   fetchSources,
   listReorganizeDirs,
@@ -320,7 +336,7 @@ const reorgLoading = ref(false)
 const reorgDirsLoading = ref(false)
 const reorgPreview = ref({ total: 0, changed: 0, scanned: 0, items: [] })
 const reorgResult = ref(null)
-const reorgForm = reactive({ relative_dir: '', limit: 20, include_failed: false, allow_network: false })
+const reorgForm = reactive({ relative_dir: '', limit: 20, include_failed: false, allow_network: false, relocate_format_dirs: false })
 const reorgDirOptions = ref([])
 const reorgSelectedChild = ref(null)
 
@@ -347,37 +363,83 @@ const isEditingBuiltin = computed(() => editingBuiltin.value)
 const formTitle = computed(() => (editingId.value ? '编辑曲库' : `添加${form.type === 'webdav' ? ' WebDAV ' : '本地'}曲库`))
 const browseSegments = computed(() => (browsePath.value || '').split('/').filter(Boolean))
 
+const statusLabels = { local: '本地', remote: '远程', both: '双边', uploaded: '已上传' }
+const statusTagTypes = { local: 'success', remote: 'info', both: 'warning', uploaded: 'info' }
+
 const songColumns = [
-  { title: '标题', key: 'title', ellipsis: { tooltip: true } },
-  { title: '艺术家', key: 'artist', ellipsis: { tooltip: true } },
-  { title: '专辑', key: 'album', ellipsis: { tooltip: true } },
   {
-    title: '来源', key: 'library_source_name', width: 150,
+    title: '歌曲', key: 'song',
     render(row) {
-      const name = row.library_source_name || (row.webdav_path ? 'WebDAV' : row.local_path ? '本地' : '-')
-      const type = row.library_source_type || (row.webdav_path && !row.local_path ? 'webdav' : 'local')
-      return h(NSpace, { size: 4 }, { default: () => [
-        h(NTag, { size: 'small', type: type === 'webdav' ? 'info' : 'success' }, { default: () => (type === 'webdav' ? 'WebDAV' : '本地') }),
-        h('span', null, name),
-      ] })
+      const artist = row.artist || '未知艺术家'
+      const album = row.album ? ` · ${row.album}` : ''
+      return h('div', { class: 'song-cell' }, [
+        h('div', { class: 'song-cell-title', title: row.title || '' }, row.title || '-'),
+        h('div', { class: 'song-cell-sub', title: `${artist}${album}` }, `${artist}${album}`),
+      ])
     },
   },
-  { title: '状态', key: 'status', width: 90, render: (row) => ({ local: '本地', remote: '远程', both: '双边', uploaded: '已上传' }[row.status] || row.status || '-') },
-  { title: '格式', key: 'format', width: 80 },
   {
-    title: '操作', key: 'actions', width: 280,
+    title: '来源', key: 'source', width: 200,
     render(row) {
-      const btns = [h(NButton, { size: 'tiny', type: 'primary', secondary: true, onClick: () => play(row) }, { default: () => '播放' })]
-      if (row.local_path && row.format && String(row.format).toLowerCase() !== 'mp3') btns.push(h(NButton, { size: 'tiny', onClick: () => onConvert(row) }, { default: () => '转 MP3' }))
-      if (row.local_path && webdavSources.value.length) {
-        btns.push(h(NDropdown, {
-          trigger: 'click',
-          options: webdavSources.value.map((s) => ({ label: s.is_default_upload ? `${s.name}（默认）` : s.name, key: s.id })),
-          onSelect: (key) => onUpload(row, key),
-        }, { default: () => h(NButton, { size: 'tiny', type: 'info', secondary: true }, { default: () => '上传' }) }))
+      const type = row.library_source_type || (row.webdav_path && !row.local_path ? 'webdav' : 'local')
+      const name = row.library_source_name || (row.webdav_path ? 'WebDAV' : row.local_path ? '本地' : '-')
+      const path = row.local_path || row.webdav_path || '-'
+      const status = statusLabels[row.status] || row.status || '-'
+      return h('div', { class: 'song-cell' }, [
+        h('div', { class: 'song-cell-line' }, [
+          h(NTag, { size: 'small', type: type === 'webdav' ? 'info' : 'success' }, { default: () => (type === 'webdav' ? 'WebDAV' : '本地') }),
+          h(NTooltip, null, {
+            trigger: () => h('span', { class: 'song-cell-name' }, name),
+            default: () => path,
+          }),
+        ]),
+        h('div', { class: 'song-cell-line' }, [
+          h(NTag, { size: 'small', type: statusTagTypes[row.status] || 'default', bordered: false }, { default: () => status }),
+        ]),
+      ])
+    },
+  },
+  {
+    title: '格式', key: 'format', width: 170,
+    render(row) {
+      const formats = (row.available_formats || [row.format]).filter(Boolean).map((format) => String(format).toUpperCase()).join(' / ')
+      const versions = (row.versions || []).map((item) => `${String(item.format || '').toUpperCase()}·${item.availability_status === 'unavailable' ? '不可用' : '可用'}`).join(' / ')
+      return h('div', { class: 'song-cell' }, [
+        h('div', { class: 'song-cell-title' }, formats || '-'),
+        h('div', { class: 'song-cell-sub', title: versions }, versions || '-'),
+      ])
+    },
+  },
+  {
+    title: '操作', key: 'actions', width: 150,
+    render(row) {
+      const iconBtn = (icon, tip, props, onClick) => h(NTooltip, null, {
+        trigger: () => h(NButton, {
+          size: 'tiny', quaternary: true, circle: true, class: 'song-icon-button',
+          'aria-label': tip, onClick, ...props,
+        }, { icon: () => h(NIcon, { size: 16 }, { default: () => h(icon) }) }),
+        default: () => tip,
+      })
+      const btns = [iconBtn(PlayOutline, '播放', { type: 'primary' }, () => play(row))]
+      if (!(row.available_formats || [row.format]).map((format) => String(format).toLowerCase()).includes('mp3')) {
+        btns.push(iconBtn(SwapHorizontalOutline, '转为 MP3', {}, () => onConvert(row)))
       }
-      btns.push(h(NButton, { size: 'tiny', type: 'error', quaternary: true, onClick: () => onDeleteSong(row) }, { default: () => '删除' }))
-      return h(NSpace, { size: 6 }, { default: () => btns })
+      if (row.local_path && webdavSources.value.length) {
+        btns.push(h(NTooltip, null, {
+          trigger: () => h(NDropdown, {
+            trigger: 'click',
+            options: webdavSources.value.map((s) => ({ label: s.is_default_upload ? `${s.name}（默认）` : s.name, key: s.id })),
+            onSelect: (key) => onUpload(row, key),
+          }, {
+            default: () => h(NButton, {
+              size: 'tiny', quaternary: true, circle: true, type: 'info', class: 'song-icon-button', 'aria-label': '上传到 WebDAV',
+            }, { icon: () => h(NIcon, { size: 16 }, { default: () => h(CloudUploadOutline) }) }),
+          }),
+          default: () => '上传到 WebDAV',
+        }))
+      }
+      btns.push(iconBtn(TrashOutline, '删除', { type: 'error' }, () => onDeleteSong(row)))
+      return h(NSpace, { size: 4, class: 'song-action-group', wrap: false }, { default: () => btns })
     },
   },
 ]
@@ -394,10 +456,21 @@ const browseColumns = [
   { title: '类型', key: 'type', width: 90, render: (row) => h(NTag, { size: 'small', type: isDir(row) ? 'info' : 'default' }, { default: () => (isDir(row) ? '目录' : '文件') }) },
   { title: '大小', key: 'size', width: 110, render: (row) => formatSize(row.size) },
   {
-    title: '操作', key: 'actions', width: 100,
+    title: '操作', key: 'actions', width: 110,
     render(row) {
-      if (isDir(row) || selectedSource.value?.type !== 'webdav' || !isAudio(row.name || row.path || '')) return null
-      return h(NButton, { size: 'tiny', onClick: () => playRemote(row) }, { default: () => '播放' })
+      const iconBtn = (icon, tip, props, onClick) => h(NTooltip, null, {
+        trigger: () => h(NButton, {
+          size: 'tiny', quaternary: true, circle: true, class: 'song-icon-button',
+          'aria-label': tip, onClick, ...props,
+        }, { icon: () => h(NIcon, { size: 16 }, { default: () => h(icon) }) }),
+        default: () => tip,
+      })
+      const btns = []
+      if (!isDir(row) && selectedSource.value?.type === 'webdav' && isAudio(row.name || row.path || '')) {
+        btns.push(iconBtn(PlayOutline, '播放', { type: 'primary' }, () => playRemote(row)))
+      }
+      btns.push(iconBtn(TrashOutline, '删除', { type: 'error' }, () => onDeleteBrowseItem(row)))
+      return h(NSpace, { size: 4, wrap: false }, { default: () => btns })
     },
   },
 ]
@@ -538,7 +611,7 @@ async function onDeleteSource(row) {
   try { await deleteSource(row.id); message.success('已删除'); selectedSourceId.value = null; await loadSources(); await loadSongs() }
   catch (err) { message.error(formatApiError(err, '删除失败')) }
 }
-function reorgPayload() { return { relative_dir: reorgForm.relative_dir || '', limit: Number(reorgForm.limit ?? 20), include_failed: !!reorgForm.include_failed, allow_network: !!reorgForm.allow_network } }
+function reorgPayload() { return { relative_dir: reorgForm.relative_dir || '', limit: Number(reorgForm.limit ?? 20), include_failed: !!reorgForm.include_failed, allow_network: !!reorgForm.allow_network, relocate_format_dirs: !!reorgForm.relocate_format_dirs } }
 async function loadReorgDirs() {
   if (!reorgSource.value) return
   reorgDirsLoading.value = true; reorgSelectedChild.value = null
@@ -552,7 +625,7 @@ async function reorgGoUp() { const parts = String(reorgForm.relative_dir || '').
 async function openReorg(row) {
   if (row.type !== 'local') { message.warning('仅本地曲库支持整理'); return }
   reorgSource.value = row; reorgResult.value = null; reorgPreview.value = { total: 0, changed: 0, scanned: 0, items: [] }
-  reorgForm.relative_dir = ''; reorgForm.limit = 20; reorgForm.include_failed = false; reorgForm.allow_network = false; reorgDirOptions.value = []; showReorg.value = true; await loadReorgDirs()
+  reorgForm.relative_dir = ''; reorgForm.limit = 20; reorgForm.include_failed = false; reorgForm.allow_network = false; reorgForm.relocate_format_dirs = false; reorgDirOptions.value = []; showReorg.value = true; await loadReorgDirs()
 }
 async function runReorgPreview() {
   if (!reorgSource.value) return
@@ -594,22 +667,144 @@ async function onDeleteSong(row) {
   try { await deleteSong(row.id, true); message.success('已删除'); await loadSources(); await loadSongs() }
   catch (err) { message.error(formatApiError(err, '删除失败')) }
 }
+async function onDeleteBrowseItem(row) {
+  const path = row.path || row.name
+  const name = row.name || path
+  if (!path || !selectedSource.value) return
+  const kind = isDir(row) ? '目录（含其中所有内容）' : '文件'
+  if (!window.confirm(`删除${kind}「${name}」？此操作不可恢复。`)) return
+  try {
+    if (selectedSource.value.type === 'webdav') await deleteWebdavItem(path, selectedSourceId.value)
+    else await deleteBrowseItem(selectedSourceId.value, path)
+    message.success('已删除')
+    await loadSources(); await loadBrowse(); if (mode.value === 'songs') await loadSongs()
+  } catch (err) { message.error(formatApiError(err, '删除失败')) }
+}
 
 onMounted(async () => { await loadSources(); await loadSongs() })
 </script>
 
 <style scoped>
+.library-layout {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+}
+.library-side {
+  flex: 0 0 500px;
+  width: 500px;
+  max-width: 100%;
+}
+.library-main {
+  flex: 1;
+  min-width: 0;
+}
+.source-panel,
+.content-panel {
+  border: 1px solid var(--border-color);
+  background: color-mix(in srgb, var(--card-color) 94%, var(--primary-color) 6%);
+  box-shadow: 0 14px 34px rgba(21, 32, 53, .07);
+}
 .source-card {
   cursor: pointer;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  margin-bottom: 10px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+.source-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(21, 32, 53, .09);
 }
 .source-card.active {
-  border-color: #18a058;
-  box-shadow: 0 0 0 1px rgba(24, 160, 88, 0.35);
+  border-color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 10%, var(--card-color));
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--primary-color) 18%, transparent);
 }
 .source-path {
   display: block;
   font-size: 12px;
   word-break: break-all;
+}
+.library-toolbar {
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--body-color) 72%, var(--primary-color) 4%);
+}
+.library-mode-tabs :deep(.n-tabs-nav) {
+  padding: 3px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--body-color) 78%, var(--primary-color) 5%);
+}
+.library-mode-tabs :deep(.n-tabs-tab) {
+  min-width: 116px;
+  padding: 7px 12px;
+}
+.mode-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.song-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 2px 0;
+}
+.song-cell-title {
+  font-weight: 600;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.song-cell-sub {
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--text-color-3, #8a8f99);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.song-cell-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  line-height: 1.4;
+}
+.song-cell-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+}
+.song-action-group {
+  flex-wrap: nowrap;
+}
+.song-icon-button {
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.song-icon-button:hover {
+  transform: translateY(-1px);
+}
+@media (max-width: 1100px) {
+  .library-layout {
+    flex-direction: column;
+  }
+  .library-side {
+    flex: none;
+    width: 100%;
+  }
+  .library-main {
+    width: 100%;
+  }
+  .source-panel,
+  .content-panel { box-shadow: none; }
 }
 </style>

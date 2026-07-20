@@ -22,6 +22,22 @@ def list_webdav(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.delete("/item")
+def delete_webdav_item(
+    path: str = Query(...),
+    source_id: int | None = Query(None),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        service = WebDAVService(db, source_id=source_id)
+        return service.delete(path)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"删除失败: {e}")
+
+
 @router.get("/stream")
 async def stream_webdav(
     request: Request,

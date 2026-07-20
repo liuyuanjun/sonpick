@@ -32,6 +32,12 @@
         <div class="controls">
           <n-tooltip>
             <template #trigger>
+              <n-button quaternary circle size="small" :type="player.losslessPreferred ? 'primary' : 'default'" @click="player.toggleLosslessPreferred()">{{ player.losslessPreferred ? 'FLAC' : 'MP3' }}</n-button>
+            </template>
+            {{ player.losslessPreferred ? '无损优先：优先 FLAC' : 'MP3 优先：缺失时自动回退' }}
+          </n-tooltip>
+          <n-tooltip>
+            <template #trigger>
               <n-button quaternary circle size="small" @click="player.toggleMode()">
                 <n-icon size="18">
                   <shuffle v-if="player.mode === 'shuffle'" />

@@ -14,8 +14,10 @@ from typing import Any, Mapping, Optional
 # Lightweight traditional→simplified map for common music-meta chars (no zhconv dep).
 _TRAD_TO_SIMP = str.maketrans(
     {
-        "畫": "画",
-        "說": "说",
+        "輸": "输",
+        "贏": "赢",
+        "個": "个",
+        "開": "开",
         "語": "语",
         "愛": "爱",
         "國": "国",

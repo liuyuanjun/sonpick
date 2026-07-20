@@ -4,6 +4,7 @@ import re
 import sys
 import shutil
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -18,7 +19,12 @@ for _p in list(sys.path):
 
 from musicdl import musicdl
 
-from app.models import Song
+from app.models import AppSettings, Song, SongFile
+from app.services.convert_service import (
+    LOSSLESS_FORMATS,
+    resolve_lossless_output_dir,
+    resolve_mp3_output_dir,
+)
 from app.services.library_layout import (
     library_relative_dir,
     preferred_album_cover_path,
@@ -44,7 +50,23 @@ PREFER_FORMATS = {
     "any": [],
 }
 
-DEFAULT_DOWNLOAD_SOURCES = ["QQMusicClient"]
+DEFAULT_DOWNLOAD_SOURCES = [
+    "QQMusicClient",
+    "NeteaseMusicClient",
+    "MiguMusicClient",
+]
+SOURCE_LABELS = {
+    "QQMusicClient": "QQ 音乐",
+    "NeteaseMusicClient": "网易云音乐",
+    "MiguMusicClient": "咪咕音乐",
+}
+SEARCH_RETRY_COUNT = 2
+SEARCH_RETRY_DELAY_SECONDS = 2
+# 单源单次搜索硬超时：musicdl 搜索时会为每条结果逐个探测第三方下载链接 API
+#（每个 10s 超时），结果越多越慢，且网易/咪咕可能整体挂起，必须强制限时。
+SEARCH_TIMEOUT_SECONDS = 45
+# 搜索页每源结果数：20 条时链接探测要几分钟，必然超时；10 条兼顾体验与耗时。
+DEFAULT_SEARCH_SIZE_PER_SOURCE = 10
 DEFAULT_SCRAPE_SOURCES = [
     "NeteaseMusicClient",
     "QQMusicClient",
@@ -58,6 +80,28 @@ class MusicDLService:
         self.emit = emit or (lambda tid, msg, pct: None)
         self.client: Optional[musicdl.MusicClient] = None
 
+    def _new_client(
+        self,
+        work_dir: Path,
+        music_sources: list[str],
+        search_size_per_source: int = 20,
+    ) -> musicdl.MusicClient:
+        """构造独立 client（不触碰 self 状态，可并发使用）。"""
+        work_dir.mkdir(parents=True, exist_ok=True)
+        cfg = {
+            src: {
+                "work_dir": str(work_dir),
+                "search_size_per_source": int(search_size_per_source),
+                "auto_set_proxies": False,
+            }
+            for src in music_sources
+        }
+        return musicdl.MusicClient(
+            music_sources=music_sources,
+            init_music_clients_cfg=cfg,
+            clients_threadings={src: 1 for src in music_sources},
+        )
+
     def _init_client(
         self,
         work_dir: Path,
@@ -65,23 +109,10 @@ class MusicDLService:
         music_sources: list[str] | None = None,
         search_size_per_source: int = 20,
     ):
-        work_dir.mkdir(parents=True, exist_ok=True)
         sources = list(music_sources or DEFAULT_DOWNLOAD_SOURCES)
         if not sources:
             sources = list(DEFAULT_DOWNLOAD_SOURCES)
-        cfg = {
-            src: {
-                "work_dir": str(work_dir),
-                "search_size_per_source": int(search_size_per_source),
-                "auto_set_proxies": False,
-            }
-            for src in sources
-        }
-        self.client = musicdl.MusicClient(
-            music_sources=sources,
-            init_music_clients_cfg=cfg,
-            clients_threadings={src: 2 for src in sources},
-        )
+        self.client = self._new_client(work_dir, sources, search_size_per_source)
         self._client_sources = sources
 
     def _flatten_search_results(self, results) -> list:
@@ -105,23 +136,107 @@ class MusicDLService:
             items = results
         return items
 
+    @staticmethod
+    def _flatten_single_source(results, src: str) -> list:
+        items: list = []
+        if isinstance(results, dict):
+            for k, v in results.items():
+                if isinstance(v, list):
+                    for it in v:
+                        try:
+                            setattr(it, "_sonpick_source", k)
+                        except Exception:
+                            pass
+                        items.append(it)
+                elif v is not None:
+                    items.append(v)
+        elif isinstance(results, list):
+            items = list(results)
+        for it in items:
+            try:
+                if not getattr(it, "_sonpick_source", None):
+                    setattr(it, "_sonpick_source", src)
+            except Exception:
+                pass
+        return items
+
+    def _search_one_source(
+        self,
+        keyword: str,
+        src: str,
+        work_dir: Path,
+        search_size_per_source: int,
+    ) -> tuple[list, str | None]:
+        """搜索单个源（含重试与硬超时），返回 (items, error)。"""
+        last_error: Exception | None = None
+        for attempt in range(SEARCH_RETRY_COUNT):
+            pool = ThreadPoolExecutor(max_workers=1)
+            try:
+                client = self._new_client(work_dir, [src], search_size_per_source)
+                results = pool.submit(client.search, keyword=keyword).result(timeout=SEARCH_TIMEOUT_SECONDS)
+                return self._flatten_single_source(results, src), None
+            except FuturesTimeout:
+                last_error = RuntimeError(f"搜索超时（>{SEARCH_TIMEOUT_SECONDS}s）")
+            except Exception as exc:
+                last_error = exc
+            finally:
+                pool.shutdown(wait=False, cancel_futures=True)
+            if attempt + 1 < SEARCH_RETRY_COUNT:
+                time.sleep(SEARCH_RETRY_DELAY_SECONDS)
+        return [], f"{SOURCE_LABELS.get(src, src)}: {last_error}"
+
+    def _search_sources(
+        self,
+        keyword: str,
+        *,
+        music_sources: list[str] | None,
+        work_dir: Path,
+        search_size_per_source: int = DEFAULT_SEARCH_SIZE_PER_SOURCE,
+    ) -> tuple[list, list[str]]:
+        """并发搜索各源并合并结果：单个源挂起/失败不影响其他源，
+
+        总耗时 ≈ 最慢的源而非各源之和。返回 (items, errors)。
+        """
+        sources = list(music_sources or DEFAULT_DOWNLOAD_SOURCES)
+        if not sources:
+            sources = list(DEFAULT_DOWNLOAD_SOURCES)
+        items: list = []
+        errors: list[str] = []
+        pool = ThreadPoolExecutor(max_workers=min(len(sources), 4))
+        try:
+            futures = {
+                pool.submit(self._search_one_source, keyword, src, work_dir, search_size_per_source): src
+                for src in sources
+            }
+            for fut in futures:
+                try:
+                    found, error = fut.result()
+                except Exception as exc:
+                    found, error = [], f"{SOURCE_LABELS.get(futures[fut], futures[fut])}: {exc}"
+                items.extend(found)
+                if error:
+                    errors.append(error)
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
+        return items, errors
+
     def search(
         self,
         keyword: str,
         prefer: str = "any",
         *,
         music_sources: list[str] | None = None,
-        search_size_per_source: int = 20,
+        search_size_per_source: int = DEFAULT_SEARCH_SIZE_PER_SOURCE,
         require_download_url: bool = True,
     ):
-        sources = list(music_sources or DEFAULT_DOWNLOAD_SOURCES)
-        self._init_client(
-            Path("/tmp/musicdl_search"),
-            music_sources=sources,
+        items, errors = self._search_sources(
+            keyword,
+            music_sources=music_sources,
+            work_dir=Path("/tmp/musicdl_search"),
             search_size_per_source=search_size_per_source,
         )
-        results = self.client.search(keyword=keyword)
-        items = self._flatten_search_results(results)
+        if not items and errors:
+            raise RuntimeError("音乐源搜索失败：" + "；".join(errors))
         if require_download_url:
             items = [it for it in items if getattr(it, "with_valid_download_url", False)]
         # optional prefer format filter kept light; caller may re-filter
@@ -142,17 +257,39 @@ class MusicDLService:
         return items
 
 
-    def download_one(self, task_id: int, keyword: str, song_name: str, singers: str, prefer: str, output_dir: Path):
-        if not self.client:
-            self._init_client(output_dir / ".musicdl_work")
-
-        results = self.client.search(keyword=keyword)
-        items = self._flatten_search_results(results)
-        picked = self._pick_item(items, prefer)
+    def download_one(
+        self,
+        task_id: int,
+        keyword: str,
+        song_name: str,
+        singers: str,
+        prefer: str,
+        output_dir: Path,
+        *,
+        music_sources: list[str] | None = None,
+        picked=None,
+    ):
+        if picked is None:
+            items, errors = self._search_sources(
+                keyword,
+                music_sources=music_sources,
+                work_dir=output_dir / ".musicdl_work",
+                search_size_per_source=DEFAULT_SEARCH_SIZE_PER_SOURCE,
+            )
+            if not items and errors:
+                raise RuntimeError("下载前搜索失败：" + "；".join(errors))
+            picked = self._pick_item(items, prefer)
 
         if not picked:
             self.emit(task_id, f"未找到: {keyword}", 0)
             return None
+
+        # 下载用 client 与该条目的来源保持一致
+        src = getattr(picked, "_sonpick_source", None) or getattr(picked, "source", None)
+        self._init_client(
+            output_dir / ".musicdl_work",
+            music_sources=[src] if src in DEFAULT_DOWNLOAD_SOURCES else music_sources,
+        )
 
         ext = (getattr(picked, "ext", "") or "").upper()
         self.emit(task_id, f"命中 [{ext}] {picked.song_name} - {picked.singers}", 0)
@@ -177,45 +314,69 @@ class MusicDLService:
     def _normalize(self, text: str) -> str:
         return re.sub(r"[\\/:*?\"<>|]", "_", text).strip()
 
+    def _format_base_dir(self, ext: str, output_dir: Path) -> Path:
+        """按音频格式决定落盘根目录：无损→无损存放目录，其余→MP3 存放目录。"""
+        settings = self.db.get(AppSettings, 1)
+        storage = str(output_dir)
+        if (ext or "").lower().lstrip(".") in LOSSLESS_FORMATS:
+            return Path(resolve_lossless_output_dir(
+                getattr(settings, "lossless_output_path", None) if settings else None,
+                settings.storage_path if settings else storage,
+            ))
+        return Path(resolve_mp3_output_dir(
+            getattr(settings, "mp3_output_path", None) if settings else None,
+            settings.storage_path if settings else storage,
+        ))
+
     def _move_files(self, picked, song_name: str, singers: str, output_dir: Path, task_id: int):
         keyword = f"{song_name} {singers}".strip()
-        base = output_dir / ".musicdl_work" / "QQMusicClient"
+        source_name = getattr(picked, "_sonpick_source", None) or getattr(picked, "source", None) or "QQMusicClient"
+        base = output_dir / ".musicdl_work" / source_name
         if not base.exists():
+            self.emit(task_id, f"下载工作目录不存在: {base}", 0)
             return None
 
         candidates = [d for d in base.iterdir() if d.is_dir()]
         candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
         work_dir = candidates[0] if candidates else None
         if not work_dir:
+            self.emit(task_id, f"下载工作目录为空: {base}", 0)
             return None
 
         album = getattr(picked, "album", None)
         # Store downloads under Artist/Album/ when metadata is available.
         rel_dir = library_relative_dir(singers, album)
-        target_dir = output_dir / rel_dir
         stem = track_stem(song_name or keyword, self._normalize(song_name or keyword) or "track")
-        target_dir.mkdir(parents=True, exist_ok=True)
 
         saved_audio: Optional[Path] = None
         saved_lrc: Optional[Path] = None
 
+        # 先移动音频（按格式路由到 MP3/LOSSLESS 目录），歌词/封面跟随音频所在目录
         for f in work_dir.iterdir():
             if not f.is_file():
                 continue
             ext = f.suffix.lower()
-            if ext in {".mp3", ".flac", ".m4a", ".wav", ".ogg", ".ape", ".wma"}:
-                target = self._unique_path(target_dir, stem, ext)
-                shutil.move(str(f), str(target))
-                saved_audio = target
-                self.emit(task_id, f"音乐 -> {rel_dir.as_posix()}/{target.name}", 0)
-            elif ext == ".lrc":
-                target = self._unique_path(target_dir, stem, ".lrc")
-                shutil.move(str(f), str(target))
-                saved_lrc = target
-                self.emit(task_id, f"歌词 -> {rel_dir.as_posix()}/{target.name}", 0)
+            if ext not in {".mp3", ".flac", ".m4a", ".wav", ".ogg", ".ape", ".wma"}:
+                continue
+            target_dir = self._format_base_dir(ext, output_dir) / rel_dir
+            target_dir.mkdir(parents=True, exist_ok=True)
+            target = self._unique_path(target_dir, stem, ext)
+            shutil.move(str(f), str(target))
+            saved_audio = target
+            self.emit(task_id, f"音乐 -> {target.parent.as_posix()}/{target.name}", 0)
 
         if not saved_audio:
+            self.emit(task_id, f"下载目录中未找到音频文件: {work_dir}", 0)
             return None
+
+        target_dir = saved_audio.parent
+        for f in work_dir.iterdir():
+            if not f.is_file() or f.suffix.lower() != ".lrc":
+                continue
+            target = self._unique_path(target_dir, stem, ".lrc")
+            shutil.move(str(f), str(target))
+            saved_lrc = target
+            self.emit(task_id, f"歌词 -> {target.parent.as_posix()}/{target.name}", 0)
 
         # 下载封面（与音频同目录，便于扫描侧车）
         cover_path = self._download_cover(picked, target_dir, stem)
@@ -262,7 +423,7 @@ class MusicDLService:
             title=song_name,
             artist=singers,
             album=getattr(picked, "album", None),
-            source="QQMusicClient",
+            source=source_name,
             format=saved_audio.suffix.lstrip(".").lower(),
             duration=duration if duration and duration > 0 else None,
             file_size=saved_audio.stat().st_size,
@@ -273,6 +434,13 @@ class MusicDLService:
         )
         self.db.add(song)
         self.db.flush()
+        self.db.add(SongFile(
+            song_id=song.id,
+            format=song.format or saved_audio.suffix.lstrip(".").lower(),
+            local_path=str(saved_audio),
+            duration=song.duration,
+            file_size=song.file_size,
+        ))
 
         # 本地文件补时长/内嵌封面/标签
         try:

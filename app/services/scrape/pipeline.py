@@ -11,9 +11,12 @@ from app.services.scrape.cover_utils import download_cover_with_diagnostics
 
 log = logging.getLogger("sonpick.scrape")
 from app.services.scrape.query_normalize import clean_artist, clean_title, looks_like_opaque_id, repair_shifted_meta, split_title_artist
+from app.services.scrape.providers.acoustid import lookup_acoustid
+from app.services.scrape.providers.deezer import DeezerProvider
+from app.services.scrape.providers.http_sources import MiguProvider, NetEaseProvider, QQProvider
+from app.services.scrape.providers.itunes import ITunesProvider
 from app.services.scrape.providers.musicbrainz import MusicBrainzProvider
-from app.services.scrape.providers.musicdl_provider import MusicDLProvider
-from app.services.scrape.providers.smart_cn_provider import SmartCNProvider
+from app.services.scrape.source_registry import select_source_configs
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -21,12 +24,33 @@ if TYPE_CHECKING:
 
 
 def default_providers(db: "Session | None" = None) -> list:
-    """MusicBrainz → SmartCN(并行华语打分) → musicdl 兜底。"""
-    return [
-        MusicBrainzProvider(),
-        SmartCNProvider(db=db),
-        MusicDLProvider(db=db),
-    ]
+    """Build configured automatic sources in domestic → overseas priority order."""
+    from app.models import AppSettings
+
+    settings = db.get(AppSettings, 1) if db else None
+    configs = select_source_configs(getattr(settings, "scrape_sources_json", None), automatic=True)
+    providers = []
+    for config in configs:
+        source_id = config["id"]
+        provider = None
+        if source_id == "netease":
+            provider = NetEaseProvider()
+        elif source_id == "migu":
+            provider = MiguProvider()
+        elif source_id == "qq":
+            provider = QQProvider(db=db)
+        elif source_id == "itunes":
+            provider = ITunesProvider(country=config["region"])
+        elif source_id == "deezer":
+            provider = DeezerProvider()
+        elif source_id == "musicbrainz":
+            provider = MusicBrainzProvider()
+        elif source_id == "acoustid":
+            continue
+        if provider:
+            provider.priority = config["priority"]
+            providers.append(provider)
+    return providers
 
 
 
@@ -286,6 +310,7 @@ def enrich_song_via_pipeline(
         total_timeout=total_timeout,
     )
 
+    # 第一级本地元数据已在函数前段处理；第二、三级由配置化国内/海外 Provider 依次执行。
     hit = pipe.lookup(
         ScrapeQuery(
             title=title,
@@ -295,6 +320,18 @@ def enrich_song_via_pipeline(
         ),
         need_fields=need_fields or {"album", "artist", "title"},
     )
+    # 第四级：前面未命中时，对本地音频进行 Chromaprint/AcoustID 指纹深挖。
+    if not hit and is_local_file(getattr(song, "local_path", None)):
+        from app.models import AppSettings
+        from app.schemas import decrypt_text
+        from app.services.scrape.providers.acoustid import lookup_acoustid
+        from app.services.scrape.source_registry import select_source_configs
+
+        settings = db.get(AppSettings, 1) if db else None
+        enabled = {item["id"] for item in select_source_configs(getattr(settings, "scrape_sources_json", None), automatic=True)}
+        api_key = decrypt_text(getattr(settings, "acoustid_api_key_enc", None)) if settings else None
+        if "acoustid" in enabled and api_key:
+            hit = lookup_acoustid(song.local_path, api_key, timeout=min(25.0, timeout_per_provider))
     if not hit:
         # still fix local title/artist fusion even if network miss
         filled: dict[str, Any] = {}

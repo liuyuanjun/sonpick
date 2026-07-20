@@ -1,5 +1,7 @@
 from __future__ import annotations
 import json
+import os
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -9,11 +11,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import MediaSource, Song
+from app.models import MediaSource, Song, SongFile
 from app.routers.auth import get_current_user
 from app.schemas import SourceCreate, SourceOut, SourceUpdate, encrypt_text, decrypt_text
 from app.services.library_scan_service import LibraryScanService
 from app.services.library_organize_service import LibraryOrganizeService
+from app.services.operation_log_service import write_log
 from app.services.webdav_service import WebDAVService
 
 router = APIRouter(prefix="/sources", tags=["sources"])
@@ -168,6 +171,76 @@ def browse_source(
     return {"path": rel, "items": items}
 
 
+@router.delete("/{source_id}/browse")
+def delete_browse_item(
+    source_id: int,
+    path: str = Query(...),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """删除本地曲库中的文件或目录（仅限曲库根目录内），并清理关联的曲库记录。"""
+    source = db.get(MediaSource, source_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="源不存在")
+    if source.type != "local":
+        raise HTTPException(status_code=400, detail="仅本地曲库支持此删除接口")
+    if not source.root_path:
+        raise HTTPException(status_code=400, detail="本地曲库根目录未配置")
+
+    root = Path(source.root_path).expanduser().resolve()
+    rel = str(path or "").replace("\\", "/").strip("/")
+    if not rel:
+        raise HTTPException(status_code=400, detail="不允许删除曲库根目录")
+    target = (root / rel).resolve()
+    try:
+        target.relative_to(root)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="路径超出曲库根目录") from e
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="文件或目录不存在")
+
+    is_dir = target.is_dir()
+    try:
+        if is_dir:
+            shutil.rmtree(target)
+        else:
+            target.unlink()
+    except OSError as e:
+        raise HTTPException(status_code=400, detail=f"删除失败: {e}") from e
+
+    # 清理曲库记录：文件精确匹配；目录按前缀匹配
+    abs_path = target.as_posix()
+    if is_dir:
+        prefix = abs_path + "/"
+        song_files = db.query(SongFile).filter(SongFile.local_path.like(prefix + "%")).all()
+    else:
+        song_files = db.query(SongFile).filter(SongFile.local_path == abs_path).all()
+
+    song_ids = {sf.song_id for sf in song_files if sf.song_id}
+    for sf in song_files:
+        db.delete(sf)
+    if song_ids:
+        for song in db.query(Song).filter(Song.id.in_(song_ids)).all():
+            if song.local_path and (song.local_path == abs_path or (is_dir and song.local_path.startswith(abs_path + "/"))):
+                song.local_path = None
+            if not song.local_path and song.status in ("local", "both"):
+                song.status = "remote" if song.webdav_path else song.status
+
+    write_log(
+        db,
+        action="delete",
+        target="file",
+        status="success",
+        title=rel.split("/")[-1],
+        message=f"删除{'目录' if is_dir else '文件'}: {rel}",
+        local_path=abs_path,
+        detail={"source_id": source_id, "path": rel, "is_dir": is_dir, "removed_records": len(song_files)},
+        commit=False,
+    )
+    db.commit()
+    return {"ok": True, "removed_records": len(song_files)}
+
+
 @router.put("/{source_id}", response_model=SourceOut)
 def update_source(
     source_id: int,
@@ -264,7 +337,7 @@ def test_source(source_id: int, user: str = Depends(get_current_user), db: Sessi
                 elif not p.is_dir():
                     source.connection_status = "failed"
                     source.connection_message = f"路径不是目录: {root}"
-                elif not p.is_readable():
+                elif not os.access(p, os.R_OK | os.X_OK):
                     source.connection_status = "failed"
                     source.connection_message = f"目录不可读: {root}"
                 else:
@@ -331,6 +404,7 @@ class ReorganizeRequest(BaseModel):
     relative_dir: str = Field("", description="相对源根的子目录，空=整源")
     include_failed: bool = Field(False, description="是否包含 _failed 目录")
     allow_network: bool = Field(False, description="预览/整理时是否联网补专辑；默认关")
+    relocate_format_dirs: bool = Field(False, description="按格式归档：无损进无损存放目录、其余进 MP3 存放目录；默认关")
 
 
 class ScrapeRequest(BaseModel):
@@ -383,6 +457,7 @@ def reorganize_preview(
             relative_dir=body.relative_dir or "",
             include_failed=bool(body.include_failed),
             allow_network=bool(body.allow_network),
+            relocate_format_dirs=bool(body.relocate_format_dirs),
         )
     except HTTPException:
         raise
@@ -412,6 +487,7 @@ def reorganize_apply(
             relative_dir=body.relative_dir or "",
             include_failed=bool(body.include_failed),
             allow_network=bool(body.allow_network),
+            relocate_format_dirs=bool(body.relocate_format_dirs),
         )
     except HTTPException:
         raise

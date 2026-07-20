@@ -25,6 +25,10 @@ class AppSettings(Base):
     webdav_password_enc = Column(String(512), nullable=True)
     prefer_format = Column(String(16), default="any")
     auto_convert_mp3 = Column(Boolean, default=False)
+    mp3_output_path = Column(String(512), nullable=True)
+    lossless_output_path = Column(String(512), nullable=True)
+    lossless_preferred = Column(Boolean, default=False)
+    auto_convert_when_lossless_not_preferred = Column(Boolean, default=False)
     auto_upload_webdav = Column(Boolean, default=False)
     webdav_delete_local_after_upload = Column(Boolean, default=False)
     webdav_upload_sidecar = Column(Boolean, default=True)
@@ -39,6 +43,8 @@ class AppSettings(Base):
         default='["**/.*","**/.@*","**/@eaDir/**","**/#recycle/**","**/Thumbs.db","**/*.tmp"]',
     )
     scan_audio_exts = Column(String(255), default="mp3,flac,m4a,wav,ogg,aac,ape,wma")
+    scrape_sources_json = Column(Text, default="[]")
+    acoustid_api_key_enc = Column(String(1024), nullable=True)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
@@ -53,6 +59,7 @@ class MediaSource(Base):
     name = Column(String(255), nullable=False)
     type = Column(String(16), nullable=False)  # local | webdav
     enabled = Column(Boolean, default=True)
+    playback_priority = Column(Integer, nullable=False, default=0)
 
     # local
     root_path = Column(String(1024), nullable=True)
@@ -299,6 +306,40 @@ class ScrapeCache(Base):
     hit_count = Column(Integer, default=0)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class SongFile(Base):
+    __tablename__ = "song_files"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    song_id = Column(Integer, ForeignKey("songs.id", ondelete="CASCADE"), nullable=False, index=True)
+    format = Column(String(16), nullable=False)
+    local_path = Column(String(1024), nullable=True, unique=True)
+    webdav_path = Column(String(1024), nullable=True)
+    library_source_id = Column(Integer, ForeignKey("media_sources.id", ondelete="SET NULL"), nullable=True)
+    duration = Column(Integer, nullable=True)
+    file_size = Column(Integer, nullable=True)
+    source_priority = Column(Integer, nullable=False, default=0)
+    availability_status = Column(String(16), nullable=False, default="unknown")
+    last_checked_at = Column(DateTime, nullable=True)
+    last_error = Column(String(512), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "format": self.format,
+            "local_path": self.local_path,
+            "webdav_path": self.webdav_path,
+            "library_source_id": self.library_source_id,
+            "duration": self.duration,
+            "file_size": self.file_size,
+            "source_priority": self.source_priority,
+            "availability_status": self.availability_status,
+            "last_checked_at": self.last_checked_at.isoformat() if self.last_checked_at else None,
+        }
+
 
 class OperationLog(Base):
     __tablename__ = "operation_logs"

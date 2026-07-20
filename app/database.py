@@ -64,8 +64,24 @@ def _ensure_columns(engine: Engine):
                 "\"**/Thumbs.db\",\"**/*.tmp\"]'"
             ),
             "scan_audio_exts": "VARCHAR(255) DEFAULT 'mp3,flac,m4a,wav,ogg,aac,ape,wma'",
+            "scrape_sources_json": "TEXT DEFAULT '[]'",
+            "acoustid_api_key_enc": "VARCHAR(1024)",
+            "mp3_output_path": "VARCHAR(512)",
+            "lossless_output_path": "VARCHAR(512)",
+            "lossless_preferred": "BOOLEAN DEFAULT 0",
+            "auto_convert_when_lossless_not_preferred": "BOOLEAN DEFAULT 0",
+        },
+        "media_sources": {
+            "playback_priority": "INTEGER NOT NULL DEFAULT 0",
+        },
+        "song_files": {
+            "source_priority": "INTEGER NOT NULL DEFAULT 0",
+            "availability_status": "VARCHAR(16) NOT NULL DEFAULT 'unknown'",
+            "last_checked_at": "DATETIME",
+            "last_error": "VARCHAR(512)",
         },
         "songs": {
+            "source_id": "VARCHAR(128)",
             "meta_confidence": "INTEGER DEFAULT 0",
             "meta_provider": "VARCHAR(64)",
             "scrape_status": "VARCHAR(16) DEFAULT 'none'",
@@ -91,7 +107,34 @@ def init_db():
 
     Base.metadata.create_all(bind=engine)
     _ensure_columns(engine)
+    _backfill_song_files(engine)
     _seed_media_sources(engine)
+
+
+def _backfill_song_files(engine: Engine):
+    """将旧 Song 的单文件字段迁移为首个 SongFile，兼容现存 SQLite 数据库。"""
+    from sqlalchemy.orm import Session
+
+    from app.models import Song, SongFile
+
+    with Session(engine) as db:
+        for song in db.query(Song).all():
+            if not (song.local_path or song.webdav_path):
+                continue
+            existing = db.query(SongFile).filter(SongFile.song_id == song.id).filter(
+                (SongFile.local_path == song.local_path) | (SongFile.webdav_path == song.webdav_path)
+            ).first()
+            if not existing:
+                db.add(SongFile(
+                    song_id=song.id,
+                    format=(song.format or "unknown").lower(),
+                    local_path=song.local_path,
+                    webdav_path=song.webdav_path,
+                    library_source_id=song.library_source_id,
+                    duration=song.duration,
+                    file_size=song.file_size,
+                ))
+        db.commit()
 
 
 def _dump_json_list(items):

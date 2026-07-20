@@ -584,6 +584,11 @@ def reorganize_file(src_audio: Path, root: Path, apply: bool) -> dict[str, Any]:
     else:
         plan["actions"].append("NO lrc")
 
+    track_cover_dst = new_audio.with_suffix(track_cover.suffix.lower()) if track_cover else None
+    if track_cover and track_cover.is_file() and track_cover_dst and track_cover.resolve() != track_cover_dst.resolve():
+        plan["actions"].append(f"MOVE track cover -> {rel_dir.as_posix()}/{track_cover_dst.name}")
+        _move_file(track_cover, track_cover_dst, apply)
+
     cover_dst = preferred_album_cover_path(new_audio.parent)
     if cover_dst.is_file() or (not apply and find_album_cover_file(new_audio.parent)):
         plan["actions"].append("KEEP cover.jpg")

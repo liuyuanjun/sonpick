@@ -7,6 +7,7 @@
         style="width: 320px"
         @keydown.enter="doSearch(1)"
       />
+      <n-select v-model:value="source" :options="sourceOptions" style="width: 150px" />
       <n-select v-model:value="prefer" :options="formatOptions" style="width: 140px" />
       <n-button type="primary" :loading="searching" @click="doSearch(1)">搜索</n-button>
       <n-button
@@ -29,7 +30,7 @@
     />
 
     <n-space justify="end" align="center">
-      <n-text depth="3">共 {{ total }} 条（源端约 20 条），当前第 {{ page }} 页</n-text>
+      <n-text depth="3">共 {{ total }} 条（每源约 10 条），当前第 {{ page }} 页</n-text>
       <n-pagination
         v-model:page="page"
         :page-size="pageSize"
@@ -49,6 +50,7 @@ import { searchMusic } from '@/api/music'
 const message = useMessage()
 const keyword = ref('')
 const prefer = ref('any')
+const source = ref('QQMusicClient')
 const searching = ref(false)
 const downloading = ref(false)
 const results = ref([])
@@ -62,6 +64,13 @@ const formatOptions = [
   { label: 'FLAC', value: 'flac' },
   { label: 'MP3', value: 'mp3' },
   { label: 'M4A', value: 'm4a' },
+]
+
+const sourceOptions = [
+  { label: 'QQ 音乐', value: 'QQMusicClient' },
+  { label: '网易云音乐', value: 'NeteaseMusicClient' },
+  { label: '咪咕音乐', value: 'MiguMusicClient' },
+  { label: '全部来源', value: 'all' },
 ]
 
 const columns = [
@@ -101,7 +110,7 @@ async function doSearch(p = page.value) {
   searching.value = true
   checked.value = []
   try {
-    const res = await searchMusic(keyword.value.trim(), page.value, pageSize)
+    const res = await searchMusic(keyword.value.trim(), page.value, pageSize, source.value)
     const d = res.data || {}
     results.value = d.items || []
     total.value = d.total || 0
@@ -124,6 +133,7 @@ async function downloadSelected() {
       await api.post('/download', {
         keyword: keywordText,
         prefer: prefer.value,
+        source: source.value,
       })
       ok += 1
     }

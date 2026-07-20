@@ -31,16 +31,31 @@
         <div class="header-left">
           <n-text strong>{{ routeTitle }}</n-text>
         </div>
-        <n-space>
-          <n-button quaternary circle @click="themeStore.toggle()">
-            <template #icon>
-              <n-icon>
-                <moon v-if="themeStore.isDark" />
-                <sunny v-else />
-              </n-icon>
+        <n-space align="center">
+          <task-center />
+          <n-tooltip>
+            <template #trigger>
+              <n-button quaternary circle aria-label="切换主题" @click="themeStore.toggle()">
+                <template #icon>
+                  <n-icon>
+                    <moon v-if="themeStore.isDark" />
+                    <sunny v-else />
+                  </n-icon>
+                </template>
+              </n-button>
             </template>
-          </n-button>
-          <n-button quaternary @click="logout">退出</n-button>
+            切换主题
+          </n-tooltip>
+          <n-tooltip>
+            <template #trigger>
+              <n-button quaternary circle aria-label="退出登录" @click="logout">
+                <template #icon>
+                  <n-icon><log-out-outline /></n-icon>
+                </template>
+              </n-button>
+            </template>
+            退出登录
+          </n-tooltip>
         </n-space>
       </n-layout-header>
 
@@ -69,10 +84,12 @@ import {
   SettingsOutline,
   Moon,
   Sunny,
+  LogOutOutline,
 } from '@vicons/ionicons5'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import GlobalPlayer from '@/components/GlobalPlayer.vue'
+import TaskCenter from '@/components/TaskCenter.vue'
 
 const route = useRoute()
 const router = useRouter()

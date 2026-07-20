@@ -10,6 +10,7 @@ from app.database import get_db
 from app.models import AppSettings
 from app.schemas import SettingsResponse, SettingsUpdate, decrypt_text, encrypt_text
 from app.routers.auth import get_current_user
+from app.services.scrape.source_registry import SOURCE_IDS, select_source_configs, source_configs
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -65,6 +66,10 @@ def _ensure_settings(db: Session) -> AppSettings:
             storage_path=cfg.storage_path,
             prefer_format="any",
             auto_convert_mp3=False,
+            mp3_output_path=str(Path(cfg.storage_path) / "MP3"),
+            lossless_output_path=str(Path(cfg.storage_path) / "LOSSLESS"),
+            lossless_preferred=False,
+            auto_convert_when_lossless_not_preferred=False,
             auto_upload_webdav=False,
             webdav_delete_local_after_upload=False,
             webdav_upload_sidecar=True,
@@ -84,13 +89,26 @@ def _ensure_settings(db: Session) -> AppSettings:
 
 
 def _to_response(s: AppSettings) -> SettingsResponse:
+    from app.services.scrape.providers.acoustid import fingerprint_status
+    from app.services.scrape.source_registry import source_configs
+
+    acoustid_key = decrypt_text(getattr(s, "acoustid_api_key_enc", None))
+    acoustid = fingerprint_status(acoustid_key)
+    sources = source_configs(getattr(s, "scrape_sources_json", None))
+    for source in sources:
+        if source["id"] == "acoustid":
+            source["available"] = acoustid["available"]
+            source["status_message"] = acoustid["message"]
     return SettingsResponse(
         storage_path=s.storage_path,
         webdav_url=s.webdav_url,
         webdav_username=s.webdav_username,
         webdav_password=decrypt_text(s.webdav_password_enc) or "",
         prefer_format=s.prefer_format or "any",
-        auto_convert_mp3=bool(s.auto_convert_mp3),
+        mp3_output_path=getattr(s, "mp3_output_path", None) or str(Path(s.storage_path) / "MP3"),
+        lossless_output_path=getattr(s, "lossless_output_path", None) or str(Path(s.storage_path) / "LOSSLESS"),
+        lossless_preferred=bool(getattr(s, "lossless_preferred", False)),
+        auto_convert_when_lossless_not_preferred=bool(getattr(s, "auto_convert_when_lossless_not_preferred", False)),
         auto_upload_webdav=bool(s.auto_upload_webdav),
         webdav_delete_local_after_upload=bool(getattr(s, "webdav_delete_local_after_upload", False)),
         webdav_upload_sidecar=bool(getattr(s, "webdav_upload_sidecar", True)),
@@ -102,8 +120,37 @@ def _to_response(s: AppSettings) -> SettingsResponse:
         scan_webdav_dirs=_parse_json_list(getattr(s, "scan_webdav_dirs", None), [""]),
         scan_exclude_globs=_parse_json_list(getattr(s, "scan_exclude_globs", None), DEFAULT_SCAN_EXCLUDE),
         scan_audio_exts=getattr(s, "scan_audio_exts", None) or DEFAULT_SCAN_EXTS,
+        scrape_sources=sources,
+        acoustid_ready=acoustid["available"],
+        acoustid_message=acoustid["message"],
         updated_at=s.updated_at.isoformat() if s.updated_at else None,
     )
+
+
+@router.post("/scrape-sources/{source_id}/test")
+def test_scrape_source(source_id: str, keyword: str = "周杰伦", user: str = Depends(get_current_user), db: Session = Depends(get_db)):
+    if source_id not in SOURCE_IDS:
+        raise HTTPException(status_code=404, detail="未知刮削源")
+    settings = _ensure_settings(db)
+    config = next((item for item in source_configs(settings.scrape_sources_json) if item["id"] == source_id), None)
+    if not config or not config["enabled"]:
+        raise HTTPException(status_code=400, detail="请先启用该刮削源")
+    from app.services.scrape.base import ScrapeQuery
+    from app.services.scrape.providers.acoustid import fingerprint_status
+    from app.services.scrape.providers.deezer import DeezerProvider
+    from app.services.scrape.providers.http_sources import MiguProvider, NetEaseProvider
+    from app.services.scrape.providers.itunes import ITunesProvider
+    from app.services.scrape.providers.musicbrainz import MusicBrainzProvider
+    from app.services.scrape.providers.smart_cn_provider import SmartCNProvider
+
+    if source_id == "acoustid":
+        return fingerprint_status(decrypt_text(settings.acoustid_api_key_enc))
+    provider_map = {
+        "netease": NetEaseProvider(), "migu": MiguProvider(), "qq": SmartCNProvider(db=db, enable_qq=True),
+        "itunes": ITunesProvider(country=config["region"]), "deezer": DeezerProvider(), "musicbrainz": MusicBrainzProvider(),
+    }
+    hit = provider_map[source_id].lookup(ScrapeQuery(title=keyword), timeout=15)
+    return {"ok": bool(hit), "message": "连接正常" if hit else "未得到候选，请更换关键词或稍后重试", "result": hit.raw if hit else None}
 
 
 @router.get("", response_model=SettingsResponse)
@@ -134,8 +181,15 @@ def update_settings(req: SettingsUpdate, user: str = Depends(get_current_user), 
             s.webdav_password_enc = encrypt_text(req.webdav_password)
     if req.prefer_format is not None:
         s.prefer_format = req.prefer_format
-    if req.auto_convert_mp3 is not None:
-        s.auto_convert_mp3 = req.auto_convert_mp3
+    if req.mp3_output_path:
+        # 空串/None 表示不修改；默认值由 _to_response 回退提供
+        s.mp3_output_path = req.mp3_output_path.strip()
+    if req.lossless_output_path:
+        s.lossless_output_path = req.lossless_output_path.strip()
+    if req.lossless_preferred is not None:
+        s.lossless_preferred = req.lossless_preferred
+    if req.auto_convert_when_lossless_not_preferred is not None:
+        s.auto_convert_when_lossless_not_preferred = req.auto_convert_when_lossless_not_preferred
     if req.auto_upload_webdav is not None:
         s.auto_upload_webdav = req.auto_upload_webdav
     if req.webdav_delete_local_after_upload is not None:
@@ -158,6 +212,12 @@ def update_settings(req: SettingsUpdate, user: str = Depends(get_current_user), 
         s.scan_exclude_globs = _dump_json_list(req.scan_exclude_globs)
     if req.scan_audio_exts is not None:
         s.scan_audio_exts = (req.scan_audio_exts or DEFAULT_SCAN_EXTS).strip()
+    if req.scrape_sources is not None:
+        from app.services.scrape.source_registry import dump_source_configs
+
+        s.scrape_sources_json = dump_source_configs(req.scrape_sources)
+    if req.acoustid_api_key is not None and req.acoustid_api_key != "":
+        s.acoustid_api_key_enc = encrypt_text(req.acoustid_api_key.strip())
 
     s.updated_at = datetime.now(timezone.utc)
     db.commit()

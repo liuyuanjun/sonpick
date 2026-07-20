@@ -21,6 +21,7 @@ def download(req: DownloadRequest, user: str = Depends(get_current_user), db: Se
         payload_json=json.dumps({
             "keyword": req.keyword,
             "prefer": req.prefer,
+            "source": req.source,
         }),
         progress_json=json.dumps({"message": "等待执行", "percent": 0}),
         created_at=datetime.now(timezone.utc),
@@ -35,12 +36,16 @@ def download(req: DownloadRequest, user: str = Depends(get_current_user), db: Se
 
 @router.post("/batch")
 def batch_download(req: BatchDownloadRequest, user: str = Depends(get_current_user), db: Session = Depends(get_db)):
+    keywords = [line.strip() for line in (req.content or "").splitlines() if line.strip()]
+    if not keywords:
+        raise HTTPException(status_code=400, detail="歌单为空，请每行填写一首歌曲")
     task = Task(
         type="batch_download",
         status="pending",
         payload_json=json.dumps({
-            "content": req.content,
+            "keywords": keywords,
             "prefer": req.prefer,
+            "source": req.source,
         }),
         progress_json=json.dumps({"message": "等待执行", "percent": 0}),
         created_at=datetime.now(timezone.utc),

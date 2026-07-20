@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.services.library_organize_service import LibraryOrganizeService
-from app.models import Favorite, MediaSource, PlayHistory, Playlist, Song, Task
+from app.models import AppSettings, Favorite, MediaSource, PlayHistory, Playlist, Song, Task
 from app.routers.auth import get_current_user
 from app.schemas import (
     AlbumOut,
@@ -492,6 +492,7 @@ from pydantic import BaseModel, Field
 
 class ScrapeCandidateRequest(BaseModel):
     source: str = "auto"  # auto / netease / migu / qq
+    keyword: str | None = Field(default=None, max_length=500)
     limit: int = Field(8, ge=1, le=30)
 
 
@@ -513,6 +514,7 @@ def _candidate_query(song: Song) -> tuple[str, str, int | None]:
 
 def _score_candidates(rows: list[dict], *, title: str, artist: str, duration: int | None) -> list[dict]:
     from app.services.scrape.match import score_candidate
+    from app.services.scrape.providers.netease_http import fetch_netease_song_cover
 
     out = []
     for row in rows:
@@ -527,6 +529,13 @@ def _score_candidates(rows: list[dict], *, title: str, artist: str, duration: in
             simple_mode=not bool(artist),
         )
         item = enrich_cover_fields(dict(row))
+        if not item.get("cover_url") and item.get("source") == "netease":
+            netease_cover = fetch_netease_song_cover(item.get("id"))
+            if netease_cover.get("cover_url"):
+                item["cover_url"] = netease_cover["cover_url"]
+                item["cover_source"] = netease_cover.get("source")
+            else:
+                item["cover_diagnostic"] = netease_cover
         if not item.get("cover_url") and (item.get("source") == "qq" or item.get("source") == "QQMusicClient"):
             qq_cover = qq_song_detail_cover(item.get("id") or item.get("songmid"))
             if qq_cover.get("cover_url"):
@@ -541,17 +550,28 @@ def _score_candidates(rows: list[dict], *, title: str, artist: str, duration: in
     return out
 
 
-def _search_candidates(song: Song, *, source: str = "auto", limit: int = 8) -> dict:
+def _search_candidates(song: Song, *, source: str = "auto", keyword: str | None = None, limit: int = 8, db: Session | None = None) -> dict:
+    from app.services.scrape.providers.deezer import search_deezer
+    from app.services.scrape.providers.itunes import search_itunes
     from app.services.scrape.providers.migu_http import search_migu
-    from app.services.scrape.providers.netease_http import search_netease
+    from app.services.scrape.providers.musicbrainz import MusicBrainzProvider
+    from app.services.scrape.providers.netease_http import fetch_netease_song_cover, search_netease
     from app.services.scrape.providers.smart_cn_provider import _search_qq_via_musicdl
-    from app.services.scrape.query_normalize import build_search_keyword
+    from app.services.scrape.base import ScrapeQuery
+    from app.services.scrape.source_registry import select_source_configs
+    from app.services.scrape.query_normalize import build_search_keyword, split_title_artist
 
     title, artist, duration = _candidate_query(song)
-    keyword = build_search_keyword(title, artist) or title
-    sources = [source]
-    if source == "auto":
-        sources = ["netease", "migu", "qq"]
+    keyword = (keyword or "").strip() or build_search_keyword(title, artist) or title
+    manual_title, manual_artist = split_title_artist(keyword, None)
+    score_title = manual_title or keyword
+    score_artist = manual_artist or ""
+    source_settings = db.get(AppSettings, 1) if db else None
+    enabled_sources = select_source_configs(getattr(source_settings, "scrape_sources_json", None), automatic=source == "auto")
+    allowed_ids = {item["id"]: item for item in enabled_sources}
+    sources = [source] if source != "auto" else list(allowed_ids)
+    if source != "auto" and source not in allowed_ids:
+        raise HTTPException(status_code=400, detail="该刮削源未启用")
     rows: list[dict] = []
     for src in sources:
         try:
@@ -560,11 +580,19 @@ def _search_candidates(song: Song, *, source: str = "auto", limit: int = 8) -> d
             elif src == "migu":
                 rows.extend(search_migu(keyword, limit=limit, timeout=18))
             elif src == "qq":
-                rows.extend(_search_qq_via_musicdl(keyword, limit=limit, timeout=25, db=None))
+                rows.extend(_search_qq_via_musicdl(keyword, limit=limit, timeout=25, db=db))
+            elif src == "itunes":
+                rows.extend(search_itunes(keyword, country=allowed_ids[src]["region"], limit=limit, timeout=18))
+            elif src == "deezer":
+                rows.extend(search_deezer(keyword, limit=limit, timeout=18))
+            elif src == "musicbrainz":
+                hit = MusicBrainzProvider().lookup(ScrapeQuery(title=score_title, artist=score_artist or None, duration=duration), timeout=18)
+                if hit:
+                    rows.append({"id": hit.raw.get("recording_id"), "title": hit.title, "artist": hit.artist, "album": hit.album, "duration": hit.duration, "cover_url": hit.cover_url, "source": "musicbrainz"})
         except Exception:
             continue
-    candidates = _score_candidates(rows, title=title, artist=artist, duration=duration)
-    return {"query": {"title": title, "artist": artist, "duration": duration, "keyword": keyword}, "candidates": candidates[:limit]}
+    candidates = _score_candidates(rows, title=score_title, artist=score_artist, duration=duration)
+    return {"query": {"title": score_title, "artist": score_artist, "duration": duration, "keyword": keyword}, "candidates": candidates[:limit]}
 
 
 def _write_lrc_for_song(song: Song, lyrics: str | None) -> str | None:
@@ -617,7 +645,7 @@ def scrape_candidates(
     song = db.get(Song, song_id)
     if not song:
         raise HTTPException(status_code=404, detail="歌曲不存在")
-    return _search_candidates(song, source=body.source, limit=body.limit)
+    return _search_candidates(song, source=body.source, keyword=body.keyword, limit=body.limit, db=db)
 
 
 @router.post("/songs/{song_id}/scrape/apply")
@@ -639,6 +667,15 @@ def apply_scrape_candidate(
             changes[key] = val
     cover_url = cand.get("cover_url")
     cover_lookup = None
+    candidate_source = str(cand.get("source") or "").lower()
+    if not cover_url and candidate_source == "netease":
+        from app.services.scrape.providers.netease_http import fetch_netease_song_cover
+
+        cover_lookup = fetch_netease_song_cover(cand.get("id"))
+        if cover_lookup.get("cover_url"):
+            cover_url = cover_lookup["cover_url"]
+            cand["cover_url"] = cover_url
+            cand["cover_source"] = cover_lookup.get("source")
     if not cover_url:
         for value in (cand.get("id"), song.webdav_path, song.lrc_path, song.local_path, song.title):
             mid = extract_qq_songmid(value)

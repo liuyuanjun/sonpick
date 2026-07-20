@@ -158,6 +158,56 @@ class WebDAVService:
             })
         return result
 
+    def delete(self, path: str | None) -> dict:
+        """删除远程文件或目录（path 相对曲库远程根目录，与 list 返回的 path 一致）。"""
+        source = self._get_source()
+        if source and (source.webdav_url or "").strip():
+            root_url, base_dir = self._split_root_and_path(source.webdav_url)
+        else:
+            cfg = self._get_config()
+            root_url, base_dir = self._split_root_and_path(cfg.webdav_url)
+        client = self._client(root_url=root_url)
+
+        rel = self._norm_rel(path)
+        if not rel:
+            raise ValueError("不允许删除远程根目录")
+        target = f"{base_dir}/{rel}" if base_dir else rel
+        client.clean(target)
+
+        # 清理关联的曲库记录
+        removed_records = 0
+        if self.db:
+            from app.models import SongFile
+            song_files = (
+                self.db.query(SongFile)
+                .filter((SongFile.webdav_path == rel) | (SongFile.webdav_path.like(rel + "/%")))
+                .all()
+            )
+            song_ids = {sf.song_id for sf in song_files if sf.song_id}
+            for sf in song_files:
+                self.db.delete(sf)
+            removed_records = len(song_files)
+            if song_ids:
+                for song in self.db.query(Song).filter(Song.id.in_(song_ids)).all():
+                    if song.webdav_path and (song.webdav_path == rel or song.webdav_path.startswith(rel + "/")):
+                        song.webdav_path = None
+                    if not song.webdav_path and song.status in ("remote", "both", "uploaded"):
+                        song.status = "local" if song.local_path else song.status
+
+            write_log(
+                self.db,
+                action="delete",
+                target="file",
+                status="success",
+                title=rel.split("/")[-1],
+                message=f"删除 WebDAV 项目: {rel}",
+                remote_path=rel,
+                detail={"path": rel, "removed_records": removed_records},
+                commit=False,
+            )
+            self.db.commit()
+        return {"ok": True, "removed_records": removed_records}
+
     def list_recursive(
         self,
         path: str | None = "",
@@ -303,12 +353,14 @@ class WebDAVService:
         song: Song,
         *,
         source_id: int | None = None,
+        local_path: str | None = None,
         task_id: int | None = None,
         progress_cb: ProgressCb = None,
     ) -> dict[str, Any]:
         if not self.db:
             raise ValueError("WebDAVService 需要数据库会话")
-        if not song.local_path or not Path(song.local_path).exists():
+        audio_path = local_path or song.local_path
+        if not audio_path or not Path(audio_path).exists():
             raise ValueError("本地音频文件不存在")
 
         # Resolve target source
@@ -351,7 +403,7 @@ class WebDAVService:
 
         client.check = lambda p: True
 
-        audio_name = Path(song.local_path).name
+        audio_name = Path(audio_path).name
         audio_remote = self._join_remote(base, audio_name)
         self._ensure_dir(client, base)
 
@@ -360,7 +412,7 @@ class WebDAVService:
                 progress_cb(msg)
 
         note(f"上传音频: {audio_name}")
-        audio_res = self._upload_one(client, song.local_path, audio_remote, policy)
+        audio_res = self._upload_one(client, audio_path, audio_remote, policy)
         if not audio_res["ok"] and audio_res["action"] != "skip":
             write_log(
                 self.db,
@@ -369,7 +421,7 @@ class WebDAVService:
                 status="failed",
                 title=f"{song.artist or ''} - {song.title}".strip(" -"),
                 message="音频上传失败",
-                local_path=song.local_path,
+                local_path=audio_path,
                 song_id=song.id,
                 task_id=task_id,
                 detail={"audio": audio_res},
@@ -493,7 +545,7 @@ class WebDAVService:
         detail: dict[str, Any] = {"files": []}
         ok = True
         for label, path in (
-            ("audio", song.local_path),
+            ("audio", audio_path),
             ("cover", song.cover_path),
             ("lrc", song.lrc_path),
         ):

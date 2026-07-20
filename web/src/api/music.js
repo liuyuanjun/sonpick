@@ -102,8 +102,8 @@ export function enrichSong(songId, params = {}) {
   })
 }
 
-export function streamUrl(songId, token) {
-  return `/api/songs/${songId}/stream?token=${encodeURIComponent(token || '')}`
+export function streamUrl(songId, token, losslessPreferred = false) {
+  return `/api/songs/${songId}/stream?token=${encodeURIComponent(token || '')}&lossless_preferred=${losslessPreferred ? 'true' : 'false'}`
 }
 
 export function coverUrl(songId, token) {
@@ -154,8 +154,9 @@ export function scanLibrary(payload = { all: true }) {
   return api.post('/library/scan', body, { timeout: 300000 })
 }
 
-export function searchMusic(q, page = 1, pageSize = 20) {
-  return api.get('/search', { params: { q, page, page_size: pageSize } })
+export function searchMusic(q, page = 1, pageSize = 20, source = 'all') {
+  // musicdl 搜索需逐条探测下载链接，可能耗时 1 分钟以上，前端超时放宽到 120s
+  return api.get('/search', { params: { q, page, page_size: pageSize, source }, timeout: 120000 })
 }
 
 export function uploadSongToWebdav(songId, sourceId) {
@@ -183,6 +184,18 @@ export function browseLocalSource(sourceId, path = '') {
   return api.get(`/sources/${sourceId}/browse`, {
     params: { path: path || '' },
   })
+}
+
+export function deleteBrowseItem(sourceId, path) {
+  return api.delete(`/sources/${sourceId}/browse`, {
+    params: { path },
+  })
+}
+
+export function deleteWebdavItem(path, sourceId = null) {
+  const params = { path }
+  if (sourceId != null) params.source_id = sourceId
+  return api.delete('/webdav/item', { params })
 }
 
 export function listReorganizeDirs(sourceId, path = '') {
@@ -236,6 +249,10 @@ export function getTask(taskId) {
 
 export function listTasks(params = {}) {
   return api.get('/tasks', { params })
+}
+
+export function cancelTask(taskId) {
+  return api.delete(`/tasks/${taskId}`)
 }
 
 
