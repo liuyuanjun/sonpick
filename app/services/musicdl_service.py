@@ -295,8 +295,11 @@ class MusicDLService:
         ext = (getattr(picked, "ext", "") or "").upper()
         self.emit(task_id, f"命中 [{ext}] {picked.song_name} - {picked.singers}", 0)
 
-        self.client.download([picked])
-        moved = self._move_files(picked, song_name, singers, output_dir, task_id)
+        downloaded_items = self.client.download([picked]) or []
+        if not downloaded_items:
+            self.emit(task_id, "musicdl 未返回已下载文件，可能下载传输失败", 0)
+            return None
+        moved = self._move_files(downloaded_items[0], song_name, singers, output_dir, task_id)
         return moved
 
     def _pick_item(self, items, prefer: str):
@@ -329,22 +332,22 @@ class MusicDLService:
             settings.storage_path if settings else storage,
         ))
 
-    def _move_files(self, picked, song_name: str, singers: str, output_dir: Path, task_id: int):
+    def _move_files(self, downloaded, song_name: str, singers: str, output_dir: Path, task_id: int):
         keyword = f"{song_name} {singers}".strip()
-        source_name = getattr(picked, "_sonpick_source", None) or getattr(picked, "source", None) or "QQMusicClient"
-        base = output_dir / ".musicdl_work" / source_name
-        if not base.exists():
-            self.emit(task_id, f"下载工作目录不存在: {base}", 0)
+        source_name = getattr(downloaded, "_sonpick_source", None) or getattr(downloaded, "source", None) or "QQMusicClient"
+        saved_path_raw = getattr(downloaded, "save_path", None)
+        saved_path = Path(str(saved_path_raw)) if saved_path_raw else None
+        work_dir_raw = getattr(downloaded, "work_dir", None)
+
+        if not saved_path or not saved_path.is_file():
+            self.emit(
+                task_id,
+                f"musicdl 未生成可读取音频: save_path={saved_path_raw or '-'}，work_dir={work_dir_raw or '-'}",
+                0,
+            )
             return None
 
-        candidates = [d for d in base.iterdir() if d.is_dir()]
-        candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-        work_dir = candidates[0] if candidates else None
-        if not work_dir:
-            self.emit(task_id, f"下载工作目录为空: {base}", 0)
-            return None
-
-        album = getattr(picked, "album", None)
+        album = getattr(downloaded, "album", None)
         # Store downloads under Artist/Album/ when metadata is available.
         rel_dir = library_relative_dir(singers, album)
         stem = track_stem(song_name or keyword, self._normalize(song_name or keyword) or "track")
@@ -352,35 +355,28 @@ class MusicDLService:
         saved_audio: Optional[Path] = None
         saved_lrc: Optional[Path] = None
 
-        # 先移动音频（按格式路由到 MP3/LOSSLESS 目录），歌词/封面跟随音频所在目录
-        for f in work_dir.iterdir():
-            if not f.is_file():
-                continue
-            ext = f.suffix.lower()
-            if ext not in {".mp3", ".flac", ".m4a", ".wav", ".ogg", ".ape", ".wma"}:
-                continue
-            target_dir = self._format_base_dir(ext, output_dir) / rel_dir
-            target_dir.mkdir(parents=True, exist_ok=True)
-            target = self._unique_path(target_dir, stem, ext)
-            shutil.move(str(f), str(target))
-            saved_audio = target
-            self.emit(task_id, f"音乐 -> {target.parent.as_posix()}/{target.name}", 0)
-
-        if not saved_audio:
-            self.emit(task_id, f"下载目录中未找到音频文件: {work_dir}", 0)
+        # 只移动 musicdl 返回的实际输出文件，不能按目录扫描，否则并发任务会误拿其他歌曲。
+        ext = saved_path.suffix.lower()
+        if ext not in {".mp3", ".flac", ".m4a", ".wav", ".ogg", ".ape", ".wma"}:
+            self.emit(task_id, f"musicdl 输出不是支持的音频格式: {saved_path}", 0)
             return None
+        target_dir = self._format_base_dir(ext, output_dir) / rel_dir
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target = self._unique_path(target_dir, stem, ext)
+        source_lrc = saved_path.with_suffix(".lrc")
+        shutil.move(str(saved_path), str(target))
+        saved_audio = target
+        self.emit(task_id, f"音乐 -> {target.parent.as_posix()}/{target.name}", 0)
 
         target_dir = saved_audio.parent
-        for f in work_dir.iterdir():
-            if not f.is_file() or f.suffix.lower() != ".lrc":
-                continue
+        if source_lrc.is_file():
             target = self._unique_path(target_dir, stem, ".lrc")
-            shutil.move(str(f), str(target))
+            shutil.move(str(source_lrc), str(target))
             saved_lrc = target
             self.emit(task_id, f"歌词 -> {target.parent.as_posix()}/{target.name}", 0)
 
         # 下载封面（与音频同目录，便于扫描侧车）
-        cover_path = self._download_cover(picked, target_dir, stem)
+        cover_path = self._download_cover(downloaded, target_dir, stem)
         # 规范专辑封面文件名 cover.jpg（保留同 stem 图作为兼容）
         if cover_path:
             try:
@@ -398,7 +394,7 @@ class MusicDLService:
         # musicdl 时长优先，其次读本地文件元数据
         duration = None
         for key in ("duration_s", "duration"):
-            val = getattr(picked, key, None)
+            val = getattr(downloaded, key, None)
             if val is None:
                 continue
             try:
@@ -423,12 +419,11 @@ class MusicDLService:
         song = Song(
             title=song_name,
             artist=singers,
-            album=getattr(picked, "album", None),
+            album=getattr(downloaded, "album", None),
             source=source_name,
             format=saved_audio.suffix.lstrip(".").lower(),
             duration=duration if duration and duration > 0 else None,
             file_size=saved_audio.stat().st_size,
-            local_path=str(saved_audio),
             cover_path=str(cover_path) if cover_path else None,
             lrc_path=str(saved_lrc) if saved_lrc else None,
             status="local",
@@ -439,6 +434,8 @@ class MusicDLService:
             song_id=song.id,
             format=song.format or saved_audio.suffix.lstrip(".").lower(),
             local_path=str(saved_audio),
+            cover_path=str(cover_path) if cover_path else None,
+            lrc_path=str(saved_lrc) if saved_lrc else None,
             duration=song.duration,
             file_size=song.file_size,
         ))

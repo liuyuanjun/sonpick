@@ -46,7 +46,7 @@
             />
             <div class="task-item-foot">
               <n-text depth="3" class="task-message" :title="taskMessage(task)">
-                {{ taskMessage(task) || '等待执行' }} · 已耗时 {{ elapsedText(task) }}
+                {{ taskMessage(task) || '等待执行' }} · 已耗时 {{ taskDurationText(task) }}
               </n-text>
               <n-button size="tiny" quaternary @click="toggleDetail(task.id)">
                 {{ expandedIds.has(task.id) ? '收起' : '详情' }}
@@ -81,7 +81,7 @@
             />
             <div class="task-item-foot">
               <n-text depth="3" class="task-message" :title="taskMessage(task)">
-                {{ taskMessage(task) || '等待前序任务完成' }} · 已排队 {{ elapsedText(task) }}
+                {{ taskMessage(task) || '等待前序任务完成' }} · 已等待 {{ queueWaitText(task) }}
               </n-text>
               <n-button size="tiny" quaternary @click="toggleDetail(task.id)">
                 {{ expandedIds.has(task.id) ? '收起' : '详情' }}
@@ -104,7 +104,7 @@
             </div>
             <div class="task-item-foot">
               <n-text depth="3" class="task-message" :title="taskMessage(task)">
-                {{ taskMessage(task) || task.error_message || '-' }} · 耗时 {{ elapsedText(task) }} · {{ formatTime(task.updated_at) }}
+                {{ taskMessage(task) || task.error_message || '-' }} · {{ historicalTimingText(task) }} · {{ formatTime(task.updated_at) }}
               </n-text>
               <n-button size="tiny" quaternary @click="toggleDetail(task.id)">
                 {{ expandedIds.has(task.id) ? '收起' : '详情' }}
@@ -197,13 +197,12 @@ function formatTime(value) {
     return new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
   } catch { return '' }
 }
-function elapsedText(task) {
-  if (!task?.created_at) return '-'
-  const start = new Date(task.created_at).getTime()
+function durationText(startAt, endAt) {
+  if (!startAt) return '-'
+  const start = new Date(startAt).getTime()
   if (Number.isNaN(start)) return '-'
-  const end = TERMINAL_STATUSES.includes(task.status) && task.updated_at
-    ? new Date(task.updated_at).getTime()
-    : now.value
+  const end = endAt ? new Date(endAt).getTime() : now.value
+  if (Number.isNaN(end)) return '-'
   const sec = Math.max(0, Math.round((end - start) / 1000))
   const h = Math.floor(sec / 3600)
   const m = Math.floor((sec % 3600) / 60)
@@ -211,6 +210,20 @@ function elapsedText(task) {
   if (h) return `${h}时${m}分${s}秒`
   if (m) return `${m}分${s}秒`
   return `${s}秒`
+}
+function queueWaitText(task) {
+  return durationText(task?.created_at)
+}
+function taskDurationText(task) {
+  const startAt = task?.started_at || task?.created_at
+  const endAt = TERMINAL_STATUSES.includes(task?.status) ? task?.updated_at : null
+  return durationText(startAt, endAt)
+}
+function historicalTimingText(task) {
+  if (!task?.started_at && task?.status === 'cancelled') {
+    return `等待 ${queueWaitText(task)}`
+  }
+  return `耗时 ${taskDurationText(task)}`
 }
 
 function upsertTask(partial) {

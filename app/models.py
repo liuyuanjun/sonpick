@@ -168,6 +168,7 @@ class Task(Base):
     worker_thread_id = Column(Integer, nullable=True)
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    started_at = Column(DateTime, nullable=True)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     def to_dict(self):
@@ -180,6 +181,7 @@ class Task(Base):
             "result": json.loads(self.result_json or "{}"),
             "error_message": self.error_message,
             "created_at": iso_utc(self.created_at),
+            "started_at": iso_utc(self.started_at),
             "updated_at": iso_utc(self.updated_at),
         }
 

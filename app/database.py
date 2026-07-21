@@ -107,9 +107,11 @@ def _ensure_columns(engine: Engine):
         },
         "tasks": {
             "worker_thread_id": "INTEGER",
+            "started_at": "DATETIME",
         },
     }
     insp = inspect(engine)
+    started_at_added = False
     with engine.begin() as conn:
         for table, cols in specs.items():
             if table not in insp.get_table_names():
@@ -118,6 +120,13 @@ def _ensure_columns(engine: Engine):
             for name, ddl in cols.items():
                 if name not in existing:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
+                    if table == "tasks" and name == "started_at":
+                        started_at_added = True
+
+        if started_at_added:
+            conn.execute(text(
+                "UPDATE tasks SET started_at = created_at WHERE started_at IS NULL"
+            ))
 
 
 def _ensure_song_file_indexes(engine: Engine):

@@ -26,7 +26,7 @@
 
 **非目标**：多用户、公网商用、版权绕过。仅供个人学习与备份。
 
-当前版本（以代码为准）：`0.8.0-rc3`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
+当前版本（以代码为准）：`0.8.0-rc4`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
 
 ---
 
@@ -123,6 +123,7 @@ music/
 - **SongFile 是物理文件唯一真相源**：所有播放、上传、转码、删除、整理、刮削和标签写入必须通过 `SongFileResolver` 或明确 SongFile 查询选择版本；禁止重新引入 `Song.local_path` / `Song.webdav_path`。
 - `Song.cover_path` / `Song.lrc_path` 是聚合缓存；`SongFile.cover_path` / `SongFile.lrc_path` 是版本侧车资源。扫描和选中版本时可回填聚合缓存。
 - 扫描接口 `/api/library/scan` 和 `/api/sources/{source_id}/scan` 会创建 `type=scan` 的异步任务；前端经任务中心/单任务 SSE 接收终态。
+- `Task.created_at` 表示入队时间，`Task.started_at` 表示 worker 实际开始执行时间；排队等待与任务耗时必须分别使用这两个时间计算。
 
 ### 4.4 服务层
 

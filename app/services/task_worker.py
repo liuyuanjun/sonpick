@@ -214,7 +214,9 @@ class TaskWorker:
                 return
             task.status = "running"
             task.worker_thread_id = threading.current_thread().ident
-            task.updated_at = datetime.now(timezone.utc)
+            started_at = datetime.now(timezone.utc)
+            task.started_at = started_at
+            task.updated_at = started_at
             db.commit()
 
             payload = json.loads(task.payload_json or "{}")

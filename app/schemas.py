@@ -338,5 +338,5 @@ class TaskOut(BaseModel):
     result: dict[str, Any] = Field(default_factory=dict)
     error_message: Optional[str] = None
     created_at: Optional[str] = None
+    started_at: Optional[str] = None
     updated_at: Optional[str] = None
-

@@ -14,7 +14,7 @@ from app.routers import auth, download, library, library_extra, library_scan, lo
 from app.services.task_worker import worker, ws_manager
 from app.security import decode_token
 
-APP_VERSION = "0.8.0-rc3"
+APP_VERSION = "0.8.0-rc4"
 
 logging.basicConfig(
     level=logging.INFO,

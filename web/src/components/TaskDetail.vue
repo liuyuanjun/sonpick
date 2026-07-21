@@ -5,6 +5,14 @@
       <n-text>#{{ task.id }}</n-text>
     </div>
     <div class="task-detail-row">
+      <n-text depth="3">添加于</n-text>
+      <n-text>{{ formatTime(task.created_at) }}</n-text>
+    </div>
+    <div v-if="task.started_at" class="task-detail-row">
+      <n-text depth="3">开始于</n-text>
+      <n-text>{{ formatTime(task.started_at) }}</n-text>
+    </div>
+    <div class="task-detail-row">
       <n-text depth="3">{{ isTerminal ? '结束于' : '最后心跳' }}</n-text>
       <n-text :type="heartbeatStale ? 'warning' : 'default'">
         {{ formatTime(task.updated_at) }}
