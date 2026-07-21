@@ -12,8 +12,9 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.services.library_organize_service import LibraryOrganizeService
-from app.models import AppSettings, Favorite, MediaSource, PlayHistory, Playlist, Song, Task
+from app.models import AppSettings, Favorite, MediaSource, PlayHistory, Playlist, Song, SongFile, Task, iso_utc
 from app.routers.auth import get_current_user
+from app.services.song_file_resolver import NoPlayableSongFileError, SongFileResolver
 from app.schemas import (
     AlbumOut,
     ArtistOut,
@@ -415,7 +416,7 @@ def list_history(
             PlayHistoryOut(
                 id=r.id,
                 song_id=r.song_id,
-                played_at=r.played_at.isoformat() if r.played_at else None,
+                played_at=iso_utc(r.played_at),
                 song=_song_out(song, fav) if song else None,
             )
         )
@@ -459,7 +460,7 @@ def library_stats(
             "type": src.type,
             "song_count": db.query(Song).filter(Song.library_source_id == src.id).count(),
             "connection_status": src.connection_status or "unknown",
-            "last_scan_at": src.last_scan_at.isoformat() if src.last_scan_at else None,
+            "last_scan_at": iso_utc(src.last_scan_at),
             "is_default_upload": bool(src.is_default_upload),
         })
 
@@ -501,14 +502,22 @@ class ApplyScrapeCandidateRequest(BaseModel):
     write_file_tags: bool = True
 
 
-def _candidate_query(song: Song) -> tuple[str, str, int | None]:
+def _local_song_file(db: Session, song: Song) -> SongFile | None:
+    try:
+        return SongFileResolver(db).resolve_local(song)
+    except NoPlayableSongFileError:
+        return None
+
+
+def _candidate_query(song: Song, db: Session) -> tuple[str, str, int | None]:
     from app.services.scrape.query_normalize import repair_shifted_meta, split_title_artist
 
     rt, ra, _ = repair_shifted_meta(song.title, song.artist, song.album)
     title, artist = split_title_artist(rt or song.title, ra or song.artist)
     duration = song.duration
-    if (not duration or int(duration or 0) <= 0) and is_local_file(getattr(song, "local_path", None)):
-        duration = read_audio_duration(song.local_path)
+    song_file = _local_song_file(db, song)
+    if (not duration or int(duration or 0) <= 0) and song_file:
+        duration = read_audio_duration(song_file.local_path)
     return title or (song.title or ""), artist or "", duration
 
 
@@ -561,7 +570,7 @@ def _search_candidates(song: Song, *, source: str = "auto", keyword: str | None 
     from app.services.scrape.source_registry import select_source_configs
     from app.services.scrape.query_normalize import build_search_keyword, split_title_artist
 
-    title, artist, duration = _candidate_query(song)
+    title, artist, duration = _candidate_query(song, db)
     keyword = (keyword or "").strip() or build_search_keyword(title, artist) or title
     manual_title, manual_artist = split_title_artist(keyword, None)
     score_title = manual_title or keyword
@@ -595,24 +604,22 @@ def _search_candidates(song: Song, *, source: str = "auto", keyword: str | None 
     return {"query": {"title": score_title, "artist": score_artist, "duration": duration, "keyword": keyword}, "candidates": candidates[:limit]}
 
 
-def _write_lrc_for_song(song: Song, lyrics: str | None) -> str | None:
+def _write_lrc_for_song(db: Session, song: Song, lyrics: str | None) -> tuple[str | None, SongFile | None]:
     if not lyrics:
-        return None
-    if is_local_file(getattr(song, "local_path", None)):
-        dest = Path(song.local_path).with_suffix(".lrc")
-    else:
-        dest = Path("/tmp/sonpick_lyrics") / f"song_{song.id}.lrc"
+        return None, None
+    song_file = _local_song_file(db, song)
+    dest = Path(song_file.local_path).with_suffix(".lrc") if song_file else Path("/tmp/sonpick_lyrics") / f"song_{song.id}.lrc"
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(str(lyrics).strip(), encoding="utf-8")
-    return str(dest)
+    if song_file:
+        song_file.lrc_path = str(dest)
+    return str(dest), song_file
 
 
-def _download_candidate_cover(song: Song, cover_url: str | None) -> dict:
-    if is_local_file(getattr(song, "local_path", None)):
-        dest = Path(song.local_path).parent / "cover.jpg"
-    else:
-        dest = Path("/tmp/sonpick_covers") / f"song_{song.id}.jpg"
-    return download_cover_with_diagnostics(cover_url, dest, timeout=20)
+def _download_candidate_cover(db: Session, song: Song, cover_url: str | None) -> tuple[dict, SongFile | None]:
+    song_file = _local_song_file(db, song)
+    dest = Path(song_file.local_path).parent / "cover.jpg" if song_file else Path("/tmp/sonpick_covers") / f"song_{song.id}.jpg"
+    return download_cover_with_diagnostics(cover_url, dest, timeout=20), song_file
 
 
 @router.get("/songs/{song_id}/tags")
@@ -624,12 +631,13 @@ def get_song_tags(
     song = db.get(Song, song_id)
     if not song:
         raise HTTPException(status_code=404, detail="歌曲不存在")
-    tags = read_audio_tags(song.local_path) if is_local_file(getattr(song, "local_path", None)) else {}
-    duration = read_audio_duration(song.local_path) if is_local_file(getattr(song, "local_path", None)) else None
-    cover_bytes = extract_embedded_cover_bytes(song.local_path) if is_local_file(getattr(song, "local_path", None)) else None
+    song_file = _local_song_file(db, song)
+    tags = read_audio_tags(song_file.local_path) if song_file else {}
+    duration = read_audio_duration(song_file.local_path) if song_file else None
+    cover_bytes = extract_embedded_cover_bytes(song_file.local_path) if song_file else None
     return {
         "song_id": song.id,
-        "local_path": song.local_path,
+        "file_version_id": song_file.id if song_file else None,
         "db": {"title": song.title, "artist": song.artist, "album": song.album, "duration": song.duration, "cover_path": song.cover_path, "lrc_path": song.lrc_path},
         "embedded": {**(tags or {}), "duration": duration, "cover_embedded": bool(cover_bytes), "cover_size": len(cover_bytes or b"")},
     }
@@ -677,7 +685,12 @@ def apply_scrape_candidate(
             cand["cover_url"] = cover_url
             cand["cover_source"] = cover_lookup.get("source")
     if not cover_url:
-        for value in (cand.get("id"), song.webdav_path, song.lrc_path, song.local_path, song.title):
+        version_paths = [
+            value
+            for file in db.query(SongFile).filter(SongFile.song_id == song.id).all()
+            for value in (file.webdav_path, file.lrc_path, file.local_path)
+        ]
+        for value in (cand.get("id"), *version_paths, song.title):
             mid = extract_qq_songmid(value)
             if mid:
                 cover_lookup = qq_song_detail_cover(mid)
@@ -686,16 +699,20 @@ def apply_scrape_candidate(
                     cand["cover_url"] = cover_url
                     cand["cover_source"] = cover_lookup.get("source")
                     break
-    cover_result = _download_candidate_cover(song, cover_url)
+    cover_result, cover_file = _download_candidate_cover(db, song, cover_url)
     if cover_lookup:
         cover_result["lookup"] = cover_lookup
     cover_path = cover_result.get("path") if cover_result.get("ok") else None
     if cover_path:
+        if cover_file:
+            cover_file.cover_path = cover_path
         song.cover_path = cover_path
         changes["cover_path"] = cover_path
     lyrics = cand.get("lyrics")
-    lrc_path = _write_lrc_for_song(song, lyrics)
+    lrc_path, lrc_file = _write_lrc_for_song(db, song, lyrics)
     if lrc_path:
+        if lrc_file:
+            lrc_file.lrc_path = lrc_path
         song.lrc_path = lrc_path
         changes["lrc_path"] = lrc_path
     song.meta_provider = cand.get("provider") or cand.get("source") or "manual"
@@ -707,14 +724,15 @@ def apply_scrape_candidate(
     db.refresh(song)
 
     tag_written = {}
-    if body.write_file_tags and is_local_file(getattr(song, "local_path", None)):
+    song_file = _local_song_file(db, song)
+    if body.write_file_tags and song_file:
         tag_written = write_audio_tags(
-            song.local_path,
+            song_file.local_path,
             title=song.title,
             artist=song.artist,
             album=song.album,
             lyrics=lyrics,
-            cover_path=cover_path or song.cover_path,
+            cover_path=cover_path or song_file.cover_path or song.cover_path,
         )
     fav = _favorite_ids(db, [song.id])
     return {"ok": True, "changes": changes, "cover_result": cover_result, "file_tags": tag_written, "song": _song_out(song, fav).model_dump()}

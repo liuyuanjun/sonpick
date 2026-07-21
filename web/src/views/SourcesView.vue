@@ -144,6 +144,12 @@
               默认关。开启仅做短时 MusicBrainz 探测，仍可能较慢；大批量请先用「刮削」
             </n-text>
           </n-form-item>
+          <n-form-item v-if="reorgSource?.type === 'local'" label="按格式归档">
+            <n-switch v-model:value="reorgForm.relocate_format_dirs" />
+            <n-text depth="3" style="margin-left: 8px; font-size: 12px">
+              开启后把无损文件（FLAC/APE/WAV 等）移入「无损存放目录」、MP3 等有损文件移入「MP3 存放目录」（目录在设置页配置）。目标已存在同一首歌时保留音质较好的文件
+            </n-text>
+          </n-form-item>
         </n-form>
         <n-space>
           <n-button type="primary" size="small" :loading="reorgLoading" @click="runReorgPreview">生成预览</n-button>
@@ -224,7 +230,7 @@
 <script setup>
 import { computed, h, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { NButton, NSpace, NTag, useMessage } from 'naive-ui'
+import { NButton, NSpace, NTag, NProgress, useMessage } from 'naive-ui'
 import {
   createSource,
   deleteSource,
@@ -299,11 +305,14 @@ const reorgApplying = ref(false)
 const reorgDirsLoading = ref(false)
 const reorgPreview = ref({ total: 0, changed: 0, scanned: 0, items: [] })
 const reorgResult = ref(null)
+// 扫描任务原地进度追踪
+const scanTaskStates = ref({})  // { [sourceId]: { task_id, status, message, percent } }
 const reorgForm = reactive({
   relative_dir: '',
   limit: 20,
   include_failed: false,
   allow_network: false,
+  relocate_format_dirs: false,
 })
 const reorgDirOptions = ref([])
 const reorgSelectedChild = ref(null)
@@ -411,10 +420,26 @@ const columns = [
       const buttons = [
         h(NButton, { size: 'tiny', onClick: () => openEdit(row) }, { default: () => '编辑' }),
         h(NButton, { size: 'tiny', onClick: () => onTest(row) }, { default: () => '测试' }),
-        h(NButton, { size: 'tiny', type: 'primary', onClick: () => onScan(row) }, { default: () => '扫描' }),
+      ]
+      const scanState = scanTaskStates.value[row.id]
+      if (scanState && !['completed', 'failed', 'cancelled'].includes(scanState.status)) {
+        buttons.push(h('div', { style: 'display:inline-flex;align-items:center;gap:6px;min-width:120px' }, [
+          h(NProgress, {
+            type: 'line',
+            size: 'small',
+            percentage: scanState.percent || 0,
+            showIndicator: false,
+            style: 'width:80px',
+          }),
+          h('span', { style: 'font-size:11px;color:var(--text-color-3)' }, scanState.message || '扫描中...'),
+        ]))
+      } else {
+        buttons.push(h(NButton, { size: 'tiny', type: 'primary', onClick: () => onScan(row) }, { default: () => '扫描' }))
+      }
+      buttons.push(
         h(NButton, { size: 'tiny', onClick: () => openReorg(row) }, { default: () => '整理' }),
         h(NButton, { size: 'tiny', onClick: () => openScrape(row) }, { default: () => '刮削' }),
-      ]
+      )
       if (row.type === 'webdav') {
         buttons.push(
           h(NButton, { size: 'tiny', type: 'info', onClick: () => openBrowse(row) }, { default: () => '浏览' })
@@ -503,6 +528,7 @@ function reorgPayload() {
     limit: Number(reorgForm.limit ?? 20),
     include_failed: !!reorgForm.include_failed,
     allow_network: !!reorgForm.allow_network,
+    relocate_format_dirs: !!reorgForm.relocate_format_dirs,
   }
 }
 
@@ -563,6 +589,7 @@ async function openReorg(row) {
   reorgForm.limit = 20
   reorgForm.include_failed = false
   reorgForm.allow_network = false
+  reorgForm.relocate_format_dirs = false
   reorgSelectedChild.value = null
   reorgDirOptions.value = []
   showReorg.value = true
@@ -764,13 +791,43 @@ async function onTest(row) {
 
 async function onScan(row) {
   try {
-    message.loading('正在扫描...', { duration: 1200 })
     const res = await scanSource(row.id)
     const d = res.data || {}
-    message.success(`扫描完成：新增 ${d.total_added || 0}，更新 ${d.total_updated || 0}`)
-    await load()
+    const taskId = d.task_id
+    scanTaskStates.value[row.id] = { task_id: taskId, status: 'pending', message: '等待扫描...', percent: 0 }
+    message.info('扫描任务已创建，正在后台执行...')
+    // 轮询任务状态（waitTask 基于 SSE，终态时 resolve）
+    await waitTask(taskId, {
+      onProgress: (p) => {
+        if (p) {
+          scanTaskStates.value[row.id] = {
+            task_id: taskId,
+            status: p.status || 'running',
+            message: p.progress?.message || '',
+            percent: p.progress?.percent ?? scanTaskStates.value[row.id]?.percent || 0,
+          }
+        }
+      },
+    }).then((task) => {
+      const st = task?.status || 'completed'
+      const r = task?.result || {}
+      const doneMsg = r.message || task?.progress?.message || `扫描完成：新增 ${r.total_added || 0}，更新 ${r.total_updated || 0}`
+      scanTaskStates.value[row.id] = { task_id: taskId, status: st, message: doneMsg, percent: 100 }
+      if (st === 'completed') {
+        message.success(doneMsg)
+      } else if (st === 'failed') {
+        message.error(`扫描失败：${task?.error_message || r.message || ''}`)
+      }
+      load()
+      // 3秒后清除原地进度状态
+      setTimeout(() => { delete scanTaskStates.value[row.id] }, 3000)
+    }).catch((err) => {
+      message.error(`扫描失败：${err?.message || err}`)
+      delete scanTaskStates.value[row.id]
+    })
   } catch (err) {
     message.error(err.response?.data?.detail || '扫描失败')
+    delete scanTaskStates.value[row.id]
   }
 }
 

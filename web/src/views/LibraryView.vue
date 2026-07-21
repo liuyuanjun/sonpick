@@ -213,7 +213,7 @@
       <n-form-item label="按格式归档">
         <n-space align="center">
           <n-switch v-model:value="reorgForm.relocate_format_dirs" />
-          <n-text depth="3" style="font-size: 12px">开启后，整理时会把错放的无损文件（FLAC/APE/WAV 等）移入「无损存放目录」、MP3 等有损文件移入「MP3 存放目录」下对应的艺术家/专辑位置（目录在设置页配置，默认不开启）。仅本地曲库生效。</n-text>
+          <n-text depth="3" style="font-size: 12px">开启后，整理时会把错放的无损文件（FLAC/APE/WAV 等）移入「无损存放目录」、MP3 等有损文件移入「MP3 存放目录」下对应的艺术家/专辑位置（目录在设置页配置，默认不开启）。内置曲库未开启时会分别在 MP3/无损存放目录内整理；目标已存在同一首歌时保留音质较好的文件。仅本地曲库生效。</n-text>
         </n-space>
       </n-form-item>
       <n-form-item label="允许网络补全">
@@ -381,9 +381,10 @@ const songColumns = [
   {
     title: '来源', key: 'source', width: 200,
     render(row) {
-      const type = row.library_source_type || (row.webdav_path && !row.local_path ? 'webdav' : 'local')
-      const name = row.library_source_name || (row.webdav_path ? 'WebDAV' : row.local_path ? '本地' : '-')
-      const path = row.local_path || row.webdav_path || '-'
+      const primary = (row.versions || []).find(item => item.availability_status !== 'unavailable' && (item.local_path || item.webdav_path))
+      const type = row.library_source_type || (primary?.webdav_path && !primary?.local_path ? 'webdav' : 'local')
+      const name = row.library_source_name || (type === 'webdav' ? 'WebDAV' : primary ? '本地' : '-')
+      const path = primary?.local_path || primary?.webdav_path || '暂无可播放版本'
       const status = statusLabels[row.status] || row.status || '-'
       return h('div', { class: 'song-cell' }, [
         h('div', { class: 'song-cell-line' }, [
@@ -420,7 +421,7 @@ const songColumns = [
         }, { icon: () => h(NIcon, { size: 16 }, { default: () => h(icon) }) }),
         default: () => tip,
       })
-      const btns = [iconBtn(PlayOutline, '播放', { type: 'primary' }, () => play(row))]
+      const btns = [iconBtn(PlayOutline, row.has_playable_file ? '播放' : '暂无可播放版本', { type: 'primary', disabled: !row.has_playable_file }, () => play(row))]
       if (!(row.available_formats || [row.format]).map((format) => String(format).toLowerCase()).includes('mp3')) {
         btns.push(iconBtn(SwapHorizontalOutline, '转为 MP3', {}, () => onConvert(row)))
       }
@@ -572,7 +573,13 @@ async function loadBrowse() {
 }
 function browseTo(path) { browsePath.value = path || ''; loadBrowse() }
 function browseGoUp() { const parts = (browsePath.value || '').split('/').filter(Boolean); parts.pop(); browseTo(parts.join('/')) }
-function play(row) { player.play(row, songs.value) }
+function play(row) {
+  if (!row.has_playable_file) {
+    message.warning('该歌曲暂无可播放版本')
+    return
+  }
+  player.play(row, songs.value)
+}
 function playRemote(row) {
   const path = row.path || row.name
   if (!path || !selectedSource.value) return
@@ -601,7 +608,18 @@ async function onTest(row) {
 async function onScan(row) {
   try {
     const d = (await scanSource(row.id)).data || {}
-    message.success(`扫描完成：新增 ${d.created || 0}，更新 ${d.updated || 0}，跳过 ${d.skipped || 0}`)
+    const taskId = d.task_id
+    message.info(d.message || '扫描任务已创建，正在后台执行...')
+    const task = await waitTask(taskId)
+    const st = task?.status || 'completed'
+    if (st === 'completed') {
+      const r = task?.result || {}
+      message.success(r.message || task?.progress?.message || `扫描完成：新增 ${r.total_added || 0}，更新 ${r.total_updated || 0}`)
+    } else if (st === 'failed') {
+      message.error(`扫描失败：${task?.error_message || task?.result?.message || ''}`)
+    } else if (st === 'cancelled') {
+      message.warning('扫描已取消')
+    }
     await loadSources(); await loadSongs()
   } catch (err) { message.error(formatApiError(err, '扫描失败')) }
 }

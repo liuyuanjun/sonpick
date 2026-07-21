@@ -136,7 +136,7 @@ export function setDefaultUploadSource(id) {
 }
 
 export function scanSource(id) {
-  return api.post(`/sources/${id}/scan`, null, { timeout: 300000 })
+  return api.post(`/sources/${id}/scan`, null, { timeout: 30000 })
 }
 
 export function scanLibrary(payload = { all: true }) {
@@ -151,7 +151,7 @@ export function scanLibrary(payload = { all: true }) {
     if (!body.source) body.source = 'all'
   }
   if (!body.source && !body.source_ids) body.source = 'all'
-  return api.post('/library/scan', body, { timeout: 300000 })
+  return api.post('/library/scan', body, { timeout: 30000 })
 }
 
 export function searchMusic(q, page = 1, pageSize = 20, source = 'all') {
@@ -210,6 +210,7 @@ export function previewReorganize(sourceId, payload = {}) {
     relative_dir: payload.relative_dir || '',
     include_failed: !!payload.include_failed,
     allow_network: !!payload.allow_network,
+    relocate_format_dirs: !!payload.relocate_format_dirs,
   }
   return api.post(`/sources/${sourceId}/reorganize/preview`, body, { timeout: 120000 })
 }
@@ -220,6 +221,7 @@ export function applyReorganize(sourceId, payload = {}) {
     relative_dir: payload.relative_dir || '',
     include_failed: !!payload.include_failed,
     allow_network: !!payload.allow_network,
+    relocate_format_dirs: !!payload.relocate_format_dirs,
   }
   return api.post(`/sources/${sourceId}/reorganize/apply`, body, { timeout: 600000 })
 }

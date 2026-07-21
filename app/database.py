@@ -46,6 +46,20 @@ def get_engine() -> Engine:
     return _engine
 
 
+
+def init_db():
+    """初始化表结构并执行幂等增量迁移。"""
+    engine = get_engine()
+    # 确保所有 ORM 模型已注册到 Base.metadata。
+    from app import models  # noqa: F401
+
+    Base.metadata.create_all(bind=engine)
+    _ensure_columns(engine)
+    _seed_media_sources(engine)
+    _ensure_song_file_indexes(engine)
+    _migrate_song_path_responsibility(engine)
+
+
 def _ensure_columns(engine: Engine):
     """SQLite lightweight additive migrations for existing DBs."""
     specs = {
@@ -79,6 +93,8 @@ def _ensure_columns(engine: Engine):
             "availability_status": "VARCHAR(16) NOT NULL DEFAULT 'unknown'",
             "last_checked_at": "DATETIME",
             "last_error": "VARCHAR(512)",
+            "cover_path": "VARCHAR(1024)",
+            "lrc_path": "VARCHAR(1024)",
         },
         "songs": {
             "source_id": "VARCHAR(128)",
@@ -88,6 +104,9 @@ def _ensure_columns(engine: Engine):
             "meta_locked": "BOOLEAN DEFAULT 0",
             "play_count": "INTEGER DEFAULT 0",
             "library_source_id": "INTEGER",
+        },
+        "tasks": {
+            "worker_thread_id": "INTEGER",
         },
     }
     insp = inspect(engine)
@@ -101,40 +120,111 @@ def _ensure_columns(engine: Engine):
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
 
 
-def init_db():
-    engine = get_engine()
-    from app import models  # noqa: F401
+def _ensure_song_file_indexes(engine: Engine):
+    """为 SongFile 版本查询建立幂等索引，SQLite 不支持安全地补唯一约束。"""
+    with engine.begin() as conn:
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_song_files_song_source_format "
+            "ON song_files (song_id, library_source_id, format)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_song_files_webdav_source_path "
+            "ON song_files (library_source_id, webdav_path)"
+        ))
 
-    Base.metadata.create_all(bind=engine)
-    _ensure_columns(engine)
-    _backfill_song_files(engine)
-    _seed_media_sources(engine)
 
+def _migrate_song_path_responsibility(engine: Engine):
+    """一次性、幂等地把旧 songs 物理路径迁移到 SongFile 后删除旧列。"""
+    inspector = inspect(engine)
+    if "songs" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("songs")}
+    legacy_columns = {"local_path", "webdav_path"}
+    if not legacy_columns.intersection(columns):
+        return
 
-def _backfill_song_files(engine: Engine):
-    """将旧 Song 的单文件字段迁移为首个 SongFile，兼容现存 SQLite 数据库。"""
-    from sqlalchemy.orm import Session
-
-    from app.models import Song, SongFile
-
-    with Session(engine) as db:
-        for song in db.query(Song).all():
-            if not (song.local_path or song.webdav_path):
+    # 先关闭当前短连接的外键检查；重建完成后连接即关闭，设置不会影响其他连接。
+    with engine.connect() as conn:
+        conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        rows = conn.execute(text(
+            "SELECT id, format, duration, file_size, library_source_id, local_path, webdav_path, cover_path, lrc_path "
+            "FROM songs"
+        )).mappings().all()
+        created = 0
+        enriched = 0
+        for row in rows:
+            local_path = row.get("local_path")
+            webdav_path = row.get("webdav_path")
+            if not local_path and not webdav_path:
                 continue
-            existing = db.query(SongFile).filter(SongFile.song_id == song.id).filter(
-                (SongFile.local_path == song.local_path) | (SongFile.webdav_path == song.webdav_path)
-            ).first()
-            if not existing:
-                db.add(SongFile(
-                    song_id=song.id,
-                    format=(song.format or "unknown").lower(),
-                    local_path=song.local_path,
-                    webdav_path=song.webdav_path,
-                    library_source_id=song.library_source_id,
-                    duration=song.duration,
-                    file_size=song.file_size,
-                ))
-        db.commit()
+            existing = conn.execute(text(
+                "SELECT id, cover_path, lrc_path FROM song_files "
+                "WHERE song_id = :song_id AND "
+                "((:local_path IS NOT NULL AND local_path = :local_path) "
+                "OR (:webdav_path IS NOT NULL AND webdav_path = :webdav_path)) LIMIT 1"
+            ), {
+                "song_id": row["id"],
+                "local_path": local_path,
+                "webdav_path": webdav_path,
+            }).mappings().first()
+            if existing is None:
+                conn.execute(text(
+                    "INSERT INTO song_files "
+                    "(song_id, format, local_path, webdav_path, cover_path, lrc_path, library_source_id, "
+                    "duration, file_size, availability_status, source_priority, created_at, updated_at) "
+                    "VALUES (:song_id, :format, :local_path, :webdav_path, :cover_path, :lrc_path, :source_id, "
+                    ":duration, :file_size, 'unknown', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                ), {
+                    "song_id": row["id"],
+                    "format": (row.get("format") or "unknown").lower(),
+                    "local_path": local_path,
+                    "webdav_path": webdav_path,
+                    "cover_path": row.get("cover_path"),
+                    "lrc_path": row.get("lrc_path"),
+                    "source_id": row.get("library_source_id"),
+                    "duration": row.get("duration"),
+                    "file_size": row.get("file_size"),
+                })
+                created += 1
+            else:
+                values = {
+                    "id": existing["id"],
+                    "cover_path": existing.get("cover_path") or row.get("cover_path"),
+                    "lrc_path": existing.get("lrc_path") or row.get("lrc_path"),
+                }
+                if values["cover_path"] != existing.get("cover_path") or values["lrc_path"] != existing.get("lrc_path"):
+                    conn.execute(text(
+                        "UPDATE song_files SET cover_path = :cover_path, lrc_path = :lrc_path, "
+                        "updated_at = CURRENT_TIMESTAMP WHERE id = :id"
+                    ), values)
+                    enriched += 1
+
+        # SQLite DROP COLUMN 对旧 SQLite 版本与外键约束不可靠，采用表重建。
+        kept = [
+            "id", "title", "artist", "album", "source", "source_id", "format", "duration", "file_size",
+            "cover_path", "lrc_path", "library_source_id", "status", "play_count", "meta_confidence",
+            "meta_provider", "scrape_status", "meta_locked", "created_at", "updated_at",
+        ]
+        definitions = [
+            "id INTEGER PRIMARY KEY AUTOINCREMENT",
+            "title VARCHAR(255) NOT NULL",
+            "artist VARCHAR(255)", "album VARCHAR(255)", "source VARCHAR(64)", "source_id VARCHAR(128)",
+            "format VARCHAR(16)", "duration INTEGER", "file_size INTEGER", "cover_path VARCHAR(1024)",
+            "lrc_path VARCHAR(1024)",
+            "library_source_id INTEGER REFERENCES media_sources(id) ON DELETE SET NULL",
+            "status VARCHAR(16)", "play_count INTEGER", "meta_confidence INTEGER", "meta_provider VARCHAR(64)",
+            "scrape_status VARCHAR(16)", "meta_locked BOOLEAN", "created_at DATETIME", "updated_at DATETIME",
+        ]
+        quoted = ", ".join(kept)
+        conn.execute(text(f"CREATE TABLE songs__path_migration ({', '.join(definitions)})"))
+        conn.execute(text(
+            f"INSERT INTO songs__path_migration ({quoted}) SELECT {quoted} FROM songs"
+        ))
+        conn.execute(text("DROP TABLE songs"))
+        conn.execute(text("ALTER TABLE songs__path_migration RENAME TO songs"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_songs_library_source_id ON songs (library_source_id)"))
+        conn.commit()
+        print(f"[migration] SongFile path responsibility: created={created}, enriched={enriched}", flush=True)
 
 
 def _dump_json_list(items):
@@ -210,7 +300,7 @@ def _seed_media_sources(engine: Engine):
 
 
 def _backfill_song_sources(db, local_id=None, webdav_id=None):
-    from app.models import MediaSource, Song
+    from app.models import MediaSource, Song, SongFile
 
     if local_id is None:
         local = db.query(MediaSource).filter(MediaSource.type == "local").order_by(MediaSource.id.asc()).first()
@@ -222,12 +312,18 @@ def _backfill_song_sources(db, local_id=None, webdav_id=None):
     songs = db.query(Song).filter(Song.library_source_id.is_(None)).all()
     changed = False
     for song in songs:
-        if song.local_path and local_id:
+        file = db.query(SongFile).filter(SongFile.song_id == song.id).order_by(SongFile.id.asc()).first()
+        if not file:
+            continue
+        if file.library_source_id:
+            song.library_source_id = file.library_source_id
+        elif file.local_path and local_id:
             song.library_source_id = local_id
-            changed = True
-        elif song.webdav_path and webdav_id:
+        elif file.webdav_path and webdav_id:
             song.library_source_id = webdav_id
-            changed = True
+        else:
+            continue
+        changed = True
     if changed:
         db.commit()
 

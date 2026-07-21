@@ -10,7 +10,7 @@ from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
-from app.models import AppSettings, MediaSource, Song, SongFile
+from app.models import AppSettings, Favorite, MediaSource, Song, SongFile
 from app.routers.settings import (
     DEFAULT_SCAN_EXCLUDE,
     DEFAULT_SCAN_EXTS,
@@ -200,8 +200,17 @@ class LibraryScanService:
             "updated": 0,
             "skipped": 0,
             "errors": 0,
+            "error_samples": [],
             "message": None,
         }
+
+    @staticmethod
+    def _record_error(stats: dict[str, Any], exc: Exception, context: str = "") -> None:
+        """记录错误样本（最多 5 条），供任务详情展示。"""
+        samples = stats.setdefault("error_samples", [])
+        if len(samples) < 5:
+            detail = f"{context}: {exc}" if context else str(exc)
+            samples.append(detail[:300])
 
     def _audio_exts(self, source: MediaSource | None = None) -> set[str]:
         if source:
@@ -294,7 +303,6 @@ class LibraryScanService:
                     format=ext,
                     duration=duration,
                     file_size=size,
-                    local_path=abs_path,
                     cover_path=cover,
                     lrc_path=lrc,
                     library_source_id=source_id,
@@ -304,7 +312,17 @@ class LibraryScanService:
                 )
                 self.db.add(song)
                 self.db.flush()
-                song_file = SongFile(song_id=song.id, format=ext, local_path=abs_path, library_source_id=source_id, duration=duration, file_size=size)
+                song_file = SongFile(
+                    song_id=song.id,
+                    format=ext,
+                    local_path=abs_path,
+                    cover_path=cover,
+                    lrc_path=lrc,
+                    library_source_id=source_id,
+                    duration=duration,
+                    file_size=size,
+                    availability_status="available",
+                )
                 self.db.add(song_file)
                 if cover and path.exists():
                     refined = enrich_local_audio(path, song_id=song.id, existing_cover=cover)
@@ -315,17 +333,68 @@ class LibraryScanService:
                 stats["added"] += 1
             else:
                 if song_file is None:
-                    song_file = SongFile(song_id=song.id, format=ext, local_path=abs_path, library_source_id=source_id, duration=duration, file_size=size)
-                    self.db.add(song_file)
+                    # 同歌同格式、旧路径失效的 SongFile：合并到新路径，避免重复版本行
+                    stale_same_fmt = (
+                        self.db.query(SongFile)
+                        .filter(
+                            SongFile.song_id == song.id,
+                            SongFile.format == ext,
+                            SongFile.local_path.isnot(None),
+                        )
+                        .all()
+                    )
+                    reusable = None
+                    for cand in stale_same_fmt:
+                        old = cand.local_path or ""
+                        if old == abs_path:
+                            reusable = cand
+                            break
+                        if not old or not Path(old).exists():
+                            reusable = cand
+                            break
+                    if reusable is not None:
+                        # 若已有其他行占用新路径，交给唯一约束侧；此处只认领空闲失效行
+                        owner = (
+                            self.db.query(SongFile)
+                            .filter(SongFile.local_path == abs_path, SongFile.id != reusable.id)
+                            .one_or_none()
+                        )
+                        if owner is None:
+                            reusable.local_path = abs_path
+                            reusable.format = ext
+                            reusable.library_source_id = source_id or reusable.library_source_id
+                            reusable.duration = duration or reusable.duration
+                            reusable.file_size = size or reusable.file_size
+                            reusable.availability_status = "available"
+                            reusable.last_error = None
+                            reusable.last_checked_at = _now()
+                            reusable.updated_at = _now()
+                            song_file = reusable
+                            self.db.add(song_file)
+                        else:
+                            song_file = owner
+                    else:
+                        song_file = SongFile(
+                            song_id=song.id,
+                            format=ext,
+                            local_path=abs_path,
+                            library_source_id=source_id,
+                            duration=duration,
+                            file_size=size,
+                            availability_status="available",
+                        )
+                        self.db.add(song_file)
                 else:
                     song_file.format = ext
                     song_file.library_source_id = source_id
                     song_file.duration = duration or song_file.duration
                     song_file.file_size = size or song_file.file_size
+                    song_file.availability_status = "available"
+                    song_file.last_error = None
+                    song_file.last_checked_at = _now()
                     song_file.updated_at = _now()
                 changed = False
-                if not song.local_path:
-                    song.local_path = abs_path
+                if self._refresh_song_aggregate_assets(song):
                     changed = True
                 if not song.library_source_id and source_id:
                     song.library_source_id = source_id
@@ -368,7 +437,9 @@ class LibraryScanService:
                 if ext and not song.format:
                     song.format = ext
                     changed = True
-                if song.webdav_path:
+                if any(
+                    item.webdav_path for item in self.db.query(SongFile).filter(SongFile.song_id == song.id).all()
+                ):
                     new_status = "both"
                 else:
                     new_status = "local"
@@ -392,8 +463,15 @@ class LibraryScanService:
                     stats["updated"] += 1
                 else:
                     stats["skipped"] += 1
-        except Exception:
+        except Exception as exc:
             stats["errors"] += 1
+            self._record_error(stats, exc, str(path))
+            # 单文件失败必须回滚，否则 Session 处于 PendingRollbackError，
+            # 后续所有文件及最终 commit 会全部连锁失败（任务卡死的根因之一）
+            try:
+                self.db.rollback()
+            except Exception:
+                pass
 
     def _upsert_remote(self, remote_path: str, size: Optional[int], sidecar_map: dict[str, dict[str, str]], source_id: int, stats: dict[str, Any]) -> None:
         stats["scanned"] += 1
@@ -417,7 +495,6 @@ class LibraryScanService:
                     source="scan-webdav",
                     format=ext,
                     file_size=size,
-                    webdav_path=rel,
                     cover_path=cover,
                     lrc_path=lrc,
                     library_source_id=source_id,
@@ -427,21 +504,41 @@ class LibraryScanService:
                 )
                 self.db.add(song)
                 self.db.flush()
-                song_file = SongFile(song_id=song.id, format=ext, webdav_path=rel, library_source_id=source_id, file_size=size)
+                song_file = SongFile(
+                    song_id=song.id,
+                    format=ext,
+                    webdav_path=rel,
+                    cover_path=cover,
+                    lrc_path=lrc,
+                    library_source_id=source_id,
+                    file_size=size,
+                    availability_status="available",
+                )
                 self.db.add(song_file)
                 stats["added"] += 1
             else:
                 if song_file is None:
-                    song_file = SongFile(song_id=song.id, format=ext, webdav_path=rel, library_source_id=source_id, file_size=size)
+                    song_file = SongFile(
+                        song_id=song.id,
+                        format=ext,
+                        webdav_path=rel,
+                        cover_path=cover,
+                        lrc_path=lrc,
+                        library_source_id=source_id,
+                        file_size=size,
+                        availability_status="available",
+                    )
                     self.db.add(song_file)
                 else:
                     song_file.format = ext
                     song_file.file_size = size or song_file.file_size
+                    song_file.cover_path = cover or song_file.cover_path
+                    song_file.lrc_path = lrc or song_file.lrc_path
+                    song_file.availability_status = "available"
+                    song_file.last_error = None
+                    song_file.last_checked_at = _now()
                     song_file.updated_at = _now()
                 changed = False
-                if not song.webdav_path:
-                    song.webdav_path = rel
-                    changed = True
                 if not song.library_source_id and source_id:
                     song.library_source_id = source_id
                     changed = True
@@ -474,26 +571,24 @@ class LibraryScanService:
                 if ext and not song.format:
                     song.format = ext
                     changed = True
-                if is_local_file(song.local_path):
+                if is_local_file(song_file.local_path):
                     refined = enrich_local_audio(
-                        song.local_path,
+                        song_file.local_path,
                         song_id=song.id,
-                        existing_cover=song.cover_path if is_local_file(song.cover_path) else None,
+                        existing_cover=song_file.cover_path if is_local_file(song_file.cover_path) else None,
                     )
                     if refined.get("duration") and (not song.duration or song.duration <= 0):
                         song.duration = int(refined["duration"])
                         changed = True
                     if refined.get("cover_path"):
-                        song.cover_path = refined["cover_path"]
+                        song_file.cover_path = refined["cover_path"]
                         changed = True
-                if song.local_path and song.webdav_path:
-                    new_status = "both"
-                elif song.local_path:
-                    new_status = "local"
-                elif song.status == "uploaded" and song.webdav_path:
-                    new_status = "uploaded"
-                else:
-                    new_status = "remote"
+                versions = self.db.query(SongFile).filter(SongFile.song_id == song.id).all()
+                has_local = any(v.local_path and is_local_file(v.local_path) for v in versions)
+                has_remote = any(v.webdav_path for v in versions)
+                new_status = "both" if has_local and has_remote else "local" if has_local else "remote"
+                if self._refresh_song_aggregate_assets(song):
+                    changed = True
                 if song.status != new_status:
                     song.status = new_status
                     changed = True
@@ -505,10 +600,15 @@ class LibraryScanService:
                     stats["updated"] += 1
                 else:
                     stats["skipped"] += 1
-        except Exception:
+        except Exception as exc:
             stats["errors"] += 1
+            self._record_error(stats, exc, remote_path)
+            try:
+                self.db.rollback()
+            except Exception:
+                pass
 
-    def _scan_local_source(self, source: MediaSource) -> dict[str, Any]:
+    def _scan_local_source(self, source: MediaSource, emit=None) -> dict[str, Any]:
         stats = self._stats("local", source.id)
         if not source.enabled:
             stats["message"] = "源已禁用"
@@ -560,11 +660,30 @@ class LibraryScanService:
                         continue
                     seen.add(key)
                     self._upsert_local(full, source.id, stats)
+                    # 分批提交：单文件回滚最多损失一个批次；进度也能中途落库
+                    if stats["scanned"] % 50 == 0:
+                        try:
+                            self.db.commit()
+                        except Exception as exc:
+                            self._record_error(stats, exc, "batch commit")
+                            self.db.rollback()
+                    if emit and stats["scanned"] % 100 == 0:
+                        emit(
+                            f"{source.name}: 已扫描 {stats['scanned']} 个文件 "
+                            f"(新增 {stats['added']} / 更新 {stats['updated']} / 错误 {stats['errors']})"
+                        )
 
-        self.db.commit()
+        try:
+            self.db.commit()
+        except Exception as exc:
+            stats["errors"] += 1
+            self._record_error(stats, exc, "final commit")
+            self.db.rollback()
+        if stats["errors"] and not stats["message"] and stats["error_samples"]:
+            stats["message"] = f"{stats['errors']} 个文件失败，首个错误: {stats['error_samples'][0]}"
         return stats
 
-    def _scan_webdav_source(self, source: MediaSource) -> dict[str, Any]:
+    def _scan_webdav_source(self, source: MediaSource, emit=None) -> dict[str, Any]:
         stats = self._stats("webdav", source.id)
         if not source.enabled:
             stats["message"] = "源已禁用"
@@ -586,10 +705,13 @@ class LibraryScanService:
 
         for d in dirs:
             base = (d or "").strip().strip("/")
+            if emit:
+                emit(f"{source.name}: 正在列出远程目录 /{base} ...")
             try:
                 files = service.list_recursive(base)
             except Exception as e:
                 stats["errors"] += 1
+                self._record_error(stats, e, f"list /{base}")
                 stats["message"] = str(e)
                 continue
             for item in files:
@@ -613,11 +735,29 @@ class LibraryScanService:
                 if ext in exts:
                     audio_files.append(item)
 
-        for item in audio_files:
+        for idx, item in enumerate(audio_files, 1):
             rel = (item.get("path") or "").replace("\\", "/").lstrip("/")
             self._upsert_remote(rel, item.get("size"), sidecar_map, source.id, stats)
+            if stats["scanned"] % 50 == 0:
+                try:
+                    self.db.commit()
+                except Exception as exc:
+                    self._record_error(stats, exc, "batch commit")
+                    self.db.rollback()
+            if emit and idx % 100 == 0:
+                emit(
+                    f"{source.name}: 已处理 {idx}/{len(audio_files)} 个远程文件 "
+                    f"(新增 {stats['added']} / 更新 {stats['updated']} / 错误 {stats['errors']})"
+                )
 
-        self.db.commit()
+        try:
+            self.db.commit()
+        except Exception as exc:
+            stats["errors"] += 1
+            self._record_error(stats, exc, "final commit")
+            self.db.rollback()
+        if stats["errors"] and not stats["message"] and stats["error_samples"]:
+            stats["message"] = f"{stats['errors']} 个文件失败，首个错误: {stats['error_samples'][0]}"
         return stats
 
     def _update_source_scan_stats(self, source: MediaSource, stats: dict[str, Any]) -> None:
@@ -629,14 +769,156 @@ class LibraryScanService:
         )
         self.db.commit()
 
-    def scan(self, source: str = "all", source_ids: list[int] | None = None) -> dict[str, Any]:
+    def _refresh_song_aggregate_assets(self, song: Song) -> bool:
+        """Song 聚合封面/歌词仅由可用 SongFile 侧车回填。"""
+        from app.services.song_file_resolver import refresh_song_aggregate_assets
+
+        return refresh_song_aggregate_assets(self.db, song)
+
+    def _heal_stale_paths(self) -> dict[str, int]:
+        """扫描前标记失效 SongFile，并刷新歌曲聚合资源缓存。"""
+        healed = 0
+        marked_unavailable = 0
+        refreshed_songs = 0
+        stale_files = self.db.query(SongFile).filter(
+            SongFile.local_path.isnot(None),
+        ).all()
+        for sf in stale_files:
+            if sf.local_path and Path(sf.local_path).exists():
+                if (sf.availability_status or "") == "unavailable":
+                    sf.availability_status = "available"
+                    sf.last_error = None
+                    sf.last_checked_at = _now()
+                    sf.updated_at = _now()
+                    self.db.add(sf)
+                    healed += 1
+            elif (sf.availability_status or "") != "unavailable":
+                sf.availability_status = "unavailable"
+                sf.last_error = "file not found during scan self-heal"
+                sf.last_checked_at = _now()
+                sf.updated_at = _now()
+                self.db.add(sf)
+                marked_unavailable += 1
+
+        for song in self.db.query(Song).all():
+            if self._refresh_song_aggregate_assets(song):
+                refreshed_songs += 1
+
+        if healed or marked_unavailable or refreshed_songs:
+            self.db.commit()
+        return {
+            "healed": healed,
+            "marked_unavailable": marked_unavailable,
+            "refreshed_songs": refreshed_songs,
+        }
+
+    def _dedupe_dead_songs(self) -> int:
+        """删除"全部版本失效且存在活体重复"的旧 Song 行。
+
+        死 Song：没有任何有效版本（有效 = local_path/webdav_path 非空且未标 unavailable）。
+        活体重复：另一个 Song 的 title/artist 相同（trim、大小写不敏感）且有有效版本。
+        无活体重复的死 Song 保留（文件可能只是暂时离线），由列表过滤隐藏。
+        """
+
+        def _norm(v) -> str:
+            return (v or "").strip().lower()
+
+        songs = self.db.query(Song).all()
+        files_by_song: dict[int, list[SongFile]] = {}
+        for sf in self.db.query(SongFile).all():
+            files_by_song.setdefault(sf.song_id, []).append(sf)
+
+        def _has_live(song_id: int) -> bool:
+            for f in files_by_song.get(song_id, []):
+                if not (f.local_path or f.webdav_path):
+                    continue
+                if (f.availability_status or "") != "unavailable":
+                    return True
+            return False
+
+        live_keys: dict[tuple[str, str], int] = {}
+        for song in songs:
+            if _has_live(song.id):
+                live_keys.setdefault((_norm(song.title), _norm(song.artist)), song.id)
+
+        removed = 0
+        for song in songs:
+            if _has_live(song.id):
+                continue
+            survivor_id = live_keys.get((_norm(song.title), _norm(song.artist)))
+            if not survivor_id or survivor_id == song.id:
+                continue
+            # 收藏转移：死 Song 的收藏改指活体 Song（活体已被收藏则直接丢弃）
+            fav = self.db.query(Favorite).filter(Favorite.song_id == song.id).first()
+            if fav:
+                if self.db.query(Favorite).filter(Favorite.song_id == survivor_id).first():
+                    self.db.delete(fav)
+                else:
+                    fav.song_id = survivor_id
+                    self.db.add(fav)
+            for sf in files_by_song.get(song.id, []):
+                self.db.delete(sf)
+            self.db.delete(song)
+            removed += 1
+
+        if removed:
+            self.db.commit()
+        return removed
+
+    def _dedupe_stale_local_versions(self) -> int:
+        """删除冗余的不可用本地 SongFile。
+
+        同一首歌、同格式，如果已有可用的本地版本，则不可用的本地版本是冗余的。
+        仅限本地源（有 local_path），WebDAV 不可用可能是暂时断连，不在此清理。
+        """
+        removed = 0
+        local_files = self.db.query(SongFile).filter(SongFile.local_path.isnot(None)).all()
+        if not local_files:
+            return 0
+
+        by_song: dict[int, list[SongFile]] = {}
+        for sf in local_files:
+            by_song.setdefault(sf.song_id, []).append(sf)
+
+        for song_id, files in by_song.items():
+            # 找出该歌曲下所有可用的本地格式
+            available_local_fmts: set[str] = set()
+            for sf in files:
+                if (sf.availability_status or "") != "unavailable":
+                    available_local_fmts.add(sf.format)
+
+            if not available_local_fmts:
+                continue
+
+            for sf in files:
+                if (sf.availability_status or "") != "unavailable":
+                    continue
+                if sf.format not in available_local_fmts:
+                    continue
+                self.db.delete(sf)
+                removed += 1
+
+        if removed:
+            self.db.commit()
+        return removed
+
+    def scan(self, source: str = "all", source_ids: list[int] | None = None, emit=None) -> dict[str, Any]:
         source = (source or "all").lower()
+        _emit = emit if callable(emit) else (lambda msg, pct=None: None)
         started = time.time()
         all_stats: list[dict[str, Any]] = []
         total_added = 0
         total_updated = 0
         total_skipped = 0
         total_errors = 0
+
+        # 扫描前先自愈失效路径，并清理"有活体重复"的死 Song
+        _emit("自愈失效路径...", 2)
+        heal_stats = self._heal_stale_paths()
+        _emit("清理重复失效歌曲...", 3)
+        heal_stats["deduped_songs"] = self._dedupe_dead_songs()
+        _emit("清理冗余不可用版本...", 4)
+        heal_stats["cleaned_stale_versions"] = self._dedupe_stale_local_versions()
 
         # Check if any source exists; if not, seed first
         if self.db.query(MediaSource).count() == 0:
@@ -656,11 +938,14 @@ class LibraryScanService:
         else:
             sources = []
 
-        for s in sources:
+        n_sources = max(len(sources), 1)
+        for idx, s in enumerate(sources):
+            base_pct = 5 + int(90 * idx / n_sources)
+            _emit(f"开始扫描源 {s.name} ({s.type})", base_pct)
             if s.type == "local":
-                stats = self._scan_local_source(s)
+                stats = self._scan_local_source(s, emit=_emit)
             elif s.type == "webdav":
-                stats = self._scan_webdav_source(s)
+                stats = self._scan_webdav_source(s, emit=_emit)
             else:
                 continue
             self._update_source_scan_stats(s, stats)
@@ -669,12 +954,27 @@ class LibraryScanService:
             total_updated += stats.get("updated", 0) or 0
             total_skipped += stats.get("skipped", 0) or 0
             total_errors += stats.get("errors", 0) or 0
+            _emit(
+                f"源 {s.name} 完成: 扫描 {stats.get('scanned', 0)}, "
+                f"新增 {stats.get('added', 0)}, 更新 {stats.get('updated', 0)}, "
+                f"错误 {stats.get('errors', 0)}",
+                5 + int(90 * (idx + 1) / n_sources),
+            )
 
         try:
             from app.services.convert_service import ConvertService
-            ConvertService(self.db).auto_convert_missing_mp3()
-        except Exception:
-            pass
+            _emit("检查缺失 MP3 的自动转码...", 96)
+            converted = ConvertService(self.db).auto_convert_missing_mp3()
+            if converted:
+                _emit(f"自动转码完成: {len(converted)} 首", 98)
+        except Exception as exc:
+            # 转码失败不得拖垮扫描；Session 需回滚恢复健康
+            total_errors += 1
+            try:
+                self.db.rollback()
+            except Exception:
+                pass
+            _emit(f"自动转码出错(已跳过): {exc}")
 
         duration_ms = int((time.time() - started) * 1000)
         msg_parts = []
@@ -701,6 +1001,7 @@ class LibraryScanService:
         if webdav_stats:
             result["webdav"] = webdav_stats
 
+        result["heal_stats"] = heal_stats
         write_log(
             self.db,
             action="scan",

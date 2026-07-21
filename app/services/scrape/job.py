@@ -12,6 +12,7 @@ from app.models import Song
 from app.services.library_layout import is_generic_dir_name
 from app.services.media_meta_service import is_local_file, read_audio_duration, resolve_song_meta, write_audio_tags
 from app.services.operation_log_service import write_log
+from app.services.song_file_resolver import NoPlayableSongFileError, SongFileResolver
 from app.services.scrape import enrich_song_via_pipeline
 from app.services.scrape.query_normalize import clean_artist, clean_title, looks_like_opaque_id, repair_shifted_meta, split_title_artist
 from app.services.scrape.cache import cache_get, cache_put
@@ -91,10 +92,15 @@ def run_scrape_job(
                 elif looks_like_opaque_id(raw_artist) or is_generic_dir_name(raw_artist):
                     song.artist = None
                     changes["artist"] = None
+
             # local first
+            try:
+                local_file = SongFileResolver(db).resolve_local(song)
+            except NoPlayableSongFileError:
+                local_file = None
             meta = resolve_song_meta(
                 song,
-                audio_path=song.local_path if is_local_file(song.local_path) else None,
+                audio_path=local_file.local_path if local_file else None,
                 db=db,
                 allow_network=False,
                 force=overwrite,
@@ -111,18 +117,13 @@ def run_scrape_job(
                         setattr(song, key, val)
                         changes[key] = val
 
-            # 本地时长：mutagen/tinytag/ffprobe，不依赖网络刮削
-            if (not song.duration or int(song.duration or 0) <= 0) and is_local_file(getattr(song, "local_path", None)):
-                local_dur = read_audio_duration(song.local_path)
+            # 本地时长：从选中的 SongFile 读取
+            if (not song.duration or int(song.duration or 0) <= 0) and local_file:
+                local_dur = read_audio_duration(local_file.local_path)
                 if local_dur and int(local_dur) > 0:
                     song.duration = int(local_dur)
                     changes["duration"] = song.duration
-                    log.info(
-                        "本地时长 song_id=%s duration=%ss path=%s",
-                        song.id,
-                        song.duration,
-                        song.local_path,
-                    )
+                    log.info("本地时长 song_id=%s duration=%ss", song.id, song.duration)
 
             if allow_network:
                 # cache first
@@ -184,17 +185,19 @@ def run_scrape_job(
                 song.album = None
                 changes["album"] = None
 
-            # write embedded tags for local files (lyrics/year/cover when available)
-            if write_file_tags and is_local_file(song.local_path):
+            # write embedded tags for the selected local SongFile
+            if write_file_tags and local_file:
+                lyrics_path = local_file.lrc_path or song.lrc_path
                 lyrics_text = None
-                if song.lrc_path and Path(str(song.lrc_path)).is_file():
+                if lyrics_path and Path(str(lyrics_path)).is_file():
                     try:
-                        lyrics_text = Path(str(song.lrc_path)).read_text(encoding="utf-8", errors="ignore")
+                        lyrics_text = Path(str(lyrics_path)).read_text(encoding="utf-8", errors="ignore")
                     except Exception:
                         lyrics_text = None
-                cover_file = song.cover_path if song.cover_path and Path(str(song.cover_path)).is_file() else None
+                cover_file = local_file.cover_path or song.cover_path
+                cover_file = cover_file if cover_file and Path(str(cover_file)).is_file() else None
                 tag_written = write_audio_tags(
-                    song.local_path,
+                    local_file.local_path,
                     title=song.title,
                     artist=song.artist,
                     album=song.album,

@@ -347,13 +347,13 @@ const tagRows = computed(() => {
     { key: 'tag_duration', label: '内嵌时长', value: formatTime(em.duration || 0) },
     { key: 'tag_cover', label: '内嵌封面', value: em.cover_embedded ? `有（${em.cover_size || 0} bytes）` : '无' },
     { key: 'tag_lyrics', label: '内嵌歌词', value: em.lyrics ? `${String(em.lyrics).slice(0, 120)}...` : '' },
-    { key: 'path', label: '文件路径', value: tagData.value?.local_path },
+    { key: 'file_version', label: '文件版本', value: tagData.value?.file_version_id ? `#${tagData.value.file_version_id}` : '无可用本地版本' },
   ]
 })
 
 const scrapeSongPath = computed(() => {
   const song = player.current || {}
-  return song.local_path || `${song.artist || ''} - ${song.title || song.name || ''}`.replace(/^\s*-\s*|\s*-\s*$/g, '')
+  return `${song.artist || ''} - ${song.title || song.name || ''}`.replace(/^\s*-\s*|\s*-\s*$/g, '')
 })
 
 const scrapeQueryText = computed(() => {
@@ -709,7 +709,7 @@ async function toggleFavorite() {
     width: min(94cqw, 88cqh, 380px);
   }
   .blend-stage .vinyl-frame {
-    width: min(78cqw, 72cqh, 420px);
+    width: min(78cqw, 80cqh, 420px);
   }
 }
 .vinyl {

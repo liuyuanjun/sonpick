@@ -417,13 +417,25 @@ async function runLibraryScan(all) {
     const payload = all ? { all: true } : { source_ids: [...scanSourceIds.value] }
     const res = await scanLibrary(payload)
     const d = res.data || {}
-    const text = `扫描完成：新增 ${d.total_added || 0}，更新 ${d.total_updated || 0}，跳过 ${d.total_skipped || 0}，错误 ${d.total_errors || 0}`
-    if ((d.total_errors || 0) > 0) message.warning(text)
-    else message.success(text)
+    const taskId = d.task_id
+    message.info('扫描任务已创建，正在后台执行...')
     showScanModal.value = false
-    await refresh()
+    const task = await waitTask(taskId)
+    const result = task?.result || {}
+    const st = task?.status || 'completed'
+    if (st === 'completed') {
+      const text = result.message
+        || task?.progress?.message
+        || `扫描完成：新增 ${result.total_added || 0}，更新 ${result.total_updated || 0}`
+      message.success(text)
+      await refresh()
+    } else if (st === 'failed') {
+      message.error(task?.error_message || result.message || '扫描失败')
+    } else if (st === 'cancelled') {
+      message.warning('扫描已取消')
+    }
   } catch (err) {
-    message.error(err.response?.data?.detail || '扫描失败')
+    message.error(err.response?.data?.detail || err.message || '扫描失败')
   } finally {
     scanningLibrary.value = false
   }

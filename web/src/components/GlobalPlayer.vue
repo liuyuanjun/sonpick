@@ -7,8 +7,9 @@
         @timeupdate="onTimeUpdate"
         @loadedmetadata="onLoaded"
         @ended="onEnded"
-        @play="player.playing = true"
+        @play="onPlay"
         @pause="player.playing = false"
+        @error="onAudioError"
       />
 
       <div class="gp-left" @click="goPlayer">
@@ -104,11 +105,12 @@ import {
   Play, Pause, Close, MusicalNotes, PlaySkipBack, PlaySkipForward,
   Shuffle, Repeat, Reload, List, ListOutline, VolumeMedium, VolumeMute, Expand,
 } from '@vicons/ionicons5'
-import { NSlider } from 'naive-ui'
+import { NSlider, useMessage } from 'naive-ui'
 import { usePlayerStore } from '@/stores/player'
 import { formatTime } from '@/utils/lrc'
 
 const player = usePlayerStore()
+const message = useMessage()
 const router = useRouter()
 const audio = ref(null)
 const coverBroken = ref(false)
@@ -158,6 +160,26 @@ function onLoaded(e) {
 }
 
 function onEnded() {
+  player.next()
+}
+
+// 连续播放失败计数：成功播放时清零；整列轮过一遍仍失败则停止，避免死循环
+let consecErrors = 0
+
+function onPlay() {
+  player.playing = true
+  consecErrors = 0
+}
+
+function onAudioError() {
+  if (!player.src || !player.current) return
+  consecErrors += 1
+  if (consecErrors > (player.queue?.length || 0)) {
+    player.playing = false
+    message.error('播放列表中的歌曲暂时都无法播放')
+    return
+  }
+  message.warning(`「${player.current.title || '歌曲'}」播放失败，自动播放下一首`)
   player.next()
 }
 

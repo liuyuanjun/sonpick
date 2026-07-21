@@ -10,10 +10,11 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from webdav3.client import Client
 
-from app.models import AppSettings, MediaSource, Song
+from app.models import AppSettings, MediaSource, Song, SongFile
 from app.routers.settings import _ensure_settings
 from app.schemas import decrypt_text
 from app.services.operation_log_service import write_log
+from app.services.song_file_resolver import NoPlayableSongFileError, SongFileResolver
 
 
 ProgressCb = Optional[Callable[[str], None]]
@@ -189,10 +190,10 @@ class WebDAVService:
             removed_records = len(song_files)
             if song_ids:
                 for song in self.db.query(Song).filter(Song.id.in_(song_ids)).all():
-                    if song.webdav_path and (song.webdav_path == rel or song.webdav_path.startswith(rel + "/")):
-                        song.webdav_path = None
-                    if not song.webdav_path and song.status in ("remote", "both", "uploaded"):
-                        song.status = "local" if song.local_path else song.status
+                    remaining = self.db.query(SongFile).filter(SongFile.song_id == song.id).all()
+                    has_local = any(sf.local_path for sf in remaining)
+                    has_remote = any(sf.webdav_path for sf in remaining)
+                    song.status = "both" if has_local and has_remote else "local" if has_local else "remote"
 
             write_log(
                 self.db,
@@ -359,7 +360,19 @@ class WebDAVService:
     ) -> dict[str, Any]:
         if not self.db:
             raise ValueError("WebDAVService 需要数据库会话")
-        audio_path = local_path or song.local_path
+        try:
+            selected_file = None
+            if local_path:
+                selected_file = (
+                    self.db.query(SongFile)
+                    .filter(SongFile.song_id == song.id, SongFile.local_path == local_path)
+                    .first()
+                )
+            if selected_file is None:
+                selected_file = SongFileResolver(self.db).resolve_local(song)
+        except NoPlayableSongFileError as exc:
+            raise ValueError(str(exc)) from exc
+        audio_path = selected_file.local_path
         if not audio_path or not Path(audio_path).exists():
             raise ValueError("本地音频文件不存在")
 
@@ -438,20 +451,22 @@ class WebDAVService:
         lrc_res = {"action": "disabled", "ok": True, "remote_path": None, "local_path": song.lrc_path}
 
         if upload_sidecar:
-            if song.cover_path and Path(song.cover_path).exists():
-                cover_ext = Path(song.cover_path).suffix or ".jpg"
+            cover_local = selected_file.cover_path or song.cover_path
+            lrc_local = selected_file.lrc_path or song.lrc_path
+            if cover_local and Path(cover_local).exists():
+                cover_ext = Path(cover_local).suffix or ".jpg"
                 cover_remote = self._join_remote(remote_parent, f"{final_stem}{cover_ext}")
                 note(f"上传封面: {Path(cover_remote).name}")
-                cover_res = self._upload_one(client, song.cover_path, cover_remote, policy)
+                cover_res = self._upload_one(client, cover_local, cover_remote, policy)
             else:
-                cover_res = {"action": "missing", "ok": True, "remote_path": None, "local_path": song.cover_path}
+                cover_res = {"action": "missing", "ok": True, "remote_path": None, "local_path": cover_local}
 
-            if song.lrc_path and Path(song.lrc_path).exists():
+            if lrc_local and Path(lrc_local).exists():
                 lrc_remote = self._join_remote(remote_parent, f"{final_stem}.lrc")
                 note(f"上传歌词: {Path(lrc_remote).name}")
-                lrc_res = self._upload_one(client, song.lrc_path, lrc_remote, policy)
+                lrc_res = self._upload_one(client, lrc_local, lrc_remote, policy)
             else:
-                lrc_res = {"action": "missing", "ok": True, "remote_path": None, "local_path": song.lrc_path}
+                lrc_res = {"action": "missing", "ok": True, "remote_path": None, "local_path": lrc_local}
 
         deleted_local = False
         delete_detail: dict[str, Any] = {}
@@ -459,25 +474,24 @@ class WebDAVService:
         truly_uploaded = audio_action in {"uploaded", "overwrite", "rename"}
 
         if delete_local and truly_uploaded:
-            deleted_local, delete_detail = self._delete_local_files(song)
+            deleted_local, delete_detail = self._delete_local_files(selected_file)
             note("已删除本地文件" if deleted_local else "删除本地文件时部分失败")
         elif delete_local and audio_action == "skip":
             note("远端已存在且策略为跳过，保留本地文件")
 
         if truly_uploaded or audio_action == "skip":
-            song.webdav_path = final_audio_remote
+            selected_file.webdav_path = final_audio_remote
+            selected_file.library_source_id = target_source_id or selected_file.library_source_id
+            if deleted_local:
+                selected_file.local_path = None
+                selected_file.cover_path = None
+                selected_file.lrc_path = None
+            versions = self.db.query(SongFile).filter(SongFile.song_id == song.id).all()
+            has_local = any(sf.local_path for sf in versions)
+            has_remote = any(sf.webdav_path for sf in versions)
+            song.status = "both" if has_local and has_remote else "local" if has_local else "remote"
             if target_source_id:
                 song.library_source_id = target_source_id
-            if deleted_local:
-                song.status = "remote"
-                song.local_path = None
-                song.cover_path = None
-                song.lrc_path = None
-            else:
-                if song.status == "uploaded":
-                    song.status = "both"
-                if song.status not in {"both", "remote"}:
-                    song.status = "both"
             from datetime import datetime, timezone
             song.updated_at = datetime.now(timezone.utc)
             self.db.commit()
@@ -541,13 +555,13 @@ class WebDAVService:
             parts.append("已删本地")
         return "；".join(parts)
 
-    def _delete_local_files(self, song: Song) -> tuple[bool, dict[str, Any]]:
+    def _delete_local_files(self, song_file: SongFile) -> tuple[bool, dict[str, Any]]:
         detail: dict[str, Any] = {"files": []}
         ok = True
         for label, path in (
-            ("audio", audio_path),
-            ("cover", song.cover_path),
-            ("lrc", song.lrc_path),
+            ("audio", song_file.local_path),
+            ("cover", song_file.cover_path),
+            ("lrc", song_file.lrc_path),
         ):
             if not path:
                 detail["files"].append({"kind": label, "path": path, "action": "missing"})

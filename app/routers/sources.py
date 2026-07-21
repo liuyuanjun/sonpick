@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import MediaSource, Song, SongFile
+from app.models import MediaSource, Song, SongFile, Task
 from app.routers.auth import get_current_user
 from app.schemas import SourceCreate, SourceOut, SourceUpdate, encrypt_text, decrypt_text
 from app.services.library_scan_service import LibraryScanService
@@ -221,10 +221,10 @@ def delete_browse_item(
         db.delete(sf)
     if song_ids:
         for song in db.query(Song).filter(Song.id.in_(song_ids)).all():
-            if song.local_path and (song.local_path == abs_path or (is_dir and song.local_path.startswith(abs_path + "/"))):
-                song.local_path = None
-            if not song.local_path and song.status in ("local", "both"):
-                song.status = "remote" if song.webdav_path else song.status
+            remaining = db.query(SongFile).filter(SongFile.song_id == song.id).all()
+            has_local = any(sf.local_path for sf in remaining)
+            has_remote = any(sf.webdav_path for sf in remaining)
+            song.status = "both" if has_local and has_remote else "local" if has_local else "remote"
 
     write_log(
         db,
@@ -388,15 +388,23 @@ def scan_source(
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """快捷扫描单个源。"""
+    """快捷扫描单个源（异步任务）。"""
     source = db.get(MediaSource, source_id)
     if not source:
         raise HTTPException(status_code=404, detail="源不存在")
     if not source.enabled:
         raise HTTPException(status_code=400, detail="源已禁用")
 
-    result = LibraryScanService(db).scan(source_ids=[source_id])
-    return result
+    task = Task(
+        type="scan",
+        status="pending",
+        payload_json=json.dumps({"source": "all", "source_ids": [source_id]}),
+        progress_json=json.dumps({"percent": 0, "message": "等待扫描..."}),
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return {"task_id": task.id, "status": "pending", "message": "扫描任务已创建"}
 
 
 class ReorganizeRequest(BaseModel):

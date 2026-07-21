@@ -1,17 +1,20 @@
 import asyncio
 import json
+import threading
+import time
 import traceback
-from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from concurrent.futures import Future, ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, get_engine
-from app.models import AppSettings, Song, Task
+from app.models import AppSettings, Song, SongFile, Task, iso_utc
 from app.services.musicdl_service import MusicDLService
 from app.services.operation_log_service import write_log
+from app.services.song_file_resolver import SongFileResolver
 from app.services.webdav_service import WebDAVService
 
 
@@ -91,6 +94,9 @@ class TaskWorker:
         self.executor = ThreadPoolExecutor(max_workers=2)
         self._running = False
         self.loop: Optional[asyncio.AbstractEventLoop] = None
+        self._running_futures: dict[int, Future] = {}
+        self._future_lock = threading.Lock()
+        self._watchdog_task: Optional[asyncio.Task] = None
 
     def set_loop(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
@@ -123,9 +129,17 @@ class TaskWorker:
 
             if task_id is not None:
                 try:
-                    await asyncio.get_event_loop().run_in_executor(
+                    future = asyncio.get_event_loop().run_in_executor(
                         self.executor, self._run_sync, task_id
                     )
+                    with self._future_lock:
+                        self._running_futures[task_id] = future
+                    future.add_done_callback(
+                        lambda f, tid=task_id: self._remove_future(tid)
+                    )
+                    await future
+                except asyncio.CancelledError:
+                    raise
                 except Exception as e:
                     print(f"[process_loop executor error] {e}", flush=True)
                     traceback.print_exc()
@@ -133,7 +147,8 @@ class TaskWorker:
             else:
                 await asyncio.sleep(1)
 
-    def emit(self, task_id: int, message: str, percent: int = 0):
+    def emit(self, task_id: int, message: str, percent: Optional[int] = None):
+        """持久化进度并广播。percent 为 None 时保留原百分比（仅更新消息/日志）。"""
         db = SessionLocal()
         try:
             task = db.get(Task, task_id)
@@ -142,7 +157,8 @@ class TaskWorker:
                 logs = progress.get("logs", [])
                 logs.append({"t": datetime.now(timezone.utc).isoformat(), "m": message})
                 progress["logs"] = logs[-100:]
-                progress["percent"] = percent
+                if percent is not None:
+                    progress["percent"] = percent
                 progress["message"] = message
                 task.progress_json = json.dumps(progress, ensure_ascii=False)
                 task.updated_at = datetime.now(timezone.utc)
@@ -197,11 +213,58 @@ class TaskWorker:
             if not task or task.status == "cancelled":
                 return
             task.status = "running"
+            task.worker_thread_id = threading.current_thread().ident
             task.updated_at = datetime.now(timezone.utc)
             db.commit()
 
             payload = json.loads(task.payload_json or "{}")
             settings = db.get(AppSettings, 1)
+
+            if task.type == "scan":
+                from app.services.library_scan_service import LibraryScanService
+
+                scan_source = payload.get("source", "all")
+                scan_source_ids = payload.get("source_ids")
+
+                # 节流：percent 变化或距上次 >=2s 才落库/广播，避免大曲库扫描打爆 SQLite
+                _emit_state = {"last": 0.0, "pct": None}
+
+                def _scan_emit(msg: str, pct: Optional[int] = None, _tid=task_id):
+                    now = time.monotonic()
+                    changed = pct is not None and pct != _emit_state["pct"]
+                    if changed or now - _emit_state["last"] >= 2.0:
+                        _emit_state["last"] = now
+                        if pct is not None:
+                            _emit_state["pct"] = pct
+                        self.emit(_tid, msg, pct)
+
+                self.emit(task_id, "正在扫描曲库...", 5)
+                scan_svc = LibraryScanService(db)
+                result = scan_svc.scan(source=scan_source, source_ids=scan_source_ids, emit=_scan_emit)
+                heal = result.get("heal_stats", {}) or {}
+                msg = (
+                    f"扫描完成: 新增 {result.get('total_added', 0)}, "
+                    f"更新 {result.get('total_updated', 0)}"
+                )
+                if heal.get("healed"):
+                    msg += f", 路径恢复 {heal['healed']}"
+                if heal.get("marked_unavailable"):
+                    msg += f", 失效标记 {heal['marked_unavailable']}"
+                if heal.get("deduped_songs"):
+                    msg += f", 清理重复失效 {heal['deduped_songs']}"
+                if heal.get("refreshed_songs"):
+                    msg += f", 展示路径回填 {heal['refreshed_songs']}"
+                if heal.get("cleaned_stale_versions"):
+                    msg += f", 清理冗余版本 {heal['cleaned_stale_versions']}"
+                result["ok"] = True
+                result["message"] = msg
+                task.result_json = json.dumps(result, ensure_ascii=False)
+                task.status = "completed"
+                status = "completed"
+                task.updated_at = datetime.now(timezone.utc)
+                db.commit()
+                self.emit(task_id, msg, 100)
+                return
 
             if task.type == "scrape":
                 from app.services.scrape.job import run_scrape_job
@@ -339,6 +402,7 @@ class TaskWorker:
                         )
                         if song is None:
                             raise RuntimeError("未找到可下载版本，或下载文件落盘失败")
+                        downloaded_file = SongFileResolver(db).resolve_local(song)
                         write_log(
                             db,
                             action="download",
@@ -346,7 +410,7 @@ class TaskWorker:
                             status="success",
                             title=f"{song.artist or ''} - {song.title}".strip(" -"),
                             message=f"下载完成 ({song.format or ''})",
-                            local_path=song.local_path,
+                            local_path=downloaded_file.local_path,
                             song_id=song.id,
                             task_id=task_id,
                             detail={
@@ -421,7 +485,7 @@ class TaskWorker:
                                 status="failed",
                                 title=f"{song.artist or ''} - {song.title}".strip(" -"),
                                 message=str(e),
-                                local_path=song.local_path,
+                                local_path=SongFileResolver(db).resolve_local(song).local_path,
                                 song_id=song.id,
                                 task_id=task_id,
                             )
@@ -435,35 +499,35 @@ class TaskWorker:
         except Exception as e:
             print(f"[_run_sync error] {e}", flush=True)
             traceback.print_exc()
-            task = db.get(Task, task_id)
-            if task:
-                task.status = "failed"
-                task.error_message = str(e)
-                task.result_json = json.dumps({"ok": False, "error": str(e)})
-                task.updated_at = datetime.now(timezone.utc)
-                db.commit()
-                self.emit(task_id, f"失败: {e}", 100)
+            # worker 的 Session 可能已处于 PendingRollbackError（DB 层崩溃），
+            # 必须用全新 Session 写终态，否则任务状态会永远卡在 running
+            self._mark_failed(task_id, e)
             status = "failed"
         finally:
+            db2 = SessionLocal()
             try:
-                task = db.get(Task, task_id)
+                task = db2.get(Task, task_id)
                 if task:
                     task.updated_at = datetime.now(timezone.utc)
-                    db.commit()
+                    db2.commit()
                     # 终态再推一次，防止 SSE 漏事件
                     if task.status in {"completed", "failed", "cancelled"} and self.loop:
                         task_event_hub.publish_threadsafe(task_id, task.to_dict(), self.loop)
             except Exception as e:
                 print(f"[finally db error] {e}", flush=True)
                 try:
-                    db.rollback()
+                    db2.rollback()
                 except Exception:
                     pass
             finally:
                 try:
-                    db.close()
+                    db2.close()
                 except Exception as e:
                     print(f"[finally close error] {e}", flush=True)
+            try:
+                db.close()
+            except Exception:
+                pass
             try:
                 if self.loop:
                     asyncio.run_coroutine_threadsafe(
@@ -477,9 +541,109 @@ class TaskWorker:
             except Exception as e:
                 print(f"[finally ws error] {e}", flush=True)
 
+    def _mark_failed(self, task_id: int, exc: Exception):
+        """用全新 Session 写入 failed 终态（调用方的 Session 可能已不可用）。"""
+        db = SessionLocal()
+        try:
+            task = db.get(Task, task_id)
+            if not task or task.status in {"completed", "failed", "cancelled"}:
+                return
+            task.status = "failed"
+            task.error_message = str(exc)
+            task.result_json = json.dumps(
+                {"ok": False, "error": str(exc), "message": f"任务失败: {exc}"},
+                ensure_ascii=False,
+            )
+            task.updated_at = datetime.now(timezone.utc)
+            db.commit()
+        except Exception as e:
+            print(f"[_mark_failed error] {e}", flush=True)
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        finally:
+            try:
+                db.close()
+            except Exception:
+                pass
+        self.emit(task_id, f"失败: {exc}", 100)
+
     def _is_cancelled(self, task_id: int, db: Session) -> bool:
         task = db.get(Task, task_id)
         return task is None or task.status == "cancelled"
+
+    def _remove_future(self, task_id: int):
+        with self._future_lock:
+            self._running_futures.pop(task_id, None)
+
+    async def _watchdog(self):
+        """Periodically scan stale running tasks, mark orphan/lost ones as failed."""
+        STALE_THRESHOLD_MINUTES = 30
+        CHECK_INTERVAL_SECONDS = 60
+        await asyncio.sleep(CHECK_INTERVAL_SECONDS)  # initial delay
+        while self._running:
+            try:
+                db = SessionLocal()
+                try:
+                    cutoff = datetime.now(timezone.utc) - timedelta(minutes=STALE_THRESHOLD_MINUTES)
+                    stale_tasks = (
+                        db.query(Task)
+                        .filter(
+                            Task.status == "running",
+                            Task.updated_at < cutoff,
+                        )
+                        .all()
+                    )
+                    for task in stale_tasks:
+                        tid = task.id
+
+                        with self._future_lock:
+                            future = self._running_futures.get(tid)
+
+                        # 判定依据只看 future，不看线程 ident：
+                        # 线程池的工作线程执行完任务后仍然存活（空闲复用），
+                        # "线程活着" 不代表 "任务还在跑"。
+                        # future 不在字典里只有两种可能：任务已结束（done_callback
+                        # 已移除）或进程重启后 orphaned——两种情况都不可能再更新状态。
+                        lost = future is None or future.done()
+
+                        if lost:
+                            task.status = "failed"
+                            task.error_message = (
+                                "任务异常中断：worker 已结束但未写入终态"
+                                f"（最后更新：{iso_utc(task.updated_at) or 'N/A'}）"
+                            )
+                            progress = json.loads(task.progress_json or "{}")
+                            progress["percent"] = 0
+                            progress["message"] = "任务异常中断（worker 丢失或进程重启）"
+                            task.progress_json = json.dumps(progress, ensure_ascii=False)
+                            task.updated_at = datetime.now(timezone.utc)
+                            db.commit()
+
+                            # push final state
+                            if self.loop:
+                                asyncio.run_coroutine_threadsafe(
+                                    ws_manager.broadcast({
+                                        "type": "task_update",
+                                        "task_id": tid,
+                                        "status": "failed",
+                                    }),
+                                    self.loop,
+                                )
+                                task_event_hub.publish_threadsafe(tid, task.to_dict(), self.loop)
+
+                            print(f"[watchdog] marked task {tid} as failed (stale/lost thread)", flush=True)
+
+                            with self._future_lock:
+                                self._running_futures.pop(tid, None)
+                finally:
+                    db.close()
+            except Exception as e:
+                print(f"[watchdog error] {e}", flush=True)
+                traceback.print_exc()
+
+            await asyncio.sleep(CHECK_INTERVAL_SECONDS)
 
     def stop(self):
         self._running = False

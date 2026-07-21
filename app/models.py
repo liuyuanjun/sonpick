@@ -7,6 +7,19 @@ from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, T
 from app.database import Base
 
 
+def iso_utc(dt: Optional[datetime]) -> Optional[str]:
+    """序列化时间为带 UTC 偏移的 ISO 字符串。
+
+    SQLite 读回的 datetime 丢失 tzinfo（实际是 UTC）；naive isoformat 会让前端
+    按本地时间解析，导致耗时/时间显示差出时区偏移（如 UTC+8 下新任务从 8 小时起算）。
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -117,13 +130,13 @@ class MediaSource(Base):
             "delete_local_after_upload": bool(self.delete_local_after_upload),
             "connection_status": self.connection_status or "unknown",
             "connection_message": self.connection_message,
-            "last_checked_at": self.last_checked_at.isoformat() if self.last_checked_at else None,
-            "last_scan_at": self.last_scan_at.isoformat() if self.last_scan_at else None,
+            "last_checked_at": iso_utc(self.last_checked_at),
+            "last_scan_at": iso_utc(self.last_scan_at),
             "last_scan_added": self.last_scan_added or 0,
             "last_scan_updated": self.last_scan_updated or 0,
             "song_count": self.song_count or 0,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "created_at": iso_utc(self.created_at),
+            "updated_at": iso_utc(self.updated_at),
         }
 
 
@@ -152,6 +165,7 @@ class Task(Base):
     payload_json = Column(Text, nullable=False, default="{}")
     progress_json = Column(Text, nullable=False, default="{}")
     result_json = Column(Text, nullable=False, default="{}")
+    worker_thread_id = Column(Integer, nullable=True)
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -165,8 +179,8 @@ class Task(Base):
             "progress": json.loads(self.progress_json or "{}"),
             "result": json.loads(self.result_json or "{}"),
             "error_message": self.error_message,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "created_at": iso_utc(self.created_at),
+            "updated_at": iso_utc(self.updated_at),
         }
 
 
@@ -182,10 +196,8 @@ class Song(Base):
     format = Column(String(16), nullable=True)
     duration = Column(Integer, nullable=True)
     file_size = Column(Integer, nullable=True)
-    local_path = Column(String(1024), nullable=True)
     cover_path = Column(String(1024), nullable=True)
     lrc_path = Column(String(1024), nullable=True)
-    webdav_path = Column(String(1024), nullable=True)
     library_source_id = Column(Integer, ForeignKey("media_sources.id", ondelete="SET NULL"), nullable=True)
     status = Column(String(16), default="local")  # local / uploaded / both / remote
     play_count = Column(Integer, default=0)
@@ -207,15 +219,13 @@ class Song(Base):
             "format": self.format,
             "duration": self.duration,
             "file_size": self.file_size,
-            "local_path": self.local_path,
             "cover_path": self.cover_path,
             "lrc_path": self.lrc_path,
-            "webdav_path": self.webdav_path,
             "library_source_id": self.library_source_id,
             "status": self.status,
             "play_count": self.play_count or 0,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "created_at": iso_utc(self.created_at),
+            "updated_at": iso_utc(self.updated_at),
         }
 
 
@@ -231,7 +241,7 @@ class Favorite(Base):
         return {
             "id": self.id,
             "song_id": self.song_id,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "created_at": iso_utc(self.created_at),
         }
 
 
@@ -252,8 +262,8 @@ class Playlist(Base):
             "description": self.description,
             "cover_song_id": self.cover_song_id,
             "song_count": song_count,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "created_at": iso_utc(self.created_at),
+            "updated_at": iso_utc(self.updated_at),
         }
 
 
@@ -279,7 +289,7 @@ class PlayHistory(Base):
         return {
             "id": self.id,
             "song_id": self.song_id,
-            "played_at": self.played_at.isoformat() if self.played_at else None,
+            "played_at": iso_utc(self.played_at),
         }
 
 
@@ -316,6 +326,8 @@ class SongFile(Base):
     format = Column(String(16), nullable=False)
     local_path = Column(String(1024), nullable=True, unique=True)
     webdav_path = Column(String(1024), nullable=True)
+    cover_path = Column(String(1024), nullable=True)
+    lrc_path = Column(String(1024), nullable=True)
     library_source_id = Column(Integer, ForeignKey("media_sources.id", ondelete="SET NULL"), nullable=True)
     duration = Column(Integer, nullable=True)
     file_size = Column(Integer, nullable=True)
@@ -332,12 +344,14 @@ class SongFile(Base):
             "format": self.format,
             "local_path": self.local_path,
             "webdav_path": self.webdav_path,
+            "cover_path": self.cover_path,
+            "lrc_path": self.lrc_path,
             "library_source_id": self.library_source_id,
             "duration": self.duration,
             "file_size": self.file_size,
             "source_priority": self.source_priority,
             "availability_status": self.availability_status,
-            "last_checked_at": self.last_checked_at.isoformat() if self.last_checked_at else None,
+            "last_checked_at": iso_utc(self.last_checked_at),
         }
 
 
@@ -370,5 +384,5 @@ class OperationLog(Base):
             "song_id": self.song_id,
             "task_id": self.task_id,
             "detail": json.loads(self.detail_json or "{}"),
-            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "created_at": iso_utc(self.created_at),
         }

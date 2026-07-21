@@ -250,10 +250,16 @@ def enrich_song_via_pipeline(
     cleaned_artist = split_a or repaired_artist or (clean_artist(raw_artist) if raw_artist else "")
     title = cleaned_title
 
+    from app.services.song_file_resolver import NoPlayableSongFileError, SongFileResolver
+    try:
+        local_file = SongFileResolver(db).resolve_local(song)
+    except NoPlayableSongFileError:
+        local_file = None
+
     # 优先本地读时长（mutagen/tinytag/ffprobe），匹配用；不靠网络
     local_duration_filled = False
-    if (not song.duration or int(song.duration or 0) <= 0) and is_local_file(getattr(song, "local_path", None)):
-        local_dur = read_audio_duration(song.local_path)
+    if (not song.duration or int(song.duration or 0) <= 0) and local_file:
+        local_dur = read_audio_duration(local_file.local_path)
         if local_dur and int(local_dur) > 0:
             song.duration = int(local_dur)
             local_duration_filled = True
@@ -321,17 +327,16 @@ def enrich_song_via_pipeline(
         need_fields=need_fields or {"album", "artist", "title"},
     )
     # 第四级：前面未命中时，对本地音频进行 Chromaprint/AcoustID 指纹深挖。
-    if not hit and is_local_file(getattr(song, "local_path", None)):
+    if not hit and local_file:
         from app.models import AppSettings
         from app.schemas import decrypt_text
-        from app.services.scrape.providers.acoustid import lookup_acoustid
         from app.services.scrape.source_registry import select_source_configs
 
         settings = db.get(AppSettings, 1) if db else None
         enabled = {item["id"] for item in select_source_configs(getattr(settings, "scrape_sources_json", None), automatic=True)}
         api_key = decrypt_text(getattr(settings, "acoustid_api_key_enc", None)) if settings else None
         if "acoustid" in enabled and api_key:
-            hit = lookup_acoustid(song.local_path, api_key, timeout=min(25.0, timeout_per_provider))
+            hit = lookup_acoustid(local_file.local_path, api_key, timeout=min(25.0, timeout_per_provider))
     if not hit:
         # still fix local title/artist fusion even if network miss
         filled: dict[str, Any] = {}
@@ -384,19 +389,12 @@ def enrich_song_via_pipeline(
     if needs_lyrics and hit.lyrics:
         lyrics_text = str(hit.lyrics).strip()
         if lyrics_text and write_lyrics:
-            lrc_dest = None
-            local = song.local_path if is_local_file(getattr(song, "local_path", None)) else None
-            if local:
-                lrc_dest = Path(local).with_suffix(".lrc")
-            elif getattr(song, "lrc_path", None):
-                lrc_dest = Path(str(song.lrc_path))
-            else:
-                tmp = Path("/tmp/sonpick_lyrics")
-                tmp.mkdir(parents=True, exist_ok=True)
-                lrc_dest = tmp / f"song_{song.id or 'x'}.lrc"
+            lrc_dest = Path(local_file.local_path).with_suffix(".lrc") if local_file else Path("/tmp/sonpick_lyrics") / f"song_{song.id or 'x'}.lrc"
             try:
                 lrc_dest.parent.mkdir(parents=True, exist_ok=True)
                 lrc_dest.write_text(lyrics_text, encoding="utf-8")
+                if local_file:
+                    local_file.lrc_path = str(lrc_dest)
                 song.lrc_path = str(lrc_dest)
                 filled["lrc_path"] = song.lrc_path
                 filled["lyrics"] = True
@@ -406,15 +404,12 @@ def enrich_song_via_pipeline(
             filled["lyrics"] = True
 
     if needs_cover and hit.cover_url and download_cover:
-        cover_dest = None
-        local = song.local_path if is_local_file(getattr(song, "local_path", None)) else None
-        if local:
-            cover_dest = Path(local).parent / "cover.jpg"
-        else:
-            cover_dest = Path("/tmp/sonpick_covers") / f"song_{song.id or 'x'}.jpg"
+        cover_dest = Path(local_file.local_path).parent / "cover.jpg" if local_file else Path("/tmp/sonpick_covers") / f"song_{song.id or 'x'}.jpg"
         cover_result = download_cover_with_diagnostics(hit.cover_url, cover_dest, timeout=min(20.0, timeout_per_provider))
         filled["cover_result"] = cover_result
         if cover_result.get("ok") and cover_result.get("path"):
+            if local_file:
+                local_file.cover_path = str(cover_result["path"])
             song.cover_path = str(cover_result["path"])
             filled["cover_path"] = song.cover_path
             filled["cover_url"] = hit.cover_url

@@ -44,9 +44,15 @@
               processing
               style="margin: 6px 0 4px"
             />
-            <n-text depth="3" class="task-message" :title="taskMessage(task)">
-              {{ taskMessage(task) || '等待执行' }} · 已耗时 {{ elapsedText(task) }}
-            </n-text>
+            <div class="task-item-foot">
+              <n-text depth="3" class="task-message" :title="taskMessage(task)">
+                {{ taskMessage(task) || '等待执行' }} · 已耗时 {{ elapsedText(task) }}
+              </n-text>
+              <n-button size="tiny" quaternary @click="toggleDetail(task.id)">
+                {{ expandedIds.has(task.id) ? '收起' : '详情' }}
+              </n-button>
+            </div>
+            <task-detail v-if="expandedIds.has(task.id)" :task="task" :now="now" />
           </div>
         </div>
 
@@ -61,9 +67,15 @@
               </n-space>
               <n-tag size="small" :type="statusTagType(task.status)" :bordered="false">{{ statusLabel(task.status) }}</n-tag>
             </div>
-            <n-text depth="3" class="task-message" :title="taskMessage(task)">
-              {{ taskMessage(task) || task.error_message || '-' }} · 耗时 {{ elapsedText(task) }} · {{ formatTime(task.updated_at) }}
-            </n-text>
+            <div class="task-item-foot">
+              <n-text depth="3" class="task-message" :title="taskMessage(task)">
+                {{ taskMessage(task) || task.error_message || '-' }} · 耗时 {{ elapsedText(task) }} · {{ formatTime(task.updated_at) }}
+              </n-text>
+              <n-button size="tiny" quaternary @click="toggleDetail(task.id)">
+                {{ expandedIds.has(task.id) ? '收起' : '详情' }}
+              </n-button>
+            </div>
+            <task-detail v-if="expandedIds.has(task.id)" :task="task" :now="now" />
           </div>
         </div>
       </n-space>
@@ -77,12 +89,21 @@ import { useMessage } from 'naive-ui'
 import { CloseOutline, ListOutline, SyncOutline } from '@vicons/ionicons5'
 import { cancelTask, listTasks } from '@/api/music'
 import { useWebSocket } from '@/composables/useWebSocket'
+import TaskDetail from '@/components/TaskDetail.vue'
 
 const message = useMessage()
 const show = ref(false)
 const loading = ref(false)
 const tasks = ref([])
 const now = ref(Date.now())
+const expandedIds = ref(new Set())
+
+function toggleDetail(id) {
+  const next = new Set(expandedIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  expandedIds.value = next
+}
 
 const ACTIVE_STATUSES = ['pending', 'running']
 const TERMINAL_STATUSES = ['completed', 'failed', 'cancelled']
@@ -95,6 +116,7 @@ const TYPE_LABELS = {
   batch_download: '批量下载',
   scrape: '刮削',
   convert: '转码',
+  scan: '扫描',
 }
 const STATUS_LABELS = {
   pending: '排队中',
@@ -122,6 +144,7 @@ function taskTitle(task) {
     return kws.length ? `批量下载 ${kws.length} 首：${kws[0]}${kws.length > 1 ? ' 等' : ''}` : `批量下载 #${task.id}`
   }
   if (task.type === 'scrape') return `刮削曲库 #${payload.source_id ?? task.id}`
+  if (task.type === 'scan') return `扫描曲库 #${payload.source_ids?.[0] ?? task.id}`
   if (task.type === 'convert') return `转码歌曲 #${payload.song_id ?? task.id}`
   return `任务 #${task.id}`
 }
@@ -200,6 +223,8 @@ async function onCancel(task) {
   }
 }
 
+const _notifiedTaskIds = new Set()
+
 useWebSocket((data) => {
   if (data?.type === 'task_progress') {
     upsertTask({
@@ -209,6 +234,22 @@ useWebSocket((data) => {
     })
   } else if (data?.type === 'task_update') {
     upsertTask({ id: data.task_id, status: data.status })
+    // 终态 toast（每条任务只弹一次）
+    const terminalStatus = data.status
+    const taskKey = `${data.task_id}_${terminalStatus}`
+    if (['completed', 'failed', 'cancelled'].includes(terminalStatus) && !_notifiedTaskIds.has(taskKey)) {
+      _notifiedTaskIds.add(taskKey)
+      const task = tasks.value.find(t => t.id === data.task_id)
+      const taskName = task ? taskTitle(task) : `#${data.task_id}`
+      const taskMsg = task?.progress?.message || ''
+      if (terminalStatus === 'completed') {
+        message.success(`${taskName} 完成${taskMsg ? '：' + taskMsg : ''}`)
+      } else if (terminalStatus === 'failed') {
+        message.error(`${taskName} 失败${taskMsg ? '：' + taskMsg : ''}`, { duration: 6000 })
+      } else if (terminalStatus === 'cancelled') {
+        message.warning(`${taskName} 已取消`)
+      }
+    }
   }
 })
 
@@ -253,10 +294,18 @@ loadTasks()
 }
 .task-message {
   display: block;
+  flex: 1;
+  min-width: 0;
   font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.task-item-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 .task-spin {
   animation: task-rotate 1.6s linear infinite;

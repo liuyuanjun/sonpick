@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.models import AppSettings
+from app.models import AppSettings, iso_utc
 from app.schemas import SettingsResponse, SettingsUpdate, decrypt_text, encrypt_text
 from app.routers.auth import get_current_user
 from app.services.scrape.source_registry import SOURCE_IDS, select_source_configs, source_configs
@@ -123,7 +123,7 @@ def _to_response(s: AppSettings) -> SettingsResponse:
         scrape_sources=sources,
         acoustid_ready=acoustid["available"],
         acoustid_message=acoustid["message"],
-        updated_at=s.updated_at.isoformat() if s.updated_at else None,
+        updated_at=iso_utc(s.updated_at),
     )
 
 

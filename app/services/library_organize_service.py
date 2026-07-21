@@ -87,6 +87,18 @@ def _copy_local(src: Path, dst: Path) -> Path:
     return dst
 
 
+def _quality_key(path: Path) -> tuple[int, int]:
+    """音质排序键：无损格式优先；同类按文件大小（大者码率通常更高）。"""
+    from app.services.convert_service import LOSSLESS_FORMATS
+
+    rank = 1 if path.suffix.lower().lstrip(".") in LOSSLESS_FORMATS else 0
+    try:
+        size = path.stat().st_size
+    except OSError:
+        size = 0
+    return (rank, size)
+
+
 def _sync_song_file_path(db: Session, song: Song, old_candidates: set[str], new_path: Path) -> None:
     """整理移动文件后同步更新 SongFile 版本行（0.6.0 起转换/播放以 SongFile 为准）。"""
     normalized = {c.replace("\\", "/") for c in old_candidates if c}
@@ -371,11 +383,11 @@ class LibraryOrganizeService:
             "lossless": Path(resolve_lossless_output_dir(
                 getattr(settings, "lossless_output_path", None) if settings else None,
                 storage,
-            )),
+            )).resolve(),
             "mp3": Path(resolve_mp3_output_dir(
                 getattr(settings, "mp3_output_path", None) if settings else None,
                 storage,
-            )),
+            )).resolve(),
         }
 
     @staticmethod
@@ -385,6 +397,49 @@ class LibraryOrganizeService:
         from app.services.convert_service import LOSSLESS_FORMATS
 
         return fmt_dirs["lossless" if (ext or "").lower().lstrip(".") in LOSSLESS_FORMATS else "mp3"]
+
+    def _builtin_format_dirs(self, source: MediaSource) -> dict[str, Path] | None:
+        """内置本地曲库（root 即存储目录）返回无损/MP3 存放目录，否则 None。"""
+        if source.type != "local":
+            return None
+        settings = self.db.get(AppSettings, 1)
+        storage = (getattr(settings, "storage_path", None) or "").strip() if settings else ""
+        if not storage:
+            return None
+        try:
+            if Path(source.root_path or "").expanduser().resolve() != Path(storage).expanduser().resolve():
+                return None
+        except Exception:
+            return None
+        return self._format_base_dirs()
+
+    @staticmethod
+    def _local_base_for_file(
+        fmt_dirs: dict[str, Path] | None,
+        builtin_dirs: dict[str, Path] | None,
+        path: Path,
+        selected_base: Path,
+    ) -> Path:
+        """决定单个文件的整理目标根。
+
+        开启按格式归档：按格式分流到无损/MP3 存放目录；
+        内置曲库未开归档：文件留在其当前所在的格式目录内整理；
+        其余：整理到选择的目录。
+        """
+        if fmt_dirs is not None:
+            return LibraryOrganizeService._target_base(fmt_dirs, path.suffix, selected_base)
+        if builtin_dirs:
+            try:
+                resolved = path.resolve()
+            except Exception:
+                resolved = path
+            for d in (builtin_dirs["lossless"], builtin_dirs["mp3"]):
+                try:
+                    resolved.relative_to(d.resolve())
+                    return d
+                except (ValueError, OSError):
+                    continue
+        return selected_base
 
 
     def _scrape_album_if_missing(
@@ -543,7 +598,7 @@ class LibraryOrganizeService:
                 target=source.name,
                 status="success" if result.get("failed", 0) == 0 else "partial",
                 title=f"整理源 #{source.id}",
-                message=f"moved={result.get('moved')} failed={result.get('failed')} kept={result.get('kept')}",
+                message=f"moved={result.get('moved')} failed={result.get('failed')} kept={result.get('kept')} deduped={result.get('deduped', 0)}",
                 detail={
                     **(result.get("summary") or {}),
                     "relative_dir": (relative_dir or "").strip().strip("/"),
@@ -573,10 +628,13 @@ class LibraryOrganizeService:
             if cand and cand not in candidates:
                 candidates.append(cand)
 
-        q = self.db.query(Song).filter(Song.library_source_id == source_id)
-        hit = q.filter(Song.local_path.in_(candidates)).first()
-        if hit:
-            return hit
+        hit_file = (
+            self.db.query(SongFile)
+            .filter(SongFile.library_source_id == source_id, SongFile.local_path.in_(candidates))
+            .first()
+        )
+        if hit_file:
+            return self.db.get(Song, hit_file.song_id)
 
         # suffix match: DB path ends with relative tail (Favorite/xxx.flac)
         try:
@@ -586,12 +644,16 @@ class LibraryOrganizeService:
         except Exception:
             suffix = path.name
         rows = (
-            q.filter(Song.local_path.isnot(None), Song.local_path.like(f"%{path.name}"))
+            self.db.query(SongFile)
+            .filter(SongFile.library_source_id == source_id, SongFile.local_path.isnot(None), SongFile.local_path.like(f"%{path.name}"))
             .limit(30)
             .all()
         )
-        for row in rows:
-            lp = (row.local_path or "").replace("\\", "/")
+        for file in rows:
+            lp = (file.local_path or "").replace("\\", "/")
+            row = self.db.get(Song, file.song_id)
+            if row is None:
+                continue
             if lp.endswith(path.name) or lp.endswith(suffix.replace("\\", "/")):
                 # prefer same parent folder name
                 if parent and f"/{parent}/" in f"/{lp}":
@@ -608,6 +670,7 @@ class LibraryOrganizeService:
         title = clean_title(guess.get("title") or path.stem)
         artist = clean_artist(guess.get("artist")) if guess.get("artist") else None
         if title:
+            q = self.db.query(Song)
             tq = q.filter(Song.title == title)
             if artist:
                 tq = tq.filter(Song.artist == artist)
@@ -637,7 +700,9 @@ class LibraryOrganizeService:
         t0 = time.monotonic()
         root = _source_root_local(source)
         fmt_dirs = self._format_base_dirs() if relocate_format_dirs else None
+        builtin_dirs = None if fmt_dirs is not None else self._builtin_format_dirs(source)
         rel = (relative_dir or "").strip().strip("/")
+        selected_base = _resolve_local_subdir(root, rel)
         # Early-stop walk: only collect up to limit files
         max_files = int(limit) if limit and limit > 0 else 0
         files = _iter_local_audio(
@@ -688,12 +753,19 @@ class LibraryOrganizeService:
                 continue
             rel_dir = library_relative_dir(meta.get("artist"), meta.get("album"))
             stem = track_stem(meta.get("title"), path.stem)
-            target = self._target_base(fmt_dirs, path.suffix, root) / rel_dir / f"{stem}{path.suffix.lower()}"
+            base = self._local_base_for_file(fmt_dirs, builtin_dirs, path, selected_base)
+            target = base / rel_dir / f"{stem}{path.suffix.lower()}"
             actions = []
             if path.resolve() != target.resolve():
                 actions.append("move_audio")
                 if fmt_dirs is not None:
                     actions.append("relocate_format_dir")
+                if target.exists():
+                    # 目标已有同曲目：保留音质较好的，预览标注去向
+                    if _quality_key(path) > _quality_key(target):
+                        actions.append("replace_lower_quality")
+                    else:
+                        actions.append("dedup_keep_existing")
             else:
                 actions.append("keep_audio")
             if meta.get("scraped"):
@@ -751,7 +823,9 @@ class LibraryOrganizeService:
         t0 = time.monotonic()
         root = _source_root_local(source)
         fmt_dirs = self._format_base_dirs() if relocate_format_dirs else None
+        builtin_dirs = None if fmt_dirs is not None else self._builtin_format_dirs(source)
         rel = (relative_dir or "").strip().strip("/")
+        selected_base = _resolve_local_subdir(root, rel)
         max_files = int(limit) if limit and limit > 0 else 0
         files = _iter_local_audio(
             root,
@@ -768,7 +842,7 @@ class LibraryOrganizeService:
             time.monotonic() - t0,
         )
         results: list[dict[str, Any]] = []
-        moved = kept = failed = 0
+        moved = kept = failed = deduped = 0
         failed_root = root / FAILED_DIR_NAME
 
         for path in list(files):
@@ -817,7 +891,8 @@ class LibraryOrganizeService:
 
                 rel_dir = library_relative_dir(meta.get("artist"), meta.get("album"))
                 stem = track_stem(meta.get("title"), path.stem)
-                target = self._target_base(fmt_dirs, path.suffix, root) / rel_dir / f"{stem}{path.suffix.lower()}"
+                base = self._local_base_for_file(fmt_dirs, builtin_dirs, path, selected_base)
+                target = base / rel_dir / f"{stem}{path.suffix.lower()}"
 
                 lrc_src = find_lrc_sidecar(path)
                 track_cover = find_track_cover_file(path)
@@ -826,7 +901,50 @@ class LibraryOrganizeService:
                 emb_lyrics = meta.get("lyrics")
 
                 actions: list[str] = []
+                if path.resolve() != target.resolve() and target.exists() and _quality_key(path) <= _quality_key(target):
+                    # 目标已有同曲目且音质不逊：保留目标文件，删除源文件（抢救歌词侧车）
+                    target_lrc = target.with_suffix(".lrc")
+                    if lrc_src and lrc_src.is_file() and not target_lrc.is_file():
+                        try:
+                            _move_local(lrc_src, target_lrc)
+                            actions.append("salvaged_lrc")
+                        except Exception:
+                            pass
+                    try:
+                        path.unlink()
+                    except OSError:
+                        pass
+                    if song:
+                        _sync_song_file_path(
+                            self.db,
+                            song,
+                            {str(original_path), str(original_path.resolve())},
+                            target,
+                        )
+                        if target_lrc.is_file():
+                            song.lrc_path = str(target_lrc)
+                        self.db.add(song)
+                    deduped += 1
+                    actions.append("dedup_keep_existing")
+                    results.append(
+                        _plan_item(
+                            song_id=song.id if song else None,
+                            from_path=_safe_rel(original_path, root),
+                            to_path=_safe_rel(target, root),
+                            title=str(meta.get("title")),
+                            artist=meta.get("artist"),
+                            album=meta.get("album"),
+                            actions=actions,
+                            status="ok",
+                        )
+                    )
+                    continue
+
                 if path.resolve() != target.resolve():
+                    if target.exists():
+                        # 源文件音质更好：替换目标处的低音质文件
+                        target.unlink()
+                        actions.append("replace_lower_quality")
                     new_audio = _move_local(path, target)
                     actions.append("moved_audio")
                     if fmt_dirs is not None:
@@ -862,12 +980,7 @@ class LibraryOrganizeService:
                             actions.append("copied_cover")
 
                 if song:
-                    old_path_candidates = {
-                        str(original_path),
-                        str(original_path.resolve()),
-                        song.local_path or "",
-                    }
-                    song.local_path = str(new_audio)
+                    old_path_candidates = {str(original_path), str(original_path.resolve())}
                     song.title = str(meta.get("title") or song.title)
                     if meta.get("artist") and not is_generic_dir_name(meta["artist"]):
                         song.artist = meta["artist"]
@@ -881,8 +994,12 @@ class LibraryOrganizeService:
                         song.lrc_path = str(new_lrc)
                     if cover_dst.is_file():
                         song.cover_path = str(cover_dst)
-                    self.db.add(song)
                     _sync_song_file_path(self.db, song, old_path_candidates, new_audio)
+                    moved_file = self.db.query(SongFile).filter(SongFile.song_id == song.id, SongFile.local_path == str(new_audio)).first()
+                    if moved_file:
+                        moved_file.lrc_path = str(new_lrc) if new_lrc.is_file() else moved_file.lrc_path
+                        moved_file.cover_path = str(cover_dst) if cover_dst.is_file() else moved_file.cover_path
+                    self.db.add(song)
 
                 results.append(
                     _plan_item(
@@ -938,10 +1055,9 @@ class LibraryOrganizeService:
                     _sync_song_file_path(
                         self.db,
                         song,
-                        {str(original_path), str(original_path.resolve()), song.local_path or ""},
+                        {str(original_path), str(original_path.resolve())},
                         Path(str(fail_target)),
                     )
-                    song.local_path = str(fail_target)
                     self.db.add(song)
 
         self.db.commit()
@@ -958,9 +1074,10 @@ class LibraryOrganizeService:
             "moved": moved,
             "kept": kept,
             "failed": failed,
+            "deduped": deduped,
             "skipped": sum(1 for i in results if i.get("status") == "skipped"),
             "items": results,
-            "summary": {"moved": moved, "kept": kept, "failed": failed, "skipped": sum(1 for i in results if i.get("status") == "skipped")},
+            "summary": {"moved": moved, "kept": kept, "failed": failed, "deduped": deduped, "skipped": sum(1 for i in results if i.get("status") == "skipped")},
         }
 
     def _list_webdav_dirs(self, source: MediaSource, *, relative_dir: str = "") -> dict[str, Any]:
@@ -1002,14 +1119,17 @@ class LibraryOrganizeService:
     ) -> dict[str, Any]:
         rel = (relative_dir or "").strip().strip("/")
         q = (
-            self.db.query(Song)
-            .filter(Song.library_source_id == source.id, Song.webdav_path.isnot(None))
-            .order_by(Song.id.asc())
+            self.db.query(SongFile)
+            .filter(SongFile.library_source_id == source.id, SongFile.webdav_path.isnot(None))
+            .order_by(SongFile.id.asc())
         )
-        songs = q.all()
+        files = q.all()
         items: list[dict[str, Any]] = []
-        for song in songs:
-            remote = (song.webdav_path or "").lstrip("/")
+        for song_file in files:
+            song = self.db.get(Song, song_file.song_id)
+            if not song:
+                continue
+            remote = (song_file.webdav_path or "").lstrip("/")
             if not remote:
                 continue
             parts = remote.split("/")
@@ -1054,7 +1174,8 @@ class LibraryOrganizeService:
             rel_dir = library_relative_dir(artist, album)
             stem = track_stem(title, Path(remote).stem)
             ext = Path(remote).suffix.lower() or ".mp3"
-            to_path = f"{rel_dir.as_posix()}/{stem}{ext}"
+            prefix = f"{rel}/" if rel else ""
+            to_path = f"{prefix}{rel_dir.as_posix()}/{stem}{ext}"
             actions = ["move_remote_audio"] if remote != to_path else ["keep_remote_audio"]
             actions.append("sync_remote_sidecars")
             items.append(
@@ -1114,6 +1235,11 @@ class LibraryOrganizeService:
             song = self.db.get(Song, item["song_id"]) if item.get("song_id") else None
             src = item["from_path"]
             dst = item["to_path"]
+            song_file = (
+                self.db.query(SongFile)
+                .filter(SongFile.library_source_id == source.id, SongFile.webdav_path == src)
+                .first()
+            )
             try:
                 if src == dst:
                     kept += 1
@@ -1140,8 +1266,10 @@ class LibraryOrganizeService:
                     except Exception:
                         pass
 
+                if song_file:
+                    song_file.webdav_path = dst
+                    self.db.add(song_file)
                 if song:
-                    song.webdav_path = dst
                     if item.get("title"):
                         song.title = item["title"]
                     if item.get("artist") and not is_generic_dir_name(item["artist"]):
@@ -1156,9 +1284,9 @@ class LibraryOrganizeService:
                 fail_path = f"{FAILED_DIR_NAME}/{src}"
                 try:
                     ws.move_path(src, fail_path)
-                    if song:
-                        song.webdav_path = fail_path
-                        self.db.add(song)
+                    if song_file:
+                        song_file.webdav_path = fail_path
+                        self.db.add(song_file)
                 except Exception:
                     fail_path = src
                 results.append(
@@ -1213,9 +1341,14 @@ class LibraryOrganizeService:
         for song in songs:
             try:
                 changes: dict[str, Any] = {}
+                from app.services.song_file_resolver import NoPlayableSongFileError, SongFileResolver
+                try:
+                    audio_path = SongFileResolver(self.db).resolve_local(song).local_path
+                except NoPlayableSongFileError:
+                    audio_path = None
                 meta = resolve_song_meta(
                     song,
-                    audio_path=song.local_path if is_local_file(song.local_path) else None,
+                    audio_path=audio_path,
                     db=self.db,
                     allow_network=False,
                     force=overwrite,

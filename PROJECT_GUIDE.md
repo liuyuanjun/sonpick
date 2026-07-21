@@ -82,9 +82,10 @@ music/
 
 ### 3.1 应用启动流程
 
-`app/main.py` 的 `lifespan` 会做两件事：
-1. `init_db()`：创建 SQLite 表。
+`app/main.py` 的 `lifespan` 会执行以下流程：
+1. `init_db()`：建表、轻量增量迁移、默认媒体源、SongFile 索引与历史路径责任迁移。
 2. 启动 `worker.process_loop()`：后台从队列取任务执行。
+3. 启动 `worker._watchdog()`：每 60 秒检查失联或长时间无更新的 running 任务。
 
 ### 3.2 认证
 
@@ -99,18 +100,20 @@ music/
 
 - `User`：仅一条记录，存密码哈希。
 - `AppSettings`：仅一条记录（`id=1`），存存储路径、WebDAV 配置、默认格式、自动转码/上传开关。
-- `Task`：下载/转码/上传任务，含 `status`、`progress_json`、`result_json`、`error_message`。
-- `Song`：本地曲库，记录文件路径、封面、歌词、WebDAV 路径等。
-- `Playlist`：导入的歌单历史（当前未在前端使用）。
+- `Task`：下载、扫描、转码、刮削任务；包含 `status`、`worker_thread_id`、进度、结果与错误信息。
+- `Song`：逻辑歌曲，保存展示元数据、收藏/历史关系及聚合封面/歌词缓存；**不保存物理路径**。
+- `SongFile`：文件版本唯一真相源，保存本地/WebDAV 路径、格式、侧车封面/歌词、可用状态和曲源优先级；同一 Song 可关联多个版本。
+- `MediaSource`：本地或 WebDAV 曲库源，控制启用、播放优先级和默认上传。
+- `Playlist`：歌单及其歌曲关联。
 
 ### 3.4 任务队列
 
 `app/services/task_worker.py`：
 
 - 使用 `asyncio.Queue` + `ThreadPoolExecutor(max_workers=2)`。
-- `process_loop` 是异步主循环，从队列取任务 ID。
-- `_run_sync` 在线程中执行阻塞操作（musicdl 搜索下载、FFmpeg 转码、WebDAV 上传）。
-- `emit(task_id, message, percent)` 更新任务进度到数据库，并通过 WebSocket 广播。
+- `process_loop` 是异步主循环，从队列取任务 ID；下载、扫描、转码和刮削均由 `_run_sync` 在线程中执行。
+- `emit(task_id, message, percent)` 更新任务进度，并通过 WebSocket `/ws/progress` 和单任务 SSE `/api/tasks/{id}/events` 广播。
+- 任务终态会推送 `task_update`，前端任务中心统一 toast；watchdog 对线程失联、Future 已结束但状态未收敛、或历史长时间僵尸任务标记 `failed`。
 
 **重要**：`musicdl` 的搜索/下载是阻塞且可能耗时较长的，因此必须在线程池中执行，不能放在 async 协程里。
 
@@ -121,8 +124,8 @@ music/
 - 导入 musicdl 前会移除当前目录下的 `musicdl/` 源码路径，避免与已安装的包冲突。
 - 初始化 `musicdl.MusicClient`，指定 `QQMusicClient`。
 - `search()`：返回有效下载链接的结果列表。
-- `download_one()`：搜索 → 按优先格式挑选 → 下载 → 移动文件到输出目录 → 下载封面 → 写入 `Song` 记录。
-- 文件命名：`歌名-歌手.扩展名`。
+- `download_one()`：搜索 → 按优先格式挑选 → 下载 → 按格式目录和 `艺术家/专辑/` 布局落盘 → 创建/更新 `Song` 与 `SongFile` 版本记录。
+- 文件侧车封面与歌词跟随 `SongFile`；`Song` 仅缓存当前选中版本的聚合资源。
 
 ### 3.6 文件下载与存储
 
@@ -221,8 +224,8 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 
 # 前端（另一个终端）
 cd web
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 ### 5.3 环境变量
@@ -304,11 +307,9 @@ for _p in list(sys.path):
 ## 8. 待改进项（已知）
 
 - [ ] 任务进度实时性：当前 `emit` 只在关键节点调用，大文件下载中间无进度，可改为在 musicdl 下载时定期回调或轮询文件大小。
-- [ ] 前端全局播放器：当前只有播放/暂停/进度条，可添加播放列表、上一首/下一首。
-- [ ] 歌词显示：已下载 `.lrc` 文件，但前端尚未展示。
-- [ ] 批量任务重试：失败歌曲目前没有单独重试机制。
-- [ ] WebDAV 目录结构：目前上传到 `/music` 目录，可配置化。
-- [ ] 更多音乐源：目前仅启用 QQMusicClient。
+- [ ] 增量扫描与失败任务重试：当前扫描已异步化，但尚缺按目录变更筛选与单项重试策略。
+- [ ] remote-only 曲库：补齐远程侧车封面/歌词直链与缓存体验。
+- [ ] 更多音乐源支持。
 
 ---
 

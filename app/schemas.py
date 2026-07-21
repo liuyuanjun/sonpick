@@ -162,10 +162,8 @@ class SongOut(BaseModel):
     format: Optional[str]
     duration: Optional[int]
     file_size: Optional[int]
-    local_path: Optional[str]
     cover_path: Optional[str]
     lrc_path: Optional[str]
-    webdav_path: Optional[str]
     library_source_id: Optional[int] = None
     library_source_name: Optional[str] = None
     library_source_type: Optional[str] = None
@@ -174,6 +172,7 @@ class SongOut(BaseModel):
     is_favorite: bool = False
     versions: list[dict[str, Any]] = Field(default_factory=list)
     available_formats: list[str] = Field(default_factory=list)
+    has_playable_file: bool = False
     created_at: Optional[str]
     updated_at: Optional[str]
 

@@ -10,6 +10,7 @@
 - 如果我的指令不完整、不明确、不合理、不一致，请随时告诉我询问我，而不是自己猜测或盲目执行。
 - 当需要外部信息时，比如三方文档、数据源、API 文档等，如果使用你的内置工具查询不到，先询问我查找粘贴给你，而不是直接猜测编造。
 - 要适当注意性能问题，尽量避免循环高频查询、一次载入大量数据、重复计算等。对于复杂的计算或数据处理，建议分批处理或使用缓存。
+- 当代码进行了更新后，要及时更新 `AGENTS.md` 文件，和其它相关文档。保持文档与代码的一致性。
 
 ---
 
@@ -25,7 +26,7 @@
 
 **非目标**：多用户、公网商用、版权绕过。仅供个人学习与备份。
 
-当前版本（以代码为准）：`0.5.0-rc5`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
+当前版本（以代码为准）：`0.8.0-rc2`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
 
 ---
 
@@ -51,8 +52,8 @@ music/
 │   ├── main.py               # 入口、路由挂载、静态资源、/health、X-App-Version
 │   ├── config.py             # 环境变量 Settings
 │   ├── database.py           # SQLite 引擎（惰性初始化）+ 轻量迁移
-│   ├── models.py             # User / AppSettings / Task / Song / OperationLog
-│   ├── schemas.py            # Pydantic 模型（含 TaskOut、Settings*、OperationLogOut）
+│   ├── models.py             # User / AppSettings / MediaSource / Task / Song / SongFile / OperationLog
+│   ├── schemas.py            # Pydantic 模型（含 TaskOut、SongOut、Settings*、OperationLogOut）
 │   ├── security.py           # 密码哈希 + JWT
 │   ├── routers/              # API 路由
 │   └── services/             # 业务：musicdl / webdav / convert / task_worker / operation_log
@@ -118,7 +119,10 @@ music/
   - `webdav_remote_dir`
 - `Song.status`：`local` / `uploaded` / `both` / `remote`（历史值需兼容）
 - `OperationLog.action`：`download` / `upload` / `delete` / `convert`
-- SQLite 增量字段：在 `database._ensure_columns` 添加，**不要**假设生产库会重建
+- SQLite 迁移顺序：`init_db()` 依次执行建表、`_ensure_columns`、默认媒体源、SongFile 索引以及路径责任迁移；迁移会将历史 Song 路径/侧车回填到 SongFile 后重建 `songs` 表删除旧路径列。
+- **SongFile 是物理文件唯一真相源**：所有播放、上传、转码、删除、整理、刮削和标签写入必须通过 `SongFileResolver` 或明确 SongFile 查询选择版本；禁止重新引入 `Song.local_path` / `Song.webdav_path`。
+- `Song.cover_path` / `Song.lrc_path` 是聚合缓存；`SongFile.cover_path` / `SongFile.lrc_path` 是版本侧车资源。扫描和选中版本时可回填聚合缓存。
+- 扫描接口 `/api/library/scan` 和 `/api/sources/{source_id}/scan` 会创建 `type=scan` 的异步任务；前端经任务中心/单任务 SSE 接收终态。
 
 ### 4.4 服务层
 
@@ -176,8 +180,8 @@ music/
 
 ```bash
 cd web
-pnpm install && pnpm build   # 优先
-# fallback: yarn build / npm run build
+pnpm install && pnpm build
+# 无 pnpm 时先安装/启用项目声明的 pnpm 版本，不建议切换 npm/yarn。
 ```
 
 产物：`web/dist/`。改前端后部署前必须重新 build（默认 Docker 不再容器内构建）。
@@ -191,7 +195,7 @@ pnpm install && pnpm build   # 优先
 | 变更类型 | 版本怎么动 |
 |----------|------------|
 | 新功能 | 提升正式版本位（按影响选 minor/patch） |
-| 仅 bugfix | **只升 rc**（如 `0.5.0-rc5` → `0.5.0-rc5`），不抬正式位 |
+| 仅 bugfix | **只升 rc**（如 `0.8.0-rc1` → `0.8.0-rc2`），不抬正式位 |
 | 每次改代码 | 前后端版本号**必须一致** |
 
 必须同步的位置：
@@ -251,6 +255,10 @@ docker compose logs 见远端目录
 ```
 
 只打包：`./scripts/prepare-deploy.sh` 或 `./scripts/deploy-nas.sh --pack-only`。
+
+当前项目部署于 nas.liuyuanjun.com 上，端口为 8301。
+服务器ssh端口为 9022，用户名为 admin。已经配置好密钥对，如果需要直接登录即可。
+开发期间对安全要求不高，所以如果需要可以把数据库拉取到本地分析。
 
 ### 8.2 数据与密钥
 

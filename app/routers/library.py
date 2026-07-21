@@ -13,6 +13,7 @@ from app.routers.auth import get_current_user
 from app.schemas import SongOut
 from app.services.convert_service import LOSSLESS_FORMATS, ConvertService
 from app.services.operation_log_service import write_log
+from app.services.song_file_resolver import NoPlayableSongFileError, SongFileResolver
 from app.services.webdav_service import WebDAVService
 
 router = APIRouter(prefix="/songs", tags=["library"])
@@ -97,6 +98,18 @@ def _active_song_query(db: Session):
     )
 
 
+def _playable_song_ids(db: Session):
+    """至少有一个有效版本的 Song 子查询。
+
+    有效版本 = local_path 或 webdav_path 非空，且未被标记 unavailable
+    （与 song_file_resolver.candidates 的口径一致）。
+    """
+    return db.query(SongFile.song_id).filter(
+        (SongFile.local_path.isnot(None)) | (SongFile.webdav_path.isnot(None)),
+        (SongFile.availability_status.is_(None)) | (SongFile.availability_status != "unavailable"),
+    )
+
+
 def _favorite_ids(db: Session, song_ids: list[int]) -> set[int]:
     if not song_ids:
         return set()
@@ -110,10 +123,13 @@ def list_songs(
     page: int = Query(1, ge=1),
     page_size: int = Query(500, ge=1, le=2000),
     source_id: int | None = Query(None),
+    include_unavailable: bool = Query(False),
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     query = _active_song_query(db).order_by(Song.id.desc())
+    if not include_unavailable:
+        query = query.filter(Song.id.in_(_playable_song_ids(db)))
     if source_id is not None:
         query = query.filter(Song.id.in_(db.query(SongFile.song_id).filter(SongFile.library_source_id == source_id)))
     if q:
@@ -140,6 +156,7 @@ def list_songs(
         data["library_source_type"] = src.type if src else None
         data["versions"] = [item.to_dict() for item in versions]
         data["available_formats"] = sorted({item.format for item in versions if item.format})
+        data["has_playable_file"] = primary is not None
         result.append(SongOut(**data))
     return result
 
@@ -253,9 +270,12 @@ def upload_to_webdav(
     db: Session = Depends(get_db),
 ):
     song = db.get(Song, song_id)
-    version = ConvertService(db).select_playable_file(song, lossless_preferred=True) if song else None
-    if not song or not version or not version.local_path:
-        raise HTTPException(status_code=404, detail="Song not found")
+    if not song:
+        raise HTTPException(status_code=404, detail="歌曲不存在")
+    try:
+        version = SongFileResolver(db).resolve_local(song, lossless_preferred=True)
+    except NoPlayableSongFileError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
 
     service = WebDAVService(db, source_id=source_id)
     try:
@@ -277,14 +297,22 @@ def delete_song(
         raise HTTPException(status_code=404, detail="Song not found")
 
     deleted = []
+    local_paths = []
+    remote_paths = []
+    versions = db.query(SongFile).filter(SongFile.song_id == song.id).all()
     if delete_files:
-        for p in [song.local_path, song.cover_path, song.lrc_path]:
-            if p and Path(p).exists():
-                try:
-                    Path(p).unlink()
-                    deleted.append(p)
-                except Exception:
-                    pass
+        for version in versions:
+            if version.local_path:
+                local_paths.append(version.local_path)
+                for path in (version.local_path, version.cover_path, version.lrc_path):
+                    if path and Path(path).is_file():
+                        try:
+                            Path(path).unlink()
+                            deleted.append(path)
+                        except OSError:
+                            pass
+            if version.webdav_path:
+                remote_paths.append(version.webdav_path)
 
     title = f"{song.artist or ''} - {song.title}".strip(" -")
     write_log(
@@ -294,10 +322,10 @@ def delete_song(
         status="success",
         title=title,
         message="删除曲库条目" + ("并删除本地文件" if delete_files else ""),
-        local_path=song.local_path,
-        remote_path=song.webdav_path,
+        local_path=local_paths[0] if local_paths else None,
+        remote_path=remote_paths[0] if remote_paths else None,
         song_id=song.id,
-        detail={"deleted_files": deleted, "delete_files": delete_files},
+        detail={"deleted_files": deleted, "delete_files": delete_files, "version_count": len(versions)},
     )
     db.delete(song)
     db.commit()

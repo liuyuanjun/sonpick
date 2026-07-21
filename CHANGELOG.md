@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.8.0-rc2
+
+### 修复
+- **任务系统健壮性**：`_run_sync` 异常分支改用独立 Session 写入终态（`_mark_failed`），避免原 Session 处于 PendingRollbackError 导致任务状态永远卡在 running。
+- **Watchdog 判定修正**：不再检查线程存活（线程池复用导致误判），改为依据 future 是否仍在 `_running_futures` 且未 done；僵尸任务（进程重启后 orphaned）30 分钟无心跳自动标记 failed。
+- **扫描容错**：`_upsert_local` / `_upsert_remote` 单文件异常立即回滚当前 Session 行，不再拖垮整个扫描批次；分批 commit 每 50 文件一次，减少大库扫描时的锁竞争。
+
+### 改进
+- **扫描进度**：接入 emit 回调，按阶段推送（自愈→去重→逐源扫描→自动转码），节流 2s/percent 变化，避免大曲库扫描打爆 SQLite。
+- **任务详情**：TaskCenter 展开面板展示运行日志时间线（最近 30 条）、最后心跳（超 2 分钟标黄警告）、错误信息与结果摘要。
+
+## 0.8.0-rc1
+
+### 文档
+- 对齐 README、产品概览、协作手册、开发指南与 NAS 运行包说明：明确 SongFile 唯一物理路径职责、SQLite 路径责任迁移、异步扫描、任务 watchdog、WebSocket/SSE 通知与 pnpm 构建流程。
+
+### 修复
+- 恢复被路径责任迁移误删的 `app.database.init_db` 入口，修复容器启动时 `ImportError: cannot import name 'init_db'`。
+- 删除索引初始化函数中遗留的递归初始化代码，并调整启动顺序为：建表 → 增量字段迁移 → 默认媒体源初始化 → SongFile 索引 → Song/SongFile 路径责任迁移。
+
+## 0.8.0
+
+### 架构调整
+- `SongFile` 成为唯一物理文件路径真相源：播放、上传、转码、删除、扫描、整理、刮削和标签写入均按文件版本解析，不再依赖逻辑歌曲的物理路径。
+- 移除 `Song.local_path` 与 `Song.webdav_path`，启动迁移会先幂等回填历史路径/封面/歌词到匹配的 `SongFile`，再安全重建 SQLite `songs` 表清理重复列。
+- `SongFile` 增加 `cover_path` / `lrc_path`；`Song.cover_path` / `lrc_path` 仅保留逻辑歌曲聚合缓存，随当前选中版本刷新。
+
+### 新增
+- 新增统一 `SongFileResolver`，依据可用性、格式偏好和曲源优先级选择可播放/可操作版本；无版本时返回明确业务错误。
+- Song API 返回 `has_playable_file` 与版本列表；曲库页面会展示“暂无可播放版本”并禁用播放操作。
+
+### 修复
+- 曲库文件移动、WebDAV 上传/删除、目录整理和重复扫描后，路径与侧车文件只更新对应 SongFile，避免逻辑歌曲和文件版本路径再次漂移。
+
+## 0.7.0
+
+### 新增
+- 曲库扫描改为异步任务：点击扫描后立即返回任务 ID，后台执行不阻塞 HTTP 请求；曲库页原地显示进度条，任务中心同步可见，完成后 toast 提示结果。
+- 任务中心 WebSocket 监听终态事件，任务完成/失败/取消时全局 toast 提示（每条任务仅弹一次），展示任务名称与结果摘要。
+- 任务 watchdog：后台每 60 秒扫描 `status=running` 且超过 30 分钟无更新的僵尸任务，检查 worker 线程是否存活，线程已失或超时则标记失败并推终态，解决容器重启/OOM 后任务永远卡在「进行中」的问题。
+- 扫描路径自愈：扫描前自动检查 `SongFile.local_path` 指向的文件是否存在，失效时优先用 `Song.local_path` 修正，仍找不到则标记 unavailable，避免文件移动后播放 404。
+
+### 修复
+- 整理脚本 `reorganize_library.py` 移动文件后只更新了 `Song.local_path` 而漏更 `SongFile.local_path`，导致曲库记录指向旧路径、播放 404；现以 **SongFile 为路径真相源** 优先同步文件版本路径，再回填 Song 展示缓存。
+- 扫描自愈方向纠正：不再用 `Song.local_path` 反向覆盖 `SongFile`；失效 SongFile 标记 unavailable，扫描命中同歌同格式新路径时合并旧版本行，并用可用 SongFile 回填 `Song.local_path`。
+- 数据库增量迁移 `_ensure_columns` 中 `tasks` 表缺少 `worker_thread_id` 列登记，导致线上已有数据库启动报 `no such column: tasks.worker_thread_id`；现补全 migration 条目。
+
 ## 0.6.2
 
 ### 改进
@@ -22,6 +69,8 @@
 - 下载搜索结果源信息修正：`Song.source` 与下载工作目录不再写死 `QQMusicClient`；下载流程复用已搜索命中的条目，避免二次搜索。
 
 ### 改进
+- 手动转码 MP3 改为异步任务：点击后立即返回任务 ID，进度在任务中心实时可见，不再挂起 HTTP 请求等待 ffmpeg 结束（前端默认 30s 超时会导致长转码假性失败）。
+- 任务中心显示任务耗时：进行中任务实时显示「已耗时」（秒级刷新），历史任务显示总耗时。
 - 顶栏「退出」改为图标按钮（悬浮提示「退出登录」），主题切换按钮同样补充悬浮提示。
 - 曲库页布局优化：左侧「曲库来源」收窄为 500px 固定宽度，右侧列表获得更大空间。
 - 歌曲列表改为两行高密度展示：标题/艺术家/专辑合并为「歌曲」列，来源类型/来源名称/状态合并为「来源」列，格式/版本状态合并为「格式」列；操作改为图标按钮 + 悬浮提示。

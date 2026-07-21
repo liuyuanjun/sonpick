@@ -14,7 +14,7 @@ from app.routers import auth, download, library, library_extra, library_scan, lo
 from app.services.task_worker import worker, ws_manager
 from app.security import decode_token
 
-APP_VERSION = "0.6.2"
+APP_VERSION = "0.8.0-rc2"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,10 +28,12 @@ async def lifespan(app: FastAPI):
     init_db()
     loop = asyncio.get_event_loop()
     worker.set_loop(loop)
-    task = asyncio.create_task(worker.process_loop())
+    process_task = asyncio.create_task(worker.process_loop())
+    watchdog_task = asyncio.create_task(worker._watchdog())
     yield
     worker.stop()
-    task.cancel()
+    process_task.cancel()
+    watchdog_task.cancel()
 
 
 app = FastAPI(title="拾音 Sonpick", lifespan=lifespan)

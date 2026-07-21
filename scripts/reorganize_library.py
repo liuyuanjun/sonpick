@@ -648,7 +648,7 @@ def sync_db_paths(
 
     try:
         from app.database import SessionLocal, init_db
-        from app.models import Song
+        from app.models import Song, SongFile
     except Exception as e:
         print(f"[with-db] 导入 app 失败: {e}", file=sys.stderr)
         return
@@ -662,21 +662,50 @@ def sync_db_paths(
                 continue
             moved_map[str(Path(plan["from"]).resolve())] = plan
 
-        q = db.query(Song).filter(Song.local_path.isnot(None))
+        from datetime import datetime, timezone
+
+        # 以 SongFile 为路径真相源：先按文件版本匹配移动计划
+        sf_q = db.query(SongFile).filter(SongFile.local_path.isnot(None))
         if source_id is not None:
-            q = q.filter(Song.library_source_id == source_id)
-        songs = q.all()
-        updated = 0
-        for song in songs:
-            if not song.local_path:
+            sf_q = sf_q.filter(SongFile.library_source_id == source_id)
+        song_files = sf_q.all()
+        updated_files = 0
+        touched_song_ids = set()
+        file_plan_by_song = {}
+
+        for sf in song_files:
+            if not sf.local_path:
                 continue
             try:
-                key = str(Path(song.local_path).resolve())
+                key = str(Path(sf.local_path).resolve())
             except Exception:
-                key = song.local_path
+                key = sf.local_path
             plan = moved_map.get(key)
             if not plan:
                 continue
+            if apply:
+                sf.local_path = plan["to"]
+                sf.availability_status = "available"
+                sf.last_error = None
+                sf.updated_at = datetime.now(timezone.utc)
+                db.add(sf)
+                updated_files += 1
+                if sf.song_id:
+                    touched_song_ids.add(sf.song_id)
+                    file_plan_by_song[sf.song_id] = plan
+            else:
+                updated_files += 1
+                if sf.song_id:
+                    touched_song_ids.add(sf.song_id)
+                    file_plan_by_song[sf.song_id] = plan
+
+        # SongFile 是唯一物理路径记录；旧 Song 路径列已由数据库迁移处理。
+        updated_songs = 0
+        for sid in touched_song_ids:
+            song = db.get(Song, sid)
+            if not song:
+                continue
+            plan = file_plan_by_song.get(sid)
             if enrich:
                 try:
                     from app.services.media_meta_service import resolve_song_meta
@@ -684,28 +713,36 @@ def sync_db_paths(
                     resolve_song_meta(song, db=db, allow_network=True, force=False)
                 except Exception as e:
                     print(f"[enrich] song#{song.id} failed: {e}", file=sys.stderr)
-            if apply:
-                song.local_path = plan["to"]
-                m = plan.get("meta") or {}
-                if m.get("title"):
-                    song.title = m["title"]
-                if m.get("artist") and not is_generic_dir_name(m["artist"]):
-                    song.artist = m["artist"]
-                if m.get("album") and not is_generic_dir_name(m["album"]):
-                    song.album = m["album"]
-                new_lrc = Path(plan["to"]).with_suffix(".lrc")
-                if new_lrc.is_file():
-                    song.lrc_path = str(new_lrc)
-                cover = preferred_album_cover_path(Path(plan["to"]).parent)
-                if cover.is_file():
-                    song.cover_path = str(cover)
-                db.add(song)
-                updated += 1
-        if apply:
+            if not apply or not plan:
+                continue
+            files = db.query(SongFile).filter(SongFile.song_id == song.id, SongFile.local_path.isnot(None)).all()
+            primary = next((Path(sf.local_path) for sf in files if sf.local_path and Path(sf.local_path).exists()), Path(plan["to"]))
+            primary_file = next((sf for sf in files if sf.local_path == str(primary)), None)
+            m = plan.get("meta") or {}
+            if m.get("title"):
+                song.title = m["title"]
+            if m.get("artist") and not is_generic_dir_name(m["artist"]):
+                song.artist = m["artist"]
+            if m.get("album") and not is_generic_dir_name(m["album"]):
+                song.album = m["album"]
+            new_lrc = primary.with_suffix(".lrc")
+            if new_lrc.is_file():
+                if primary_file:
+                    primary_file.lrc_path = str(new_lrc)
+                song.lrc_path = str(new_lrc)
+            cover = preferred_album_cover_path(primary.parent)
+            if cover.is_file():
+                if primary_file:
+                    primary_file.cover_path = str(cover)
+                song.cover_path = str(cover)
+            db.add(song)
+            updated_songs += 1
+
+        if apply and (updated_files or updated_songs):
             db.commit()
-            print(f"[with-db] updated songs={updated}")
+            print(f"[with-db] song_files={updated_files} songs={updated_songs}")
         else:
-            print(f"[with-db dry-run] would update songs≈{len(moved_map)}")
+            print(f"[with-db dry-run] song_files≈{updated_files} songs≈{len(touched_song_ids)}")
     finally:
         db.close()
 

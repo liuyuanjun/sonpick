@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from mutagen.id3 import APIC, ID3
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -97,7 +98,14 @@ class ConvertService:
         existing.file_size = output_path.stat().st_size
         existing.duration = song.duration or source.duration
         existing.library_source_id = source.library_source_id
-        self.db.commit()
+        try:
+            self.db.commit()
+        except IntegrityError as exc:
+            self.db.rollback()
+            raise RuntimeError(
+                f"MP3 输出路径已被曲库中其他歌曲的版本占用: {output_path}"
+                "（疑似重复歌曲，请整理曲库后再试）"
+            ) from exc
         return existing
 
     def _pick_lossless_source(self, song: Song) -> SongFile:
@@ -126,17 +134,11 @@ class ConvertService:
         )
 
     def _relocate_missing_file(self, song: Song, item: SongFile) -> SongFile | None:
-        """SongFile.local_path 失效时尝试重新定位文件，返回可用的版本行。
-
-        覆盖两类常见失真：曲库整理只更新了 Song.local_path；macOS 创建的
-        NFD 文件名与 DB 中 NFC 形式不一致。
-        """
+        """SongFile 路径失效时仅在文件版本及曲库根目录中重新定位。"""
         old = item.local_path or ""
         name = Path(old).name
         suffix = Path(old).suffix.lower()
         candidates: list[str] = [old]
-        if song.local_path and song.local_path != old:
-            candidates.append(song.local_path)
         for cand in candidates:
             for variant in {cand, unicodedata.normalize("NFC", cand), unicodedata.normalize("NFD", cand)}:
                 p = Path(variant)
@@ -187,8 +189,16 @@ class ConvertService:
             if any((item.format or "").lower() == "mp3" for item in files):
                 continue
             if any(self.is_lossless(item) and item.local_path for item in files):
-                self.convert_song_to_mp3(song)
-                converted.append(song.id)
+                try:
+                    self.convert_song_to_mp3(song)
+                    converted.append(song.id)
+                except Exception:
+                    # 单曲转码失败（含路径唯一约束冲突）不影响其它歌曲与扫描任务
+                    try:
+                        self.db.rollback()
+                    except Exception:
+                        pass
+                    continue
         return converted
 
     def _output_path(self, song: Song) -> Path:

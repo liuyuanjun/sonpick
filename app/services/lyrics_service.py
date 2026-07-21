@@ -131,80 +131,42 @@ def _as_path_str(path: str | Path) -> str:
     return str(path)
 
 
-def candidate_lrc_paths(song) -> list[str]:
-    """Derive same-stem LRC candidates from song audio paths.
-
-    Order: existing lrc_path first, then local sidecars, then remote sidecars.
-    """
+def candidate_lrc_paths(song, db=None) -> list[str]:
+    """基于 SongFile 版本推导同名歌词候选。"""
     seen: set[str] = set()
     out: list[str] = []
 
-    def add(p: Optional[str]):
-        if not p:
+    def add(value: Optional[str]):
+        if not value:
             return
-        key = str(p).replace("\\", "/")
-        if key in seen:
-            return
-        seen.add(key)
-        out.append(str(p))
+        key = str(value).replace("\\", "/")
+        if key not in seen:
+            seen.add(key)
+            out.append(str(value))
 
     add(getattr(song, "lrc_path", None))
+    if db is None or not getattr(song, "id", None):
+        return out
+    from app.models import SongFile
 
-    local = getattr(song, "local_path", None)
-    if local:
-        audio = Path(local)
-        # layout helper first
-        try:
-            found = find_lrc_sidecar(audio)
-            if found:
-                add(str(found))
-        except Exception:
-            pass
-        # same stem next to audio: foo.flac -> foo.lrc / foo.txt
-        for ext in SIDE_LRC_EXTS:
-            add(str(audio.with_suffix(ext)))
-            add(str(audio.with_suffix("")) + ext)
-        # case-insensitive / partial stem match in the same folder
-        try:
-            stem_low = audio.stem.lower()
-            parent = audio.parent
-            if parent.is_dir():
-                fuzzy: list[Path] = []
-                for child in parent.iterdir():
-                    if not child.is_file():
-                        continue
-                    low = child.name.lower()
-                    if not low.endswith((".lrc", ".txt")):
-                        continue
-                    cstem = child.stem.lower()
-                    if cstem == stem_low or stem_low in cstem or cstem in stem_low:
-                        fuzzy.append(child)
-                fuzzy.sort(key=lambda c: (0 if c.suffix.lower() == ".lrc" else 1, abs(len(c.stem) - len(audio.stem)), c.name))
-                for c in fuzzy[:6]:
-                    add(str(c))
-        except Exception:
-            pass
-
-    remote = getattr(song, "webdav_path", None)
-    if remote:
-        remote_norm = str(remote).replace("\\", "/").lstrip("/")
-        # strip audio extension if present
-        if "." in remote_norm.rsplit("/", 1)[-1]:
-            stem_remote = remote_norm.rsplit(".", 1)[0]
-        else:
-            stem_remote = remote_norm
-        for ext in (".lrc", ".LRC", ".txt", ".TXT"):
-            add(stem_remote + ext)
-
+    for song_file in db.query(SongFile).filter(SongFile.song_id == song.id).all():
+        add(song_file.lrc_path)
+        if song_file.local_path:
+            audio = Path(song_file.local_path)
+            try:
+                found = find_lrc_sidecar(audio)
+                if found:
+                    add(str(found))
+            except Exception:
+                pass
+            for ext in SIDE_LRC_EXTS:
+                add(str(audio.with_suffix(ext)))
+        if song_file.webdav_path:
+            remote = song_file.webdav_path.replace("\\", "/").lstrip("/")
+            stem = remote.rsplit(".", 1)[0] if "." in remote else remote
+            add(stem + ".lrc")
+            add(stem + ".txt")
     return out
-
-
-def resolve_lrc_path(song, db=None) -> Optional[str]:
-    """Return first readable LRC path for song (local or remote)."""
-    for cand in candidate_lrc_paths(song):
-        if _load_raw_from_path(cand, db=db):
-            return cand
-    return None
 
 
 def load_lyrics_for_song(song, db=None, *, persist: bool = True) -> tuple[list[dict], Optional[str], Optional[str]]:
@@ -222,7 +184,7 @@ def load_lyrics_for_song(song, db=None, *, persist: bool = True) -> tuple[list[d
     # 2) Discover same-stem sidecars
     resolved = None
     raw = None
-    for cand in candidate_lrc_paths(song):
+    for cand in candidate_lrc_paths(song, db):
         if cand == stored:
             continue
         trial_lines, trial_raw = load_lyrics(cand, db=db)
@@ -231,24 +193,26 @@ def load_lyrics_for_song(song, db=None, *, persist: bool = True) -> tuple[list[d
             lines, raw = trial_lines, trial_raw
             break
 
-    if not raw:
-        # 2b) embedded lyrics in local audio → materialize .lrc sidecar
-        local = getattr(song, "local_path", None)
-        if local and Path(local).is_file():
-            try:
-                from app.services.media_meta_service import read_audio_tags
-                tags = read_audio_tags(local)
-                emb = tags.get("lyrics") if tags else None
-                if emb and str(emb).strip():
-                    target = Path(local).with_suffix(".lrc")
-                    body = str(emb).replace("\r\n", "\n").strip()
-                    if not target.exists():
-                        target.write_text(body + ("\n" if not body.endswith("\n") else ""), encoding="utf-8")
-                    trial_lines, trial_raw = load_lyrics(str(target), db=None)
-                    if trial_raw:
-                        resolved, lines, raw = str(target), trial_lines, trial_raw
-            except Exception:
-                pass
+    if not raw and db is not None:
+        # embedded lyrics in an available local SongFile → materialize its .lrc sidecar
+        from app.services.song_file_resolver import NoPlayableSongFileError, SongFileResolver
+        try:
+            song_file = SongFileResolver(db).resolve_local(song)
+            local = song_file.local_path
+            from app.services.media_meta_service import read_audio_tags
+            tags = read_audio_tags(local)
+            emb = tags.get("lyrics") if tags else None
+            if emb and str(emb).strip():
+                target = Path(local).with_suffix(".lrc")
+                body = str(emb).replace("\r\n", "\n").strip()
+                if not target.exists():
+                    target.write_text(body + ("\n" if not body.endswith("\n") else ""), encoding="utf-8")
+                trial_lines, trial_raw = load_lyrics(str(target), db=None)
+                if trial_raw:
+                    song_file.lrc_path = str(target)
+                    resolved, lines, raw = str(target), trial_lines, trial_raw
+        except (NoPlayableSongFileError, OSError):
+            pass
 
     if not raw:
         return [], None, None

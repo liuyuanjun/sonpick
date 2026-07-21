@@ -708,23 +708,33 @@ def materialize_song_cover(song, db=None) -> Optional[str]:
                 return _persist_cover(local)
             return local
 
+    from app.models import SongFile
+    local_file = None
+    remote_files = []
+    if db is not None and song_id is not None:
+        files = db.query(SongFile).filter(SongFile.song_id == song_id).all()
+        local_file = next((item for item in files if item.local_path and is_local_file(item.local_path)), None)
+        remote_files = [item for item in files if item.webdav_path]
+
     # 2) embedded from local audio
-    if is_local_file(getattr(song, "local_path", None)):
+    if local_file is not None:
         cached = extract_and_cache_embedded_cover(
-            song.local_path,
+            local_file.local_path,
             song_id=song_id,
-            source_key=str(Path(song.local_path).resolve()),
+            source_key=str(Path(local_file.local_path).resolve()),
         )
         if cached:
+            local_file.cover_path = cached
             return _persist_cover(cached)
 
         # 2b) directory sidecars: track image / album cover.jpg
         try:
-            audio = Path(song.local_path)
+            audio = Path(local_file.local_path)
             side = find_track_cover_file(audio) or find_album_cover_file(audio.parent)
             if side and side.is_file():
                 local = ensure_local_cover_from_sidecar(str(side), song_id=song_id) or str(side)
                 if local and is_local_file(local):
+                    local_file.cover_path = local
                     return _persist_cover(local)
         except Exception:
             pass
@@ -740,8 +750,8 @@ def materialize_song_cover(song, db=None) -> Optional[str]:
     cover = getattr(song, "cover_path", None)
     if cover and looks_like_remote_rel(cover):
         remote_candidates.append(cover.replace("\\", "/").lstrip("/"))
-    webdav_path = getattr(song, "webdav_path", None)
-    if webdav_path:
+    for song_file in remote_files:
+        webdav_path = song_file.webdav_path
         stem = str(webdav_path).rsplit(".", 1)[0]
         parent = str(webdav_path).rsplit("/", 1)[0]
         for ext in (".jpg", ".jpeg", ".png", ".webp"):
@@ -800,21 +810,30 @@ def enrich_song_record(song, db=None, *, force: bool = False) -> dict[str, Any]:
     changed = False
     info: dict[str, Any] = {"duration": song.duration, "cover_path": song.cover_path}
 
-    if is_local_file(getattr(song, "local_path", None)):
+    local_file = None
+    if db is not None and getattr(song, "id", None):
+        from app.services.song_file_resolver import NoPlayableSongFileError, SongFileResolver
+        try:
+            local_file = SongFileResolver(db).resolve_local(song)
+        except NoPlayableSongFileError:
+            local_file = None
+    if local_file is not None:
         need_duration = force or not song.duration
         need_cover = force or not is_local_file(getattr(song, "cover_path", None))
         if need_duration or need_cover:
             meta = enrich_local_audio(
-                song.local_path,
+                local_file.local_path,
                 song_id=getattr(song, "id", None),
-                existing_cover=song.cover_path if is_local_file(song.cover_path) else None,
+                existing_cover=local_file.cover_path if is_local_file(local_file.cover_path) else None,
             )
             if need_duration and meta.get("duration"):
                 song.duration = int(meta["duration"])
                 changed = True
-            if need_cover and meta.get("cover_path"):
-                song.cover_path = meta["cover_path"]
-                changed = True
+            if meta.get("cover_path"):
+                local_file.cover_path = meta["cover_path"]
+                if need_cover:
+                    song.cover_path = meta["cover_path"]
+                    changed = True
             info.update({k: v for k, v in meta.items() if v})
 
     if force or not is_local_file(getattr(song, "cover_path", None)):
@@ -867,8 +886,12 @@ def resolve_song_meta(
     local = None
     if audio_path and is_local_file(str(audio_path)):
         local = Path(audio_path)
-    elif song is not None and is_local_file(getattr(song, "local_path", None)):
-        local = Path(song.local_path)
+    elif song is not None and db is not None:
+        from app.services.song_file_resolver import NoPlayableSongFileError, SongFileResolver
+        try:
+            local = Path(SongFileResolver(db).resolve_local(song).local_path)
+        except NoPlayableSongFileError:
+            local = None
 
     # --- 1+2 local file ---
     if local and local.is_file():
