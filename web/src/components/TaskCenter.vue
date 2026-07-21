@@ -2,7 +2,7 @@
   <n-badge :value="activeTasks.length" :max="99" :show="activeTasks.length > 0" type="info">
     <n-button quaternary circle aria-label="任务中心" @click="openDrawer">
       <template #icon>
-        <n-icon :class="{ 'task-spin': activeTasks.length > 0 }">
+        <n-icon :class="{ 'task-spin': runningTasks.length > 0 }">
           <SyncOutline v-if="activeTasks.length > 0" />
           <ListOutline v-else />
         </n-icon>
@@ -21,9 +21,9 @@
 
       <n-space vertical size="large">
         <div>
-          <n-text strong class="task-section-title">进行中（{{ activeTasks.length }}）</n-text>
-          <n-empty v-if="!activeTasks.length" description="暂无进行中的任务" size="small" style="margin: 12px 0" />
-          <div v-for="task in activeTasks" :key="task.id" class="task-item">
+          <n-text strong class="task-section-title">进行中（{{ runningTasks.length }}）</n-text>
+          <n-empty v-if="!runningTasks.length" description="暂无进行中的任务" size="small" style="margin: 12px 0" />
+          <div v-for="task in runningTasks" :key="task.id" class="task-item">
             <div class="task-item-head">
               <n-space size="small" align="center" style="min-width: 0">
                 <n-tag size="small" type="info" :bordered="false">{{ typeLabel(task.type) }}</n-tag>
@@ -41,12 +41,47 @@
               :percentage="taskPercent(task)"
               :status="task.status === 'failed' ? 'error' : 'default'"
               :show-indicator="false"
-              processing
+              :processing="task.status === 'running'"
               style="margin: 6px 0 4px"
             />
             <div class="task-item-foot">
               <n-text depth="3" class="task-message" :title="taskMessage(task)">
                 {{ taskMessage(task) || '等待执行' }} · 已耗时 {{ elapsedText(task) }}
+              </n-text>
+              <n-button size="tiny" quaternary @click="toggleDetail(task.id)">
+                {{ expandedIds.has(task.id) ? '收起' : '详情' }}
+              </n-button>
+            </div>
+            <task-detail v-if="expandedIds.has(task.id)" :task="task" :now="now" />
+          </div>
+        </div>
+
+        <div>
+          <n-text strong class="task-section-title">排队中（{{ pendingTasks.length }}）</n-text>
+          <n-empty v-if="!pendingTasks.length" description="暂无排队中的任务" size="small" style="margin: 12px 0" />
+          <div v-for="task in pendingTasks" :key="task.id" class="task-item">
+            <div class="task-item-head">
+              <n-space size="small" align="center" style="min-width: 0">
+                <n-tag size="small" type="info" :bordered="false">{{ typeLabel(task.type) }}</n-tag>
+                <span class="task-title" :title="taskTitle(task)">{{ taskTitle(task) }}</span>
+              </n-space>
+              <n-space size="small" align="center">
+                <n-tag size="small" :type="statusTagType(task.status)" :bordered="false">{{ statusLabel(task.status) }}</n-tag>
+                <n-button size="tiny" quaternary circle aria-label="取消任务" @click="onCancel(task)">
+                  <template #icon><n-icon><CloseOutline /></n-icon></template>
+                </n-button>
+              </n-space>
+            </div>
+            <n-progress
+              type="line"
+              :percentage="taskPercent(task)"
+              :show-indicator="false"
+              :processing="false"
+              style="margin: 6px 0 4px"
+            />
+            <div class="task-item-foot">
+              <n-text depth="3" class="task-message" :title="taskMessage(task)">
+                {{ taskMessage(task) || '等待前序任务完成' }} · 已排队 {{ elapsedText(task) }}
               </n-text>
               <n-button size="tiny" quaternary @click="toggleDetail(task.id)">
                 {{ expandedIds.has(task.id) ? '收起' : '详情' }}
@@ -105,10 +140,11 @@ function toggleDetail(id) {
   expandedIds.value = next
 }
 
-const ACTIVE_STATUSES = ['pending', 'running']
 const TERMINAL_STATUSES = ['completed', 'failed', 'cancelled']
 
-const activeTasks = computed(() => tasks.value.filter((t) => ACTIVE_STATUSES.includes(t.status)))
+const pendingTasks = computed(() => tasks.value.filter((t) => t.status === 'pending'))
+const runningTasks = computed(() => tasks.value.filter((t) => t.status === 'running'))
+const activeTasks = computed(() => [...runningTasks.value, ...pendingTasks.value])
 const recentTasks = computed(() => tasks.value.filter((t) => TERMINAL_STATUSES.includes(t.status)).slice(0, 15))
 
 const TYPE_LABELS = {

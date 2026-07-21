@@ -63,8 +63,9 @@ SOURCE_LABELS = {
 SEARCH_RETRY_COUNT = 2
 SEARCH_RETRY_DELAY_SECONDS = 2
 # 单源单次搜索硬超时：musicdl 搜索时会为每条结果逐个探测第三方下载链接 API
-#（每个 10s 超时），结果越多越慢，且网易/咪咕可能整体挂起，必须强制限时。
-SEARCH_TIMEOUT_SECONDS = 45
+#（每个 10s 超时），结果越多越慢。保留硬超时避免线程永久阻塞，但 QQ 音乐
+# 的多轮链接探测在网络较慢时可超过 45 秒，因此放宽到 5 分钟。
+SEARCH_TIMEOUT_SECONDS = 300
 # 搜索页每源结果数：20 条时链接探测要几分钟，必然超时；10 条兼顾体验与耗时。
 DEFAULT_SEARCH_SIZE_PER_SOURCE = 10
 DEFAULT_SCRAPE_SOURCES = [
@@ -941,4 +942,3 @@ class MusicDLService:
         else:
             log.info("lookup_album_meta 无结果 keyword=%r sources=%s", keyword, sources)
         return best_out
-
