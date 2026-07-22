@@ -1,26 +1,30 @@
 <template>
-  <n-space vertical size="large" style="width: 100%">
-    <n-space>
+  <n-space vertical size="large" style="width: 100%" class="search-download" :class="{ mobile: isMobile }">
+    <div class="toolbar">
       <n-input
         v-model:value="keyword"
         placeholder="输入歌名或歌手"
-        style="width: 320px"
+        class="keyword-input"
         @keydown.enter="doSearch(1)"
       />
-      <n-select v-model:value="source" :options="sourceOptions" style="width: 150px" />
-      <n-select v-model:value="prefer" :options="formatOptions" style="width: 140px" />
-      <n-button type="primary" :loading="searching" @click="doSearch(1)">搜索</n-button>
-      <n-button
-        type="success"
-        :disabled="!checked.length"
-        :loading="downloading"
-        @click="downloadSelected"
-      >
-        下载选中 ({{ checked.length }})
-      </n-button>
-    </n-space>
+      <n-select v-model:value="source" :options="sourceOptions" class="source-select" />
+      <n-select v-model:value="prefer" :options="formatOptions" class="format-select" />
+      <div class="toolbar-actions">
+        <n-button type="primary" :loading="searching" class="action-btn" @click="doSearch(1)">搜索</n-button>
+        <n-button
+          type="success"
+          :disabled="!checked.length"
+          :loading="downloading"
+          class="action-btn"
+          @click="downloadSelected"
+        >
+          下载选中 ({{ checked.length }})
+        </n-button>
+      </div>
+    </div>
 
     <n-data-table
+      v-if="!isMobile"
       :columns="columns"
       :data="results"
       :row-key="rowKey"
@@ -29,12 +33,45 @@
       @update:checked-row-keys="checked = $event"
     />
 
-    <n-space justify="end" align="center">
+    <div v-else class="mobile-result-list">
+      <n-spin :show="searching">
+        <n-empty v-if="!results.length && !searching" description="暂无搜索结果" />
+        <n-space v-else vertical size="small">
+          <div
+            v-for="row in results"
+            :key="rowKey(row)"
+            class="result-card"
+            :class="{ selected: checked.includes(rowKey(row)) }"
+            @click="toggleChecked(row)"
+          >
+            <div class="result-main">
+              <n-checkbox
+                :checked="checked.includes(rowKey(row))"
+                @click.stop
+                @update:checked="() => toggleChecked(row)"
+              />
+              <div class="result-meta">
+                <div class="result-title">{{ row.song_name || '未知歌曲' }}</div>
+                <div class="result-sub">{{ row.singers || '未知歌手' }} · {{ row.album || '未知专辑' }}</div>
+                <div class="result-tags">
+                  <n-tag size="small" type="info">{{ (row.ext || '-').toUpperCase() }}</n-tag>
+                  <n-tag size="small">{{ row.file_size || row.filesize || '-' }}</n-tag>
+                  <n-tag size="small" :bordered="false">{{ row.source || '-' }}</n-tag>
+                </div>
+              </div>
+            </div>
+          </div>
+        </n-space>
+      </n-spin>
+    </div>
+
+    <n-space class="pager" :justify="isMobile ? 'center' : 'end'" align="center" :wrap="true">
       <n-text depth="3">共 {{ total }} 条（每源约 10 条），当前第 {{ page }} 页</n-text>
       <n-pagination
         v-model:page="page"
         :page-size="pageSize"
         :item-count="total"
+        :simple="isMobile"
         @update:page="doSearch"
       />
     </n-space>
@@ -46,8 +83,10 @@ import { h, ref } from 'vue'
 import { NTag, useMessage } from 'naive-ui'
 import api from '@/api/client'
 import { searchMusic } from '@/api/music'
+import { useIsMobile } from '@/composables/useIsMobile'
 
 const message = useMessage()
+const isMobile = useIsMobile()
 const keyword = ref('')
 const prefer = ref('any')
 const source = ref('QQMusicClient')
@@ -101,6 +140,15 @@ function rowKey(row) {
   return `${row.song_name}|${row.singers}|${row.ext}|${row.album}`
 }
 
+function toggleChecked(row) {
+  const key = rowKey(row)
+  if (checked.value.includes(key)) {
+    checked.value = checked.value.filter((k) => k !== key)
+  } else {
+    checked.value = [...checked.value, key]
+  }
+}
+
 async function doSearch(p = page.value) {
   if (!keyword.value.trim()) {
     message.warning('请输入关键词')
@@ -146,3 +194,90 @@ async function downloadSelected() {
   }
 }
 </script>
+
+<style scoped>
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.keyword-input {
+  width: 320px;
+}
+.source-select {
+  width: 150px;
+}
+.format-select {
+  width: 140px;
+}
+.toolbar-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.result-card {
+  border: 1px solid var(--n-border-color);
+  border-radius: 12px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--n-card-color) 92%, transparent);
+}
+.result-card.selected {
+  border-color: color-mix(in srgb, var(--n-primary-color) 55%, var(--n-border-color));
+  background: color-mix(in srgb, var(--n-primary-color) 8%, var(--n-card-color));
+}
+.result-main {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.result-meta {
+  min-width: 0;
+  flex: 1;
+}
+.result-title {
+  font-weight: 600;
+  line-height: 1.35;
+  word-break: break-word;
+}
+.result-sub {
+  margin-top: 4px;
+  color: var(--n-text-color-3);
+  font-size: 12px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.result-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+@media (max-width: 768px) {
+  .toolbar {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .keyword-input,
+  .source-select,
+  .format-select {
+    width: 100%;
+  }
+  .keyword-input {
+    grid-column: 1 / -1;
+  }
+  .toolbar-actions {
+    grid-column: 1 / -1;
+  }
+  .action-btn {
+    flex: 1;
+  }
+  .pager {
+    width: 100%;
+  }
+  .pager :deep(.n-pagination) {
+    justify-content: center;
+  }
+}
+</style>

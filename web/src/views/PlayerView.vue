@@ -21,7 +21,15 @@
             {{ stats.song_count }} 首 · {{ stats.artist_count }} 位艺术家 · {{ stats.album_count }} 张专辑
           </n-text>
         </div>
-        <n-space class="content-actions">
+        <n-space v-if="isMobile" class="content-actions" :size="8">
+          <n-button secondary type="primary" size="small" @click="openScanModal">扫描曲库</n-button>
+          <n-dropdown trigger="click" :options="mobileActions" @select="onMobileAction">
+            <n-button quaternary circle size="small" aria-label="更多操作">
+              <n-icon size="18"><ellipsis-horizontal /></n-icon>
+            </n-button>
+          </n-dropdown>
+        </n-space>
+        <n-space v-else class="content-actions">
           <n-button v-if="section === 'playlists'" type="primary" @click="showCreatePlaylist = true">
             新建歌单
           </n-button>
@@ -169,7 +177,7 @@
       </n-spin>
     </main>
 
-    <section class="stage">
+    <section v-if="!isMobile" class="stage">
       <div class="stage-main">
         <player-panel />
       </div>
@@ -179,6 +187,18 @@
         </aside>
       </transition>
     </section>
+
+    <transition name="panel-slide">
+      <div v-if="isMobile && player.fullPlayerOpen" class="mobile-player-overlay">
+        <player-panel />
+      </div>
+    </transition>
+
+    <transition name="panel-slide">
+      <div v-if="isMobile && player.showQueue" class="mobile-queue-sheet">
+        <player-queue />
+      </div>
+    </transition>
 
     <n-modal v-model:show="showCreatePlaylist" preset="dialog" title="新建歌单" positive-text="创建" negative-text="取消" @positive-click="createPlaylistAndClose">
       <n-form>
@@ -233,6 +253,7 @@
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
+import { onUnmounted } from 'vue'
 import { useMessage, useDialog } from 'naive-ui'
 import {
   Heart,
@@ -242,10 +263,12 @@ import {
   Disc,
   List,
   TimeOutline,
+  EllipsisHorizontal,
 } from '@vicons/ionicons5'
 import { useAuthStore } from '@/stores/auth'
 import { usePlayerStore } from '@/stores/player'
 import { useThemeStore } from '@/stores/theme'
+import { useIsMobile } from '@/composables/useIsMobile'
 import SongTable from '@/components/player/SongTable.vue'
 import PlayerPanel from '@/components/player/PlayerPanel.vue'
 import PlayerQueue from '@/components/player/PlayerQueue.vue'
@@ -277,6 +300,7 @@ const auth = useAuthStore()
 const themeStore = useThemeStore()
 const message = useMessage()
 const dialog = useDialog()
+const isMobile = useIsMobile()
 
 const section = ref('favorites')
 const loading = ref(false)
@@ -318,6 +342,30 @@ const menus = [
 ]
 
 const sectionTitle = computed(() => menus.find((m) => m.key === section.value)?.label || '播放器')
+const scrapingVisible = ref(false)
+const visibleSongIds = computed(() => {
+  let list = []
+  if (section.value === 'favorites') list = favorites.value
+  else if (section.value === 'songs') list = songs.value
+  else if (section.value === 'history') list = history.value
+  else if (section.value === 'artists' && selectedArtist.value) list = artistSongs.value
+  else if (section.value === 'albums' && selectedAlbum.value) list = albumSongs.value
+  else if (section.value === 'playlists' && selectedPlaylist.value) list = playlistSongs.value
+  return list.map((s) => s?.id).filter(Boolean)
+})
+const mobileActions = computed(() => {
+  const opts = []
+  if (section.value === 'playlists') opts.push({ label: '新建歌单', key: 'create-playlist' })
+  opts.push({ label: '刮削本页', key: 'scrape', disabled: !visibleSongIds.value.length })
+  opts.push({ label: '刷新', key: 'refresh' })
+  return opts
+})
+
+function onMobileAction(key) {
+  if (key === 'create-playlist') showCreatePlaylist.value = true
+  else if (key === 'scrape') scrapeVisibleSongs()
+  else if (key === 'refresh') refresh()
+}
 const playlistOptions = computed(() => playlists.value.map((p) => ({ label: p.name, value: p.id })))
 const isLibraryEmpty = computed(() => !stats.value || !stats.value.song_count)
 const playerPageStyle = computed(() => {
@@ -615,6 +663,11 @@ async function onRemoveFromPlaylist(song) {
 onMounted(async () => {
   await loadPlaylists()
   await refresh()
+})
+
+// 离开播放器页时收起移动端全屏浮层，避免下次进入时意外弹出
+onUnmounted(() => {
+  player.fullPlayerOpen = false
 })
 </script>
 
@@ -920,5 +973,83 @@ onMounted(async () => {
     justify-content: center;
     padding: 12px 8px;
   }
+}
+
+/* ---------- 移动端（≤768px）：顶部横向 Tab + 全宽列表 + 全屏播放器浮层 ---------- */
+@media (max-width: 768px) {
+  .player-page,
+  .player-page.queue-open {
+    display: flex;
+    flex-direction: column;
+    height: calc(100dvh - 56px - 60px - 52px - env(safe-area-inset-bottom, 0px));
+    min-height: calc(100dvh - 56px - 60px - 52px - env(safe-area-inset-bottom, 0px));
+  }
+  .side-nav {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: row;
+    gap: 2px;
+    padding: 8px 10px;
+    border-right: none;
+    border-bottom: 1px solid rgba(127, 127, 127, 0.10);
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .nav-item {
+    flex: 0 0 auto;
+    justify-content: center;
+    padding: 7px 12px;
+    margin-bottom: 0;
+    gap: 6px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .nav-item span {
+    display: inline;
+  }
+  .content {
+    flex: 1 1 auto;
+    height: auto;
+    padding: 12px 12px 16px;
+  }
+  .content::before {
+    display: none;
+  }
+  .content-head {
+    margin-bottom: 10px;
+  }
+  .content-actions {
+    position: static;
+    padding-bottom: 0;
+  }
+  .page-title {
+    font-size: 18px;
+  }
+  .card-grid {
+    grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+    gap: 10px;
+  }
+}
+
+.mobile-player-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  background: #0b0c10;
+}
+.mobile-queue-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  background: var(--n-card-color);
+}
+.panel-slide-enter-active,
+.panel-slide-leave-active {
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+.panel-slide-enter-from,
+.panel-slide-leave-to {
+  transform: translateY(100%);
+  opacity: 0.4;
 }
 </style>

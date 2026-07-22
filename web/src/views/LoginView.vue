@@ -1,6 +1,6 @@
 <template>
-  <n-space vertical align="center" justify="center" style="min-height: 100vh; width: 100%;">
-    <n-card title="拾音 Sonpick" style="width: 360px; border-radius: 16px;">
+  <n-space vertical align="center" justify="center" class="login-page">
+    <n-card title="拾音 Sonpick" class="login-card">
       <n-space vertical>
         <n-input
           v-model:value="password"
@@ -46,3 +46,16 @@ async function handleLogin() {
   }
 }
 </script>
+
+<style scoped>
+.login-page {
+  min-height: 100vh;
+  width: 100%;
+  padding: 16px;
+  box-sizing: border-box;
+}
+.login-card {
+  width: min(360px, 100%);
+  border-radius: 16px;
+}
+</style>

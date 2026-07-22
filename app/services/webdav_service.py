@@ -357,6 +357,7 @@ class WebDAVService:
         local_path: str | None = None,
         task_id: int | None = None,
         progress_cb: ProgressCb = None,
+        policy: str | None = None,
     ) -> dict[str, Any]:
         if not self.db:
             raise ValueError("WebDAVService 需要数据库会话")
@@ -400,7 +401,7 @@ class WebDAVService:
             root_url, _ = self._split_root_and_path(target_source.webdav_url)
             client = self._client(root_url=root_url)
             base = self._remote_base_dir()
-            policy = (target_source.conflict_policy or "rename").lower()
+            policy = (policy or target_source.conflict_policy or "rename").lower()
             upload_sidecar = bool(target_source.upload_sidecar)
             delete_local = bool(target_source.delete_local_after_upload)
             target_source_id = target_source.id
@@ -409,7 +410,7 @@ class WebDAVService:
             root_url, _ = self._split_root_and_path(cfg.webdav_url)
             client = self._client(root_url=root_url)
             base = self._remote_base_dir(cfg)
-            policy = (getattr(cfg, "webdav_conflict_policy", None) or "rename").lower()
+            policy = (policy or getattr(cfg, "webdav_conflict_policy", None) or "rename").lower()
             upload_sidecar = bool(getattr(cfg, "webdav_upload_sidecar", True))
             delete_local = bool(getattr(cfg, "webdav_delete_local_after_upload", False))
             target_source_id = None
@@ -543,6 +544,103 @@ class WebDAVService:
                 detail=delete_detail,
             )
         return result
+
+    def check_conflicts(
+        self,
+        song: Song,
+        *,
+        source_id: int | None = None,
+        local_path: str | None = None,
+    ) -> dict[str, Any]:
+        """检查上传目标路径是否已存在同名文件，返回冲突信息供前端确认。"""
+        if not self.db:
+            raise ValueError("WebDAVService 需要数据库会话")
+
+        selected_file = None
+        if local_path:
+            selected_file = (
+                self.db.query(SongFile)
+                .filter(SongFile.song_id == song.id, SongFile.local_path == local_path)
+                .first()
+            )
+        if selected_file is None:
+            selected_file = SongFileResolver(self.db).resolve_local(song)
+        audio_path = selected_file.local_path
+        if not audio_path or not Path(audio_path).exists():
+            raise ValueError("本地音频文件不存在")
+
+        # Resolve target source (mirrors upload_song logic)
+        target_source: MediaSource | None = None
+        if source_id is not None:
+            target_source = self.db.get(MediaSource, source_id)
+            if not target_source or target_source.type != "webdav":
+                raise ValueError("指定的上传源不是 WebDAV 源")
+        elif self._get_source() and self._get_source().type == "webdav":
+            target_source = self._get_source()
+        else:
+            target_source = (
+                self.db.query(MediaSource)
+                .filter(
+                    MediaSource.type == "webdav",
+                    MediaSource.is_default_upload == True,
+                    MediaSource.enabled == True,
+                )
+                .order_by(MediaSource.id.asc())
+                .first()
+            )
+
+        if target_source and (target_source.webdav_url or "").strip():
+            root_url, _ = self._split_root_and_path(target_source.webdav_url)
+            client = self._client(root_url=root_url)
+            base = self._remote_base_dir()
+            policy = (target_source.conflict_policy or "rename").lower()
+            upload_sidecar = bool(target_source.upload_sidecar)
+            target_source_id = target_source.id
+        else:
+            cfg = self._get_config()
+            root_url, _ = self._split_root_and_path(cfg.webdav_url)
+            client = self._client(root_url=root_url)
+            base = self._remote_base_dir(cfg)
+            policy = (getattr(cfg, "webdav_conflict_policy", None) or "rename").lower()
+            upload_sidecar = bool(getattr(cfg, "webdav_upload_sidecar", True))
+            target_source_id = None
+
+        client.check = lambda p: True
+
+        audio_name = Path(audio_path).name
+        audio_remote = self._join_remote(base, audio_name)
+
+        def _check(local_path: str | None, remote_path: str, kind: str) -> dict[str, Any] | None:
+            if not local_path or not Path(local_path).exists():
+                return None
+            exists = self._exists(client, remote_path)
+            return {
+                "kind": kind,
+                "local_path": local_path,
+                "remote_path": remote_path,
+                "exists": exists,
+            }
+
+        files = [_check(audio_path, audio_remote, "audio")]
+        if upload_sidecar:
+            cover_local = selected_file.cover_path or song.cover_path
+            lrc_local = selected_file.lrc_path or song.lrc_path
+            if cover_local and Path(cover_local).exists():
+                cover_ext = Path(cover_local).suffix or ".jpg"
+                cover_remote = self._join_remote(base, f"{Path(audio_remote).stem}{cover_ext}")
+                files.append(_check(cover_local, cover_remote, "cover"))
+            if lrc_local and Path(lrc_local).exists():
+                lrc_remote = self._join_remote(base, f"{Path(audio_remote).stem}.lrc")
+                files.append(_check(lrc_local, lrc_remote, "lrc"))
+
+        files = [item for item in files if item]
+        return {
+            "target_source_id": target_source_id,
+            "target_source_name": target_source.name if target_source else None,
+            "policy": policy,
+            "conflicts": [item for item in files if item["exists"]],
+            "files": files,
+        }
 
     @staticmethod
     def _summarize_upload(result: dict[str, Any]) -> str:

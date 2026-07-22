@@ -1,6 +1,6 @@
 <template>
-    <div class="library-layout">
-    <div class="library-side">
+  <div class="library-layout" :class="{ mobile: isMobile }">
+    <div v-if="!isMobile" class="library-side">
       <n-card class="source-panel" title="曲库来源" size="small">
         <template #header-extra>
           <n-space size="small">
@@ -14,15 +14,15 @@
         <n-empty v-if="!sources.length && !sourcesLoading" description="暂无曲库" />
         <n-spin :show="sourcesLoading">
           <n-space vertical size="small">
-              <n-card
-                v-for="source in sources"
-                :key="source.id"
-                class="source-card"
-                :class="{ active: selectedSourceId === source.id }"
-                size="small"
-                hoverable
-                @click="selectSource(source)"
-              >
+            <n-card
+              v-for="source in sources"
+              :key="source.id"
+              class="source-card"
+              :class="{ active: selectedSourceId === source.id }"
+              size="small"
+              hoverable
+              @click="selectSource(source)"
+            >
               <n-space vertical size="small">
                 <n-space justify="space-between" align="center">
                   <n-space size="small" align="center">
@@ -58,8 +58,35 @@
     </div>
 
     <div class="library-main">
-      <n-card class="content-panel" :title="selectedSource ? selectedSource.name : '曲库内容'" size="small">
-        <template #header-extra>
+      <div v-if="isMobile" class="mobile-source-bar">
+        <button type="button" class="mobile-source-trigger" @click="showSourceSheet = true">
+          <div class="mobile-source-meta">
+            <span class="mobile-source-label">当前曲库</span>
+            <strong class="mobile-source-name">{{ selectedSource?.name || '选择曲库' }}</strong>
+            <span class="mobile-source-sub">
+              {{ selectedSource ? (selectedSource.type === 'webdav' ? 'WebDAV' : '本地') : '未选择' }}
+              · 歌曲 {{ selectedSource?.song_count ?? '-' }}
+            </span>
+          </div>
+          <n-icon size="18"><ChevronDownOutline /></n-icon>
+        </button>
+        <n-space size="small" class="mobile-source-actions">
+          <n-dropdown trigger="click" :options="createOptions" @select="openCreate">
+            <n-button size="small" type="primary">添加</n-button>
+          </n-dropdown>
+          <n-dropdown
+            v-if="selectedSource"
+            trigger="click"
+            :options="sourceActionOptions(selectedSource)"
+            @select="(key) => onSourceAction(key, selectedSource)"
+          >
+            <n-button size="small">管理</n-button>
+          </n-dropdown>
+        </n-space>
+      </div>
+
+      <n-card class="content-panel" :title="isMobile ? undefined : (selectedSource ? selectedSource.name : '曲库内容')" size="small">
+        <template v-if="!isMobile" #header-extra>
           <n-tabs v-model:value="mode" class="library-mode-tabs" type="segment" size="medium" @update:value="onModeChange">
             <n-tab-pane name="songs">
               <template #tab><span class="mode-tab-label"><n-icon size="16"><MusicalNotesOutline /></n-icon>歌曲列表</span></template>
@@ -70,22 +97,51 @@
           </n-tabs>
         </template>
 
+        <n-tabs
+          v-if="isMobile"
+          v-model:value="mode"
+          class="library-mode-tabs mobile-mode-tabs"
+          type="segment"
+          size="small"
+          @update:value="onModeChange"
+        >
+          <n-tab-pane name="songs">
+            <template #tab><span class="mode-tab-label"><n-icon size="15"><MusicalNotesOutline /></n-icon>歌曲</span></template>
+          </n-tab-pane>
+          <n-tab-pane name="browse">
+            <template #tab><span class="mode-tab-label"><n-icon size="15"><FolderOpenOutline /></n-icon>浏览</span></template>
+          </n-tab-pane>
+        </n-tabs>
+
         <template v-if="mode === 'songs'">
           <n-space vertical size="medium">
             <n-space class="library-toolbar" justify="space-between" align="center" wrap>
-              <n-input v-model:value="q" clearable placeholder="搜索歌名/歌手" style="width: min(100%, 320px)" @keydown.enter="loadSongs" />
-              <n-space size="small" wrap>
-                <n-button @click="loadSongs" :loading="songsLoading">刷新歌曲</n-button>
-                <n-button v-if="songs.length" type="primary" secondary @click="openScrape(selectedSource)">刮削曲库</n-button>
+              <n-input
+                v-model:value="q"
+                clearable
+                placeholder="搜索歌名/歌手"
+                class="library-search"
+                @keydown.enter="loadSongs"
+              />
+              <n-space size="small" wrap class="library-toolbar-actions">
+                <n-button @click="loadSongs" :loading="songsLoading">刷新</n-button>
+                <n-button v-if="songs.length" type="primary" secondary @click="openScrape(selectedSource)">刮削</n-button>
               </n-space>
             </n-space>
-            <n-data-table :columns="songColumns" :data="songs" :loading="songsLoading" :row-key="(r) => r.id" />
+            <n-data-table
+              class="library-table"
+              :columns="songColumns"
+              :data="songs"
+              :loading="songsLoading"
+              :row-key="(r) => r.id"
+              :scroll-x="isMobile ? 0 : undefined"
+            />
           </n-space>
         </template>
 
         <template v-else>
           <n-space vertical size="medium">
-            <n-space justify="space-between" align="center">
+            <n-space class="browse-toolbar" justify="space-between" align="center" wrap>
               <n-space size="small">
                 <n-button size="small" :disabled="!browsePath" @click="browseGoUp">上级</n-button>
                 <n-button size="small" @click="browseTo('')">根目录</n-button>
@@ -116,8 +172,66 @@
     </div>
   </div>
 
-  <n-modal v-model:show="showForm" preset="card" :title="formTitle" style="width: 640px">
-    <n-form label-placement="left" label-width="130px">
+  <n-drawer v-model:show="showSourceSheet" placement="bottom" :height="'78%'" class="source-sheet-drawer">
+    <n-drawer-content title="选择曲库" closable>
+      <n-space justify="space-between" align="center" style="margin-bottom: 12px">
+        <n-text depth="3">共 {{ sources.length }} 个来源</n-text>
+        <n-space size="small">
+          <n-dropdown trigger="click" :options="createOptions" @select="(key) => { showSourceSheet = false; openCreate(key) }">
+            <n-button size="small" type="primary">添加曲库</n-button>
+          </n-dropdown>
+          <n-button size="small" :loading="sourcesLoading" @click="loadSources">刷新</n-button>
+        </n-space>
+      </n-space>
+      <n-empty v-if="!sources.length && !sourcesLoading" description="暂无曲库" />
+      <n-spin :show="sourcesLoading">
+        <n-space vertical size="small">
+          <n-card
+            v-for="source in sources"
+            :key="`m-${source.id}`"
+            class="source-card"
+            :class="{ active: selectedSourceId === source.id }"
+            size="small"
+            hoverable
+            @click="selectSourceMobile(source)"
+          >
+            <n-space vertical size="small">
+              <n-space justify="space-between" align="center">
+                <n-space size="small" align="center">
+                  <n-text strong>{{ source.name }}</n-text>
+                  <n-tag v-if="source.is_builtin" size="small" type="warning">内置</n-tag>
+                </n-space>
+                <n-tag size="small" :type="source.type === 'webdav' ? 'info' : 'success'">
+                  {{ source.type === 'webdav' ? 'WebDAV' : '本地' }}
+                </n-tag>
+              </n-space>
+              <n-space size="small" align="center" wrap>
+                <n-tag size="small" :type="source.enabled ? 'success' : 'default'">{{ source.enabled ? '启用' : '停用' }}</n-tag>
+                <n-tag size="small" :type="statusTagType(source)">{{ statusText(source) }}</n-tag>
+                <n-tag v-if="source.is_default_upload" size="small" type="warning">默认上传</n-tag>
+                <n-text depth="3" style="font-size: 12px">歌曲 {{ source.song_count ?? '-' }}</n-text>
+              </n-space>
+              <n-text depth="3" class="source-path">{{ sourcePath(source) }}</n-text>
+              <n-space size="small" wrap @click.stop>
+                <n-button size="tiny" type="primary" @click="onScan(source)">扫描</n-button>
+                <n-button size="tiny" @click="openEdit(source); showSourceSheet = false">编辑</n-button>
+                <n-dropdown
+                  trigger="click"
+                  :options="sourceActionOptions(source, { compact: true })"
+                  @select="(key) => onSourceAction(key, source)"
+                >
+                  <n-button size="tiny">更多</n-button>
+                </n-dropdown>
+              </n-space>
+            </n-space>
+          </n-card>
+        </n-space>
+      </n-spin>
+    </n-drawer-content>
+  </n-drawer>
+
+  <n-modal v-model:show="showForm" preset="card" :title="formTitle" class="library-modal" style="width: 640px; max-width: 96vw">
+    <n-form :label-placement="isMobile ? 'top' : 'left'" :label-width="isMobile ? 'auto' : 130">
       <n-form-item label="名称">
         <n-input v-model:value="form.name" placeholder="例如 本地曲库 / NAS WebDAV" :disabled="isEditingBuiltin" />
       </n-form-item>
@@ -180,8 +294,8 @@
     </template>
   </n-modal>
 
-  <n-modal v-model:show="showReorg" preset="card" title="整理曲库" style="width: 960px; max-width: 96vw">
-    <n-form label-placement="left" label-width="110px">
+  <n-modal v-model:show="showReorg" preset="card" title="整理曲库" class="library-modal" style="width: 960px; max-width: 96vw">
+    <n-form :label-placement="isMobile ? 'top' : 'left'" :label-width="isMobile ? 'auto' : 110">
       <n-alert type="info" style="margin-bottom: 12px">
         当前曲库：{{ reorgSource?.name || '-' }}；目录：/{{ reorgForm.relative_dir || '' }}
       </n-alert>
@@ -230,8 +344,8 @@
     </n-form>
   </n-modal>
 
-  <n-modal v-model:show="showScrape" preset="card" title="刮削曲库" style="width: 640px">
-    <n-form label-placement="left" label-width="130px">
+  <n-modal v-model:show="showScrape" preset="card" title="刮削曲库" class="library-modal" style="width: 640px; max-width: 96vw">
+    <n-form :label-placement="isMobile ? 'top' : 'left'" :label-width="isMobile ? 'auto' : 130">
       <n-alert type="info" style="margin-bottom: 12px">
         当前曲库：{{ scrapeTarget?.name || '-' }}
       </n-alert>
@@ -263,12 +377,32 @@
       </n-space>
     </template>
   </n-modal>
+
+  <n-modal v-model:show="showUploadConflict" preset="card" title="上传冲突" class="library-modal" style="width: 520px; max-width: 96vw">
+    <n-alert v-if="uploadConflictData?.conflicts?.length" type="warning" style="margin-bottom: 12px">
+      目标位置已存在以下文件，是否覆盖？
+    </n-alert>
+    <n-empty v-else description="暂无冲突" />
+    <n-space v-if="uploadConflictData?.conflicts?.length" vertical size="small">
+      <n-card v-for="item in uploadConflictData.conflicts" :key="item.kind" size="small">
+        <n-text strong>{{ item.kind === 'audio' ? '音频' : item.kind === 'cover' ? '封面' : '歌词' }}</n-text>
+        <n-text depth="3" style="display: block; font-size: 12px; word-break: break-all;">{{ item.remote_path }}</n-text>
+      </n-card>
+    </n-space>
+    <template #footer>
+      <n-space justify="end">
+        <n-button @click="showUploadConflict = false">取消</n-button>
+        <n-button type="primary" :loading="uploadConflictLoading" @click="confirmUpload(true)">覆盖</n-button>
+        <n-button :loading="uploadConflictLoading" @click="confirmUpload(false)">不覆盖</n-button>
+      </n-space>
+    </template>
+  </n-modal>
 </template>
 
 <script setup>
-import { computed, h, onMounted, reactive, ref } from 'vue'
+import { computed, h, onMounted, reactive, ref, watch } from 'vue'
 import { NButton, NDropdown, NIcon, NSpace, NTag, NTooltip, useMessage } from 'naive-ui'
-import { FolderOpenOutline, MusicalNotesOutline, PlayOutline, TrashOutline, CloudUploadOutline, SwapHorizontalOutline } from '@vicons/ionicons5'
+import { ChevronDownOutline, FolderOpenOutline, MusicalNotesOutline, PlayOutline, TrashOutline, CloudUploadOutline, SwapHorizontalOutline } from '@vicons/ionicons5'
 import {
   applyReorganize,
   browseLocalSource,
@@ -289,13 +423,20 @@ import {
   testSource,
   updateSource,
   uploadSongToWebdav,
+  checkUploadConflicts,
   waitTask,
 } from '@/api/music'
 import { usePlayerStore } from '@/stores/player'
+import { useRoute, useRouter } from 'vue-router'
+import { useIsMobile } from '@/composables/useIsMobile'
 
 const message = useMessage()
 const player = usePlayerStore()
+const isMobile = useIsMobile()
+const route = useRoute()
+const router = useRouter()
 const mode = ref('songs')
+const showSourceSheet = ref(false)
 const sourcesLoading = ref(false)
 const songsLoading = ref(false)
 const browseLoading = ref(false)
@@ -348,6 +489,10 @@ const scrapeForm = reactive({ allow_network: true, overwrite: false, write_file_
 const scrapeTaskId = ref(null)
 const scrapeTaskStatus = ref('')
 const scrapeTaskMessage = ref('')
+const showUploadConflict = ref(false)
+const uploadConflictTarget = ref(null)
+const uploadConflictData = ref(null)
+const uploadConflictLoading = ref(false)
 
 const createOptions = [
   { label: '添加本地曲库', key: 'local' },
@@ -363,69 +508,77 @@ const isEditingBuiltin = computed(() => editingBuiltin.value)
 const formTitle = computed(() => (editingId.value ? '编辑曲库' : `添加${form.type === 'webdav' ? ' WebDAV ' : '本地'}曲库`))
 const browseSegments = computed(() => (browsePath.value || '').split('/').filter(Boolean))
 
-const statusLabels = { local: '本地', remote: '远程', both: '双边', uploaded: '已上传' }
-const statusTagTypes = { local: 'success', remote: 'info', both: 'warning', uploaded: 'info' }
 
-const songColumns = [
-  {
-    title: '歌曲', key: 'song',
-    render(row) {
-      const artist = row.artist || '未知艺术家'
-      const album = row.album ? ` · ${row.album}` : ''
-      return h('div', { class: 'song-cell' }, [
-        h('div', { class: 'song-cell-title', title: row.title || '' }, row.title || '-'),
-        h('div', { class: 'song-cell-sub', title: `${artist}${album}` }, `${artist}${album}`),
-      ])
+const songColumns = computed(() => {
+  const mobile = isMobile.value
+  const btnSize = mobile ? 'small' : 'tiny'
+  const cols = [
+    {
+      title: '歌曲', key: 'song',
+      render(row) {
+        const artist = row.artist || '未知艺术家'
+        const album = row.album ? ` · ${row.album}` : ''
+        const versions = row.versions || []
+        const formatTags = versions.length
+          ? versions.map((item) => String(item.format || '').toUpperCase()).filter(Boolean).join(' / ')
+          : (row.format ? String(row.format).toUpperCase() : '')
+        return h('div', {
+          class: 'song-cell',
+          onClick: mobile && row.has_playable_file ? () => play(row) : undefined,
+        }, [
+          h('div', { class: 'song-cell-title', title: row.title || '' }, row.title || '-'),
+          h('div', { class: 'song-cell-sub', title: `${artist}${album}` }, `${artist}${album}`),
+          mobile && formatTags
+            ? h('div', { class: 'song-cell-sub song-cell-formats' }, formatTags)
+            : null,
+        ].filter(Boolean))
+      },
     },
-  },
-  {
-    title: '来源', key: 'source', width: 200,
-    render(row) {
-      const primary = (row.versions || []).find(item => item.availability_status !== 'unavailable' && (item.local_path || item.webdav_path))
-      const type = row.library_source_type || (primary?.webdav_path && !primary?.local_path ? 'webdav' : 'local')
-      const name = row.library_source_name || (type === 'webdav' ? 'WebDAV' : primary ? '本地' : '-')
-      const path = primary?.local_path || primary?.webdav_path || '暂无可播放版本'
-      const status = statusLabels[row.status] || row.status || '-'
-      return h('div', { class: 'song-cell' }, [
-        h('div', { class: 'song-cell-line' }, [
-          h(NTag, { size: 'small', type: type === 'webdav' ? 'info' : 'success' }, { default: () => (type === 'webdav' ? 'WebDAV' : '本地') }),
-          h(NTooltip, null, {
-            trigger: () => h('span', { class: 'song-cell-name' }, name),
-            default: () => path,
-          }),
-        ]),
-        h('div', { class: 'song-cell-line' }, [
-          h(NTag, { size: 'small', type: statusTagTypes[row.status] || 'default', bordered: false }, { default: () => status }),
-        ]),
-      ])
-    },
-  },
-  {
-    title: '格式', key: 'format', width: 170,
-    render(row) {
-      const formats = (row.available_formats || [row.format]).filter(Boolean).map((format) => String(format).toUpperCase()).join(' / ')
-      const versions = (row.versions || []).map((item) => `${String(item.format || '').toUpperCase()}·${item.availability_status === 'unavailable' ? '不可用' : '可用'}`).join(' / ')
-      return h('div', { class: 'song-cell' }, [
-        h('div', { class: 'song-cell-title' }, formats || '-'),
-        h('div', { class: 'song-cell-sub', title: versions }, versions || '-'),
-      ])
-    },
-  },
-  {
-    title: '操作', key: 'actions', width: 150,
+  ]
+  if (!mobile) {
+    cols.push({
+      title: '格式', key: 'format', width: 220,
+      render(row) {
+        const versions = (row.versions || [])
+        if (!versions.length) {
+          return h('div', { class: 'song-cell-sub' }, row.format ? String(row.format).toUpperCase() : '-')
+        }
+        return h('div', { class: 'song-cell' }, versions.map((item) => {
+          const format = String(item.format || '').toUpperCase()
+          const available = item.availability_status !== 'unavailable'
+          const path = item.local_path || item.webdav_path || '暂无路径'
+          return h('div', { class: 'song-cell-line', key: item.id }, [
+            h(NTag, { size: 'small', type: available ? 'success' : 'default' }, { default: () => format }),
+            h(NTooltip, null, {
+              trigger: () => h('span', { class: 'song-cell-sub', style: 'margin-left: 6px;' }, available ? '可用' : '不可用'),
+              default: () => path,
+            }),
+          ])
+        }))
+      },
+    })
+  }
+  cols.push({
+    title: mobile ? '' : '操作',
+    key: 'actions',
+    width: mobile ? 118 : 150,
     render(row) {
       const iconBtn = (icon, tip, props, onClick) => h(NTooltip, null, {
         trigger: () => h(NButton, {
-          size: 'tiny', quaternary: true, circle: true, class: 'song-icon-button',
-          'aria-label': tip, onClick, ...props,
-        }, { icon: () => h(NIcon, { size: 16 }, { default: () => h(icon) }) }),
+          size: btnSize, quaternary: true, circle: true, class: 'song-icon-button',
+          'aria-label': tip, onClick: (e) => { e?.stopPropagation?.(); onClick() }, ...props,
+        }, { icon: () => h(NIcon, { size: mobile ? 18 : 16 }, { default: () => h(icon) }) }),
         default: () => tip,
       })
-      const btns = [iconBtn(PlayOutline, row.has_playable_file ? '播放' : '暂无可播放版本', { type: 'primary', disabled: !row.has_playable_file }, () => play(row))]
+      const btns = []
+      if (!mobile) {
+        btns.push(iconBtn(PlayOutline, row.has_playable_file ? '播放' : '暂无可播放版本', { type: 'primary', disabled: !row.has_playable_file }, () => play(row)))
+      }
       if (!(row.available_formats || [row.format]).map((format) => String(format).toLowerCase()).includes('mp3')) {
         btns.push(iconBtn(SwapHorizontalOutline, '转为 MP3', {}, () => onConvert(row)))
       }
-      if (row.local_path && webdavSources.value.length) {
+      const hasLocalVersion = (row.versions || []).some(v => v.local_path)
+      if (hasLocalVersion && webdavSources.value.length) {
         btns.push(h(NTooltip, null, {
           trigger: () => h(NDropdown, {
             trigger: 'click',
@@ -433,37 +586,59 @@ const songColumns = [
             onSelect: (key) => onUpload(row, key),
           }, {
             default: () => h(NButton, {
-              size: 'tiny', quaternary: true, circle: true, type: 'info', class: 'song-icon-button', 'aria-label': '上传到 WebDAV',
-            }, { icon: () => h(NIcon, { size: 16 }, { default: () => h(CloudUploadOutline) }) }),
+              size: btnSize, quaternary: true, circle: true, type: 'info', class: 'song-icon-button', 'aria-label': '上传到 WebDAV',
+              onClick: (e) => e?.stopPropagation?.(),
+            }, { icon: () => h(NIcon, { size: mobile ? 18 : 16 }, { default: () => h(CloudUploadOutline) }) }),
           }),
           default: () => '上传到 WebDAV',
         }))
       }
       btns.push(iconBtn(TrashOutline, '删除', { type: 'error' }, () => onDeleteSong(row)))
-      return h(NSpace, { size: 4, class: 'song-action-group', wrap: false }, { default: () => btns })
+      return h(NSpace, { size: mobile ? 2 : 4, class: 'song-action-group', wrap: false }, { default: () => btns })
     },
-  },
-]
+  })
+  return cols
+})
 
-const browseColumns = [
-  {
-    title: '名称', key: 'name', ellipsis: { tooltip: true },
-    render(row) {
-      const name = row.name || row.path || ''
-      if (isDir(row)) return h(NButton, { text: true, type: 'primary', onClick: () => browseTo(row.path || name) }, { default: () => `📁 ${name}` })
-      return name
+const browseColumns = computed(() => {
+  const mobile = isMobile.value
+  const btnSize = mobile ? 'small' : 'tiny'
+  const cols = [
+    {
+      title: '名称', key: 'name', ellipsis: { tooltip: true },
+      render(row) {
+        const name = row.name || row.path || ''
+        if (isDir(row)) {
+          return h(NButton, {
+            text: true,
+            type: 'primary',
+            class: 'browse-name-btn',
+            onClick: () => browseTo(row.path || name),
+          }, { default: () => `📁 ${name}` })
+        }
+        return h('div', { class: 'browse-file-cell' }, [
+          h('div', { class: 'song-cell-title' }, name),
+          mobile ? h('div', { class: 'song-cell-sub' }, `${isDir(row) ? '目录' : '文件'} · ${formatSize(row.size)}`) : null,
+        ].filter(Boolean))
+      },
     },
-  },
-  { title: '类型', key: 'type', width: 90, render: (row) => h(NTag, { size: 'small', type: isDir(row) ? 'info' : 'default' }, { default: () => (isDir(row) ? '目录' : '文件') }) },
-  { title: '大小', key: 'size', width: 110, render: (row) => formatSize(row.size) },
-  {
-    title: '操作', key: 'actions', width: 110,
+  ]
+  if (!mobile) {
+    cols.push(
+      { title: '类型', key: 'type', width: 90, render: (row) => h(NTag, { size: 'small', type: isDir(row) ? 'info' : 'default' }, { default: () => (isDir(row) ? '目录' : '文件') }) },
+      { title: '大小', key: 'size', width: 110, render: (row) => formatSize(row.size) },
+    )
+  }
+  cols.push({
+    title: mobile ? '' : '操作',
+    key: 'actions',
+    width: mobile ? 96 : 110,
     render(row) {
       const iconBtn = (icon, tip, props, onClick) => h(NTooltip, null, {
         trigger: () => h(NButton, {
-          size: 'tiny', quaternary: true, circle: true, class: 'song-icon-button',
+          size: btnSize, quaternary: true, circle: true, class: 'song-icon-button',
           'aria-label': tip, onClick, ...props,
-        }, { icon: () => h(NIcon, { size: 16 }, { default: () => h(icon) }) }),
+        }, { icon: () => h(NIcon, { size: mobile ? 18 : 16 }, { default: () => h(icon) }) }),
         default: () => tip,
       })
       const btns = []
@@ -471,10 +646,11 @@ const browseColumns = [
         btns.push(iconBtn(PlayOutline, '播放', { type: 'primary' }, () => playRemote(row)))
       }
       btns.push(iconBtn(TrashOutline, '删除', { type: 'error' }, () => onDeleteBrowseItem(row)))
-      return h(NSpace, { size: 4, wrap: false }, { default: () => btns })
+      return h(NSpace, { size: mobile ? 2 : 4, wrap: false }, { default: () => btns })
     },
-  },
-]
+  })
+  return cols
+})
 
 const reorgColumns = [
   { title: '标题', key: 'title', ellipsis: { tooltip: true }, width: 140 },
@@ -538,6 +714,39 @@ function selectDefaultSource(list) {
   selectedSourceId.value = (list.find((s) => s.name === '本地曲库') || list.find((s) => s.type === 'local') || list[0]).id
 }
 function selectSource(source) { selectedSourceId.value = source.id; browsePath.value = ''; if (mode.value === 'songs') loadSongs(); else loadBrowse() }
+function selectSourceMobile(source) {
+  selectSource(source)
+  showSourceSheet.value = false
+}
+function sourceActionOptions(source, { compact = false } = {}) {
+  if (!source) return []
+  const opts = []
+  if (!compact) {
+    opts.push({ label: '编辑', key: 'edit' })
+    opts.push({ label: '测试连接', key: 'test' })
+    opts.push({ label: '扫描', key: 'scan' })
+  } else {
+    opts.push({ label: '测试连接', key: 'test' })
+  }
+  opts.push({ label: '整理', key: 'reorg' })
+  opts.push({ label: '刮削', key: 'scrape' })
+  opts.push({ label: '浏览文件', key: 'browse' })
+  if (source.type === 'webdav' && !source.is_default_upload) opts.push({ label: '设为默认上传', key: 'default' })
+  if (source.deletable !== false && !source.is_builtin) opts.push({ label: '删除曲库', key: 'delete' })
+  return opts
+}
+function onSourceAction(key, source) {
+  if (!source) return
+  showSourceSheet.value = false
+  if (key === 'edit') openEdit(source)
+  else if (key === 'test') onTest(source)
+  else if (key === 'scan') onScan(source)
+  else if (key === 'reorg') openReorg(source)
+  else if (key === 'scrape') openScrape(source)
+  else if (key === 'browse') openBrowseMode(source)
+  else if (key === 'default') onDefault(source)
+  else if (key === 'delete') onDeleteSource(source)
+}
 function onModeChange(value) { if (value === 'songs') loadSongs(); else loadBrowse() }
 function openBrowseMode(source) { selectedSourceId.value = source.id; browsePath.value = ''; mode.value = 'browse'; loadBrowse() }
 
@@ -693,7 +902,41 @@ async function onConvert(row) {
       .catch(() => loadSongs())
   } catch (err) { message.error(formatApiError(err, '转码失败')) }
 }
-async function onUpload(row, sourceId) { try { const res = await uploadSongToWebdav(row.id, sourceId); message.success(`上传完成：${res.data?.status || 'ok'}`); await loadSongs() } catch (err) { message.error(formatApiError(err, '上传失败')) } }
+async function onUpload(row, sourceId) {
+  uploadConflictLoading.value = true
+  try {
+    const res = await checkUploadConflicts(row.id, sourceId)
+    const data = res.data || res || {}
+    if ((data.conflicts || []).length) {
+      uploadConflictTarget.value = { row, sourceId }
+      uploadConflictData.value = data
+      showUploadConflict.value = true
+      return
+    }
+    await doUpload(row, sourceId)
+  } catch (err) {
+    message.error(formatApiError(err, '检查冲突失败'))
+  } finally {
+    uploadConflictLoading.value = false
+  }
+}
+async function doUpload(row, sourceId, policy = null) {
+  try {
+    const res = await uploadSongToWebdav(row.id, sourceId, policy)
+    message.success(`上传完成：${res.data?.status || 'ok'}`)
+    await loadSongs()
+  } catch (err) {
+    message.error(formatApiError(err, '上传失败'))
+  }
+}
+async function confirmUpload(overwrite = false) {
+  if (!uploadConflictTarget.value) return
+  const { row, sourceId } = uploadConflictTarget.value
+  showUploadConflict.value = false
+  await doUpload(row, sourceId, overwrite ? 'overwrite' : null)
+  uploadConflictTarget.value = null
+  uploadConflictData.value = null
+}
 async function onDeleteSong(row) {
   if (!window.confirm(`删除「${row.title}」？`)) return
   try { await deleteSong(row.id, true); message.success('已删除'); await loadSources(); await loadSongs() }
@@ -713,7 +956,25 @@ async function onDeleteBrowseItem(row) {
   } catch (err) { message.error(formatApiError(err, '删除失败')) }
 }
 
-onMounted(async () => { await loadSources(); await loadSongs() })
+function consumeManageQuery() {
+  const manage = route.query.manage
+  if (manage == null || manage === '' || manage === '0' || manage === 'false') return
+  // 桌面端左侧已有曲库来源面板；仅移动端打开底部管理抽屉
+  if (isMobile.value) showSourceSheet.value = true
+  const nextQuery = { ...route.query }
+  delete nextQuery.manage
+  router.replace({ path: '/library', query: nextQuery })
+}
+
+onMounted(async () => {
+  await loadSources()
+  await loadSongs()
+  consumeManageQuery()
+})
+
+watch(() => route.query.manage, () => {
+  consumeManageQuery()
+})
 </script>
 
 <style scoped>
@@ -825,6 +1086,25 @@ onMounted(async () => { await loadSources(); await loadSongs() })
 .song-icon-button:hover {
   transform: translateY(-1px);
 }
+.library-search {
+  width: min(100%, 320px);
+}
+.browse-name-btn {
+  max-width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  white-space: normal;
+  height: auto;
+}
+.browse-file-cell {
+  min-width: 0;
+}
+.mobile-source-bar {
+  display: none;
+}
+.mobile-mode-tabs {
+  margin-bottom: 12px;
+}
 @media (max-width: 1100px) {
   .library-layout {
     flex-direction: column;
@@ -838,5 +1118,97 @@ onMounted(async () => { await loadSources(); await loadSongs() })
   }
   .source-panel,
   .content-panel { box-shadow: none; }
+}
+@media (max-width: 768px) {
+  .library-layout {
+    gap: 12px;
+  }
+  .mobile-source-bar {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .mobile-source-trigger {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--card-color) 94%, var(--primary-color) 6%);
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .mobile-source-meta {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .mobile-source-label {
+    font-size: 11px;
+    color: var(--text-color-3, #8a8f99);
+  }
+  .mobile-source-name {
+    font-size: 15px;
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-source-sub {
+    font-size: 12px;
+    color: var(--text-color-3, #8a8f99);
+  }
+  .mobile-source-actions {
+    flex: 0 0 auto;
+    align-items: center;
+  }
+  .content-panel :deep(.n-card-header) {
+    display: none;
+  }
+  .library-mode-tabs :deep(.n-tabs-tab) {
+    min-width: 0;
+    flex: 1;
+    justify-content: center;
+    padding: 7px 8px;
+  }
+  .library-toolbar {
+    padding: 8px;
+  }
+  .library-search {
+    width: 100%;
+  }
+  .library-toolbar-actions,
+  .browse-toolbar {
+    width: 100%;
+  }
+  .library-table :deep(.n-data-table-th) {
+    display: none;
+  }
+  .library-table :deep(.n-data-table-td) {
+    padding: 10px 8px;
+    vertical-align: middle;
+  }
+  .library-table :deep(.n-data-table-tr) {
+    border-bottom: 1px solid color-mix(in srgb, var(--border-color) 80%, transparent);
+  }
+  .song-cell-formats {
+    margin-top: 1px;
+  }
+  .song-icon-button {
+    width: 34px;
+    height: 34px;
+  }
+  .source-card {
+    margin-bottom: 8px;
+  }
+  .source-card:hover {
+    transform: none;
+  }
 }
 </style>

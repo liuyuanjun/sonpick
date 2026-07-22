@@ -6,6 +6,7 @@ import {
   NButton,
   NButtonGroup,
   NCard,
+  NCheckbox,
   NConfigProvider,
   NDataTable,
   NDivider,
@@ -67,7 +68,7 @@ import router from './router'
 
 const naive = create({
   components: [
-    NAlert, NButton, NButtonGroup, NCard, NConfigProvider, NDataTable, NDivider,
+    NAlert, NButton, NButtonGroup, NCard, NCheckbox, NConfigProvider, NDataTable, NDivider,
   NDropdown, NEllipsis,
     NForm, NFormItem, NGi, NGrid, NH1, NH2, NH3, NIcon, NInput, NInputNumber,
     NLayout, NLayoutContent, NLayoutFooter, NLayoutHeader, NLayoutSider,

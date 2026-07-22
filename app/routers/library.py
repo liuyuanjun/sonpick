@@ -127,11 +127,44 @@ def list_songs(
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    source = None
+    source_type = None
+    if source_id is not None:
+        source = db.get(MediaSource, source_id)
+        source_type = source.type if source else None
+
     query = _active_song_query(db).order_by(Song.id.desc())
     if not include_unavailable:
         query = query.filter(Song.id.in_(_playable_song_ids(db)))
     if source_id is not None:
-        query = query.filter(Song.id.in_(db.query(SongFile.song_id).filter(SongFile.library_source_id == source_id)))
+        # 单源视图：只展示在该源内实际可播放的歌曲
+        if source_type == "local":
+            # 本地源需校验文件真实存在
+            playable_ids = []
+            for sf in db.query(SongFile).filter(
+                SongFile.library_source_id == source_id,
+                SongFile.local_path.isnot(None),
+                (SongFile.availability_status.is_(None)) | (SongFile.availability_status != "unavailable"),
+            ).all():
+                if Path(sf.local_path).exists():
+                    playable_ids.append(sf.song_id)
+                else:
+                    sf.availability_status = "unavailable"
+                    sf.last_error = "本地文件不存在"
+                    sf.last_checked_at = datetime.now(timezone.utc)
+                    sf.updated_at = datetime.now(timezone.utc)
+            db.commit()
+            query = query.filter(Song.id.in_(playable_ids))
+        elif source_type == "webdav":
+            query = query.filter(Song.id.in_(
+                db.query(SongFile.song_id).filter(
+                    SongFile.library_source_id == source_id,
+                    SongFile.webdav_path.isnot(None),
+                    (SongFile.availability_status.is_(None)) | (SongFile.availability_status != "unavailable"),
+                )
+            ))
+        else:
+            query = query.filter(Song.id.in_(db.query(SongFile.song_id).filter(SongFile.library_source_id == source_id)))
     if q:
         like = f"%{q}%"
         query = query.filter((Song.title.ilike(like)) | (Song.artist.ilike(like)))
@@ -143,17 +176,19 @@ def list_songs(
     files_by_song: dict[int, list[SongFile]] = {}
     for item in song_files:
         files_by_song.setdefault(item.song_id, []).append(item)
-    source_ids = {item.library_source_id for item in song_files if item.library_source_id}
-    source_map = {item.id: item for item in db.query(MediaSource).filter(MediaSource.id.in_(source_ids)).all()}
     result = []
     for s in songs:
         data = s.to_dict()
         data["is_favorite"] = s.id in fav
         versions = files_by_song.get(s.id, [])
-        primary = ConvertService(db).select_playable_file(s, lossless_preferred=False)
-        src = source_map.get(primary.library_source_id) if primary else None
-        data["library_source_name"] = src.name if src else None
-        data["library_source_type"] = src.type if src else None
+        # 单源视图：只保留当前源内的版本
+        if source_id is not None:
+            versions = [v for v in versions if v.library_source_id == source_id]
+            if source_type == "local":
+                versions = [v for v in versions if v.local_path and Path(v.local_path).exists()]
+            elif source_type == "webdav":
+                versions = [v for v in versions if v.webdav_path and v.availability_status != "unavailable"]
+        primary = ConvertService(db).select_playable_file(s, lossless_preferred=False, source_id=source_id)
         data["versions"] = [item.to_dict() for item in versions]
         data["available_formats"] = sorted({item.format for item in versions if item.format})
         data["has_playable_file"] = primary is not None
@@ -266,6 +301,7 @@ def convert_song(
 def upload_to_webdav(
     song_id: int,
     source_id: int = Query(None),
+    policy: str = Query(None),
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -279,8 +315,30 @@ def upload_to_webdav(
 
     service = WebDAVService(db, source_id=source_id)
     try:
-        result = service.upload_song(song, source_id=source_id, local_path=version.local_path)
+        result = service.upload_song(song, source_id=source_id, local_path=version.local_path, policy=policy)
         return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{song_id}/upload-webdav/check")
+def check_upload_conflicts(
+    song_id: int,
+    source_id: int = Query(None),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(status_code=404, detail="歌曲不存在")
+    try:
+        version = SongFileResolver(db).resolve_local(song, lossless_preferred=True)
+    except NoPlayableSongFileError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+    service = WebDAVService(db, source_id=source_id)
+    try:
+        return service.check_conflicts(song, source_id=source_id, local_path=version.local_path)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

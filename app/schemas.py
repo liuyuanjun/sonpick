@@ -165,8 +165,6 @@ class SongOut(BaseModel):
     cover_path: Optional[str]
     lrc_path: Optional[str]
     library_source_id: Optional[int] = None
-    library_source_name: Optional[str] = None
-    library_source_type: Optional[str] = None
     status: str
     play_count: int = 0
     is_favorite: bool = False

@@ -1,6 +1,7 @@
 <template>
   <n-layout has-sider position="absolute" style="min-height: 100vh">
     <n-layout-sider
+      v-if="!isMobile"
       bordered
       collapse-mode="width"
       :collapsed-width="64"
@@ -59,13 +60,26 @@
         </n-space>
       </n-layout-header>
 
-      <n-layout-content class="content" :class="{ 'player-content': activeKey === '/player' }" :native-scrollbar="false">
+      <n-layout-content class="content" :class="{ 'player-content': activeKey === '/player', 'has-mini-player': player.showPlayer && !!player.current }">
         <router-view />
       </n-layout-content>
 
-      <n-layout-footer bordered class="footer">
+      <n-layout-footer v-show="player.showPlayer && player.current" bordered class="footer">
         <global-player />
       </n-layout-footer>
+
+      <nav v-if="isMobile" class="mobile-tabs">
+        <div
+          v-for="t in tabs"
+          :key="t.key"
+          class="tab"
+          :class="{ active: activeKey === t.key }"
+          @click="onMenu(t.key)"
+        >
+          <n-icon size="20"><component :is="t.icon" /></n-icon>
+          <span>{{ t.label }}</span>
+        </div>
+      </nav>
     </n-layout>
   </n-layout>
 </template>
@@ -88,6 +102,8 @@ import {
 } from '@vicons/ionicons5'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
+import { useIsMobile } from '@/composables/useIsMobile'
+import { usePlayerStore } from '@/stores/player'
 import GlobalPlayer from '@/components/GlobalPlayer.vue'
 import TaskCenter from '@/components/TaskCenter.vue'
 
@@ -97,6 +113,17 @@ const auth = useAuthStore()
 const themeStore = useThemeStore()
 const message = useMessage()
 const collapsed = ref(false)
+const isMobile = useIsMobile()
+const player = usePlayerStore()
+
+// 移动端底部 Tab（日志入口暂不收进 Tab，可从设置页/直链访问）
+const tabs = [
+  { label: '概览', key: '/', icon: HomeOutline },
+  { label: '播放器', key: '/player', icon: PlayCircleOutline },
+  { label: '下载', key: '/download', icon: CloudDownloadOutline },
+  { label: '曲库', key: '/library', icon: LibraryOutline },
+  { label: '设置', key: '/settings', icon: SettingsOutline },
+]
 
 const routeTitle = computed(() => {
   const titles = {
@@ -164,18 +191,68 @@ function logout() {
   padding: 0 20px;
 }
 .content {
-  padding: 16px 20px 96px;
+  padding: 16px 20px 24px;
+}
+.content.has-mini-player {
+  padding-bottom: 96px;
 }
 .content.player-content {
-  padding: 0 0 84px;
+  padding: 0;
 }
-.content.player-content {
-  padding: 0 0 84px;
+.content.player-content.has-mini-player {
+  padding-bottom: 84px;
 }
 .footer {
   position: sticky;
   bottom: 0;
   z-index: 20;
   padding: 0;
+}
+.mobile-tabs {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1100;
+  display: flex;
+  height: calc(52px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  box-sizing: border-box;
+  background: color-mix(in srgb, var(--n-card-color) 92%, transparent);
+  border-top: 1px solid var(--n-border-color);
+  backdrop-filter: blur(14px);
+}
+.tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--n-text-color-3);
+  cursor: pointer;
+  user-select: none;
+}
+.tab.active {
+  color: var(--n-primary-color);
+  font-weight: 600;
+}
+@media (max-width: 768px) {
+  .header {
+    padding: 0 12px;
+  }
+  .content {
+    padding: 12px 12px calc(52px + env(safe-area-inset-bottom, 0px) + 12px);
+  }
+  .content.has-mini-player {
+    padding-bottom: calc(60px + 52px + env(safe-area-inset-bottom, 0px) + 12px);
+  }
+  .content.player-content {
+    padding: 0 0 calc(52px + env(safe-area-inset-bottom, 0px));
+  }
+  .content.player-content.has-mini-player {
+    padding-bottom: calc(60px + 52px + env(safe-area-inset-bottom, 0px));
+  }
 }
 </style>

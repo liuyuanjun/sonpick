@@ -45,6 +45,8 @@ export const usePlayerStore = defineStore('player', () => {
   const lyricIndex = ref(-1)
   const showQueue = ref(false)
   const expanded = ref(false)
+  // 移动端全屏「正在播放」浮层开关（桌面端不使用）
+  const fullPlayerOpen = ref(false)
   // 舞台视图：cover | blend | lyrics（切歌保留）
   const stageView = ref(normalizeStageView(localStorage.getItem('sonpick-stage-view') || legacyStageView()))
   // 歌词字号（px），默认比原先略大
@@ -256,9 +258,10 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   function setProgress(time, total) {
-    currentTime.value = time
-    if (total && !Number.isNaN(total)) duration.value = total
-    lyricIndex.value = findLyricIndex(lyrics.value, time)
+    currentTime.value = Number(time) || 0
+    const d = Number(total)
+    if (Number.isFinite(d) && d > 0) duration.value = d
+    lyricIndex.value = findLyricIndex(lyrics.value, currentTime.value)
   }
 
   function setStageView(view) {
@@ -298,6 +301,7 @@ export const usePlayerStore = defineStore('player', () => {
     duration.value = 0
     expanded.value = false
     showQueue.value = false
+    fullPlayerOpen.value = false
   }
 
   watch(mode, (v) => localStorage.setItem('sonpick-play-mode', v))
@@ -308,7 +312,7 @@ export const usePlayerStore = defineStore('player', () => {
   return {
     current, src, cover, playing, showPlayer, queue, currentIndex, mode, modeLabel,
     losslessPreferred,
-    volume, muted, currentTime, duration, lyrics, lyricIndex, showQueue, expanded,
+    volume, muted, currentTime, duration, lyrics, lyricIndex, showQueue, expanded, fullPlayerOpen,
     stageView, showLyrics, lyricFontSize,
     hasPrev, hasNext, play, playList, enqueue, removeFromQueue, clearQueue, jumpTo,
     next, prev, toggleMode, toggleLosslessPreferred, setVolume, toggleMute, pause, resume, togglePlay, toggle,

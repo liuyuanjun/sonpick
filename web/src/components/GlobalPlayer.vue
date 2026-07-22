@@ -1,6 +1,9 @@
 <template>
   <transition name="slide-up">
-    <div v-if="player.showPlayer" class="global-player">
+    <div v-if="player.showPlayer && player.current" class="global-player">
+      <div class="gp-progress-line" aria-hidden="true">
+        <div class="fill" :style="{ width: `${progress}%` }"></div>
+      </div>
       <audio
         ref="audio"
         :src="player.src"
@@ -29,7 +32,7 @@
         </div>
       </div>
 
-      <div class="gp-center">
+      <div v-if="!isMobile" class="gp-center">
         <div class="controls">
           <n-tooltip>
             <template #trigger>
@@ -73,7 +76,19 @@
         </div>
       </div>
 
-      <div class="gp-right">
+      <div v-if="isMobile" class="gp-mobile-actions">
+        <n-button quaternary circle @click="togglePlay">
+          <n-icon size="24">
+            <pause v-if="player.playing" />
+            <play v-else />
+          </n-icon>
+        </n-button>
+        <n-button quaternary circle @click="player.next()">
+          <n-icon size="22"><play-skip-forward /></n-icon>
+        </n-button>
+      </div>
+
+      <div v-if="!isMobile" class="gp-right">
         <n-button quaternary circle size="small" @click="player.toggleMute()">
           <n-icon size="18">
             <volume-mute v-if="player.muted || player.volume === 0" />
@@ -100,35 +115,64 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   Play, Pause, Close, MusicalNotes, PlaySkipBack, PlaySkipForward,
   Shuffle, Repeat, Reload, List, ListOutline, VolumeMedium, VolumeMute, Expand,
 } from '@vicons/ionicons5'
 import { NSlider, useMessage } from 'naive-ui'
 import { usePlayerStore } from '@/stores/player'
+import { useIsMobile } from '@/composables/useIsMobile'
 import { formatTime } from '@/utils/lrc'
 
 const player = usePlayerStore()
 const message = useMessage()
 const router = useRouter()
+const route = useRoute()
+const isMobile = useIsMobile()
 const audio = ref(null)
 const coverBroken = ref(false)
+// 本地进度百分比：直接跟 audio 同步，避免仅依赖 store 时顶部细线不刷新
+const progressPct = ref(0)
 
 const progress = computed(() => {
-  if (!player.duration) return 0
-  return (player.currentTime / player.duration) * 100
+  const local = Number(progressPct.value) || 0
+  if (local > 0) return local
+  const total = Number(player.duration) || 0
+  const cur = Number(player.currentTime) || 0
+  if (!(total > 0) || !Number.isFinite(total)) return 0
+  return Math.min(100, Math.max(0, (cur / total) * 100))
 })
+
+function syncProgressFromAudio(el = audio.value) {
+  if (!el) {
+    progressPct.value = 0
+    return
+  }
+  const total = Number(el.duration)
+  const cur = Number(el.currentTime) || 0
+  if (!Number.isFinite(total) || total <= 0) {
+    // 流式/未知时长时用 store 兜底
+    const st = Number(player.duration) || 0
+    const sc = Number(player.currentTime) || 0
+    progressPct.value = st > 0 ? Math.min(100, Math.max(0, (sc / st) * 100)) : 0
+    return
+  }
+  progressPct.value = Math.min(100, Math.max(0, (cur / total) * 100))
+  player.setProgress(cur, total)
+}
 
 watch(() => player.cover, () => {
   coverBroken.value = false
 })
 
 watch(() => player.src, () => {
+  progressPct.value = 0
   requestAnimationFrame(() => {
     if (!audio.value) return
     audio.value.load()
     if (player.playing) audio.value.play().catch(() => {})
+    syncProgressFromAudio(audio.value)
   })
 })
 
@@ -151,12 +195,12 @@ function togglePlay() {
 }
 
 function onTimeUpdate(e) {
-  player.setProgress(e.target.currentTime || 0, e.target.duration || player.duration || 0)
+  syncProgressFromAudio(e.target)
 }
 
 function onLoaded(e) {
-  player.setProgress(player.currentTime || 0, e.target.duration || player.duration || 0)
   if (audio.value) audio.value.volume = player.muted ? 0 : player.volume
+  syncProgressFromAudio(e.target)
 }
 
 function onEnded() {
@@ -184,10 +228,15 @@ function onAudioError() {
 }
 
 function seek(val) {
-  if (!audio.value || !player.duration) return
-  const t = (val / 100) * player.duration
+  if (!audio.value) return
+  const total = Number(audio.value.duration)
+  const fallback = Number(player.duration) || 0
+  const dur = (Number.isFinite(total) && total > 0) ? total : fallback
+  if (!(dur > 0)) return
+  const t = (val / 100) * dur
   audio.value.currentTime = t
-  player.setProgress(t, player.duration)
+  progressPct.value = Math.min(100, Math.max(0, Number(val) || 0))
+  player.setProgress(t, dur)
 }
 
 function onExternalSeek(e) {
@@ -199,6 +248,12 @@ function onExternalSeek(e) {
 }
 
 function goPlayer() {
+  if (isMobile.value) {
+    // 移动端：进入播放器页并展开全屏「正在播放」浮层
+    if (route.name !== 'Player') router.push({ name: 'Player' })
+    player.fullPlayerOpen = true
+    return
+  }
   router.push({ name: 'Player' })
 }
 
@@ -299,6 +354,30 @@ onUnmounted(() => window.removeEventListener('sonpick-seek', onExternalSeek))
   gap: 8px;
   min-width: 0;
 }
+.gp-progress-line {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  overflow: hidden;
+  background: rgba(127, 127, 127, 0.28);
+  pointer-events: none;
+  z-index: 3;
+}
+.gp-progress-line .fill {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: #18a058;
+  will-change: width;
+}
+.gp-mobile-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
 .slide-up-enter-active,
 .slide-up-leave-active {
   transition: transform 0.2s ease, opacity 0.2s ease;
@@ -316,6 +395,23 @@ onUnmounted(() => window.removeEventListener('sonpick-seek', onExternalSeek))
   }
   .gp-right {
     display: none;
+  }
+}
+@media (max-width: 768px) {
+  .global-player {
+    grid-template-columns: minmax(0, 1fr) auto;
+    height: 60px;
+    bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+    padding: 0 10px;
+    gap: 8px;
+  }
+  .gp-progress-line {
+    display: block;
+  }
+  .cover {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
   }
 }
 </style>

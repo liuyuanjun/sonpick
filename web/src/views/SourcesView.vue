@@ -1,7 +1,7 @@
 <template>
-  <n-space vertical size="large" style="width: 100%">
-    <n-card title="歌曲源">
-      <template #header-extra>
+  <n-space vertical size="large" style="width: 100%" class="sources-page" :class="{ mobile: isMobile }">
+    <n-card :title="isMobile ? undefined : '歌曲源'" class="sources-card">
+      <template v-if="!isMobile" #header-extra>
         <n-space>
           <n-button type="primary" @click="openCreate('local')">添加本地源</n-button>
           <n-button type="info" @click="openCreate('webdav')">添加 WebDAV 源</n-button>
@@ -9,11 +9,98 @@
         </n-space>
       </template>
 
-      <n-data-table :columns="columns" :data="sources" :loading="loading" :row-key="(r) => r.id" />
+      <div v-if="isMobile" class="mobile-toolbar">
+        <n-button type="primary" class="toolbar-btn" @click="openCreate('local')">添加本地源</n-button>
+        <n-button type="info" class="toolbar-btn" @click="openCreate('webdav')">添加 WebDAV</n-button>
+        <n-button class="toolbar-btn" :loading="loading" @click="load">刷新</n-button>
+      </div>
+
+      <n-data-table
+        v-if="!isMobile"
+        :columns="columns"
+        :data="sources"
+        :loading="loading"
+        :row-key="(r) => r.id"
+      />
+
+      <div v-else class="mobile-source-list">
+        <n-spin :show="loading">
+          <n-empty v-if="!sources.length && !loading" description="暂无歌曲源" />
+          <n-space v-else vertical size="small">
+            <div v-for="row in sources" :key="row.id" class="source-card">
+              <div class="source-card-head">
+                <div class="source-card-title">
+                  <div class="source-name">{{ row.name }}</div>
+                  <div class="source-tags">
+                    <n-tag size="small" :type="row.type === 'webdav' ? 'info' : 'success'">
+                      {{ row.type === 'webdav' ? 'WebDAV' : '本地' }}
+                    </n-tag>
+                    <n-tag v-if="row.is_builtin" size="small" type="warning">内置</n-tag>
+                    <n-tag size="small" :type="row.enabled ? 'success' : 'default'">
+                      {{ row.enabled ? '启用' : '停用' }}
+                    </n-tag>
+                    <n-tag
+                      v-if="row.type === 'webdav' && row.is_default_upload"
+                      size="small"
+                      type="warning"
+                    >
+                      默认上传
+                    </n-tag>
+                  </div>
+                </div>
+                <div class="source-card-status">
+                  <n-tag size="small" :type="statusMeta(row).type">{{ statusMeta(row).text }}</n-tag>
+                  <n-text depth="3">{{ row.song_count ?? '-' }} 首</n-text>
+                </div>
+              </div>
+
+              <div class="source-card-actions">
+                <n-button size="small" @click="openEdit(row)">编辑</n-button>
+                <n-button size="small" @click="onTest(row)">测试</n-button>
+                <template v-if="scanTaskStates[row.id] && !['completed', 'failed', 'cancelled'].includes(scanTaskStates[row.id].status)">
+                  <div class="scan-progress">
+                    <n-progress
+                      type="line"
+                      size="small"
+                      :percentage="scanTaskStates[row.id].percent || 0"
+                      :show-indicator="false"
+                    />
+                    <n-text depth="3">{{ scanTaskStates[row.id].message || '扫描中...' }}</n-text>
+                  </div>
+                </template>
+                <n-button v-else size="small" type="primary" @click="onScan(row)">扫描</n-button>
+                <n-button size="small" @click="openReorg(row)">整理</n-button>
+                <n-button size="small" @click="openScrape(row)">刮削</n-button>
+                <n-button v-if="row.type === 'webdav'" size="small" type="info" @click="openBrowse(row)">浏览</n-button>
+                <n-button
+                  v-if="row.type === 'webdav' && !row.is_default_upload"
+                  size="small"
+                  @click="onDefault(row)"
+                >
+                  默认上传
+                </n-button>
+                <n-button
+                  v-if="row.deletable !== false && !row.is_builtin"
+                  size="small"
+                  type="error"
+                  @click="onDelete(row)"
+                >
+                  删除
+                </n-button>
+              </div>
+            </div>
+          </n-space>
+        </n-spin>
+      </div>
     </n-card>
 
-    <n-modal v-model:show="showForm" preset="card" :title="formTitle" style="width: 640px">
-      <n-form label-placement="left" label-width="130px">
+    <n-modal
+      v-model:show="showForm"
+      preset="card"
+      :title="formTitle"
+      :style="isMobile ? 'width: min(640px, 96vw)' : 'width: 640px'"
+    >
+      <n-form :label-placement="isMobile ? 'top' : 'left'" :label-width="isMobile ? 'auto' : 130">
         <n-form-item label="名称">
           <n-input v-model:value="form.name" placeholder="例如 本地曲库 / NAS WebDAV" :disabled="isEditingBuiltin" />
         </n-form-item>
@@ -110,7 +197,7 @@
           源：{{ reorgSource?.name }}（{{ reorgSource?.type }}）。将按「艺术家/专辑/歌名」整理；失败文件会进入
           <code>_failed/</code>。先配置条件并预览，确认后再应用。
         </n-text>
-        <n-form label-placement="left" label-width="110" size="small">
+        <n-form :label-placement="isMobile ? 'top' : 'left'" :label-width="isMobile ? 'auto' : 110" size="small">
           <n-form-item label="整理目录">
             <n-space vertical style="width: 100%">
               <n-space align="center">
@@ -187,8 +274,8 @@
     </n-modal>
 
     <!-- 刮削 -->
-    <n-modal v-model:show="showScrape" preset="card" title="刮削元数据" style="width: 520px">
-      <n-form label-placement="left" label-width="120px">
+    <n-modal v-model:show="showScrape" preset="card" title="刮削元数据" :style="isMobile ? 'width: min(520px, 96vw)' : 'width: 520px'">
+      <n-form :label-placement="isMobile ? 'top' : 'left'" :label-width="isMobile ? 'auto' : 120">
         <n-form-item label="目标源">
           <n-text>{{ scrapeTarget?.name }}</n-text>
         </n-form-item>
@@ -247,6 +334,7 @@ import {
 } from '@/api/music'
 
 const message = useMessage()
+const isMobile = useIsMobile()
 const router = useRouter()
 
 function formatApiError(err, fallback = '操作失败') {
@@ -346,7 +434,7 @@ const scrapeTaskId = ref(null)
 const scrapeTaskStatus = ref('')
 const scrapeTaskMessage = ref('')
 
-function statusTag(row) {
+function statusMeta(row) {
   const s = row.connection_status || 'unknown'
   const map = {
     ok: { type: 'success', text: '正常' },
@@ -354,7 +442,11 @@ function statusTag(row) {
     not_configured: { type: 'warning', text: '未配置' },
     unknown: { type: 'default', text: '未知' },
   }
-  const m = map[s] || map.unknown
+  return map[s] || map.unknown
+}
+
+function statusTag(row) {
+  const m = statusMeta(row)
   return h(NTag, { type: m.type, size: 'small' }, { default: () => m.text })
 }
 
@@ -854,3 +946,72 @@ async function onDelete(row) {
 
 onMounted(load)
 </script>
+
+<style scoped>
+.mobile-toolbar {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.toolbar-btn {
+  width: 100%;
+}
+.toolbar-btn:last-child {
+  grid-column: 1 / -1;
+}
+.source-card {
+  border: 1px solid var(--n-border-color);
+  border-radius: 12px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--n-card-color) 92%, transparent);
+}
+.source-card-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.source-name {
+  font-weight: 700;
+  line-height: 1.35;
+  word-break: break-word;
+}
+.source-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.source-card-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.source-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.source-card-actions :deep(.n-button) {
+  min-height: 32px;
+}
+.scan-progress {
+  flex: 1 1 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+@media (max-width: 768px) {
+  .sources-card :deep(.n-card__content) {
+    padding-top: 12px;
+  }
+  .sources-page :deep(.n-modal .n-form-item-label) {
+    padding-bottom: 4px;
+  }
+  .sources-page :deep(.n-modal .n-button) {
+    min-width: 72px;
+  }
+}
+</style>

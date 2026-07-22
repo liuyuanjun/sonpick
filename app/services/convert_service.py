@@ -52,12 +52,28 @@ class ConvertService:
     def is_lossless(song_file: SongFile) -> bool:
         return (song_file.format or "").lower() in LOSSLESS_FORMATS
 
-    def select_playable_files(self, song: Song, lossless_preferred: bool = False) -> list[SongFile]:
+    def select_playable_files(
+        self,
+        song: Song,
+        lossless_preferred: bool = False,
+        source_id: int | None = None,
+    ) -> list[SongFile]:
         files = self.db.query(SongFile).filter(SongFile.song_id == song.id).all()
         priorities = {source.id: source.playback_priority for source in self.db.query(MediaSource).all()}
+
+        # 单源视图：只考虑该源内的版本，并排除不可用的
+        if source_id is not None:
+            files = [item for item in files if item.library_source_id == source_id]
+
         playable = [item for item in files if item.local_path or item.webdav_path]
         if not playable:
             return []
+
+        if source_id is not None:
+            playable = [item for item in playable if item.availability_status != "unavailable"]
+            if not playable:
+                return []
+
         ordered_formats = (LOSSLESS_FORMATS, {"mp3"}) if lossless_preferred else ({"mp3"}, LOSSLESS_FORMATS)
         ordered: list[SongFile] = []
         for formats in ordered_formats:
@@ -71,8 +87,13 @@ class ConvertService:
         ))
         return ordered
 
-    def select_playable_file(self, song: Song, lossless_preferred: bool = False) -> SongFile | None:
-        candidates = self.select_playable_files(song, lossless_preferred)
+    def select_playable_file(
+        self,
+        song: Song,
+        lossless_preferred: bool = False,
+        source_id: int | None = None,
+    ) -> SongFile | None:
+        candidates = self.select_playable_files(song, lossless_preferred, source_id=source_id)
         return candidates[0] if candidates else None
 
     def convert_song_to_mp3(self, song: Song) -> SongFile:

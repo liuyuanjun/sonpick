@@ -4,25 +4,42 @@
     <div class="noise" aria-hidden="true"></div>
 
     <div class="panel-top">
-      <div class="view-switch" role="group" :aria-label="stageViewLabel">
-        <n-tooltip v-for="option in stageViewOptions" :key="option.value">
+      <div class="top-left">
+        <n-tooltip v-if="isMobile">
           <template #trigger>
             <n-button
-              class="view-toggle icon-top-btn"
-              :class="{ active: player.stageView === option.value }"
-              :type="player.stageView === option.value ? 'primary' : 'default'"
-              :secondary="player.stageView === option.value"
-              :quaternary="player.stageView !== option.value"
+              class="icon-top-btn"
+              quaternary
               circle
               size="small"
-              :aria-label="option.label"
-              @click="player.setStageView(option.value)"
+              aria-label="收起播放器"
+              @click="player.fullPlayerOpen = false"
             >
-              <n-icon size="18"><component :is="option.icon" /></n-icon>
+              <n-icon size="20"><chevron-down /></n-icon>
             </n-button>
           </template>
-          {{ option.label }}
+          收起
         </n-tooltip>
+        <div class="view-switch" role="group" :aria-label="stageViewLabel">
+          <n-tooltip v-for="option in stageViewOptions" :key="option.value">
+            <template #trigger>
+              <n-button
+                class="view-toggle icon-top-btn"
+                :class="{ active: player.stageView === option.value }"
+                :type="player.stageView === option.value ? 'primary' : 'default'"
+                :secondary="player.stageView === option.value"
+                :quaternary="player.stageView !== option.value"
+                circle
+                size="small"
+                :aria-label="option.label"
+                @click="player.setStageView(option.value)"
+              >
+                <n-icon size="18"><component :is="option.icon" /></n-icon>
+              </n-button>
+            </template>
+            {{ option.label }}
+          </n-tooltip>
+        </div>
       </div>
       <div class="top-right">
         <div v-if="player.showLyrics" class="font-size-ctrl" @click.stop>
@@ -277,6 +294,7 @@ import {
   MusicalNotes,
   Heart,
   HeartOutline,
+  ChevronDown,
   Shuffle,
   Repeat,
   Reload,
@@ -298,6 +316,7 @@ import { addFavorite, removeFavorite, applyScrapeCandidate, fetchScrapeCandidate
 import api from '@/api/client'
 import { usePlayerStore } from '@/stores/player'
 import { useThemeStore } from '@/stores/theme'
+import { useIsMobile } from '@/composables/useIsMobile'
 import { formatTime } from '@/utils/lrc'
 import { ambientBackground, extractAccentFromImage } from '@/utils/color'
 import LyricsView from '@/components/player/LyricsView.vue'
@@ -305,6 +324,7 @@ import LyricsView from '@/components/player/LyricsView.vue'
 const player = usePlayerStore()
 const themeStore = useThemeStore()
 const message = useMessage()
+const isMobile = useIsMobile()
 const coverBroken = ref(false)
 const accent = ref(null)
 const scraping = ref(false)
@@ -611,6 +631,7 @@ async function toggleFavorite() {
   flex: 0 0 auto;
   gap: 8px;
 }
+.top-left,
 .view-switch,
 .top-right {
   display: flex;
@@ -1032,6 +1053,28 @@ async function toggleFavorite() {
   }
   .blend-lyrics {
     width: 82%;
+  }
+}
+
+/* 移动端全屏浮层形态 */
+@media (max-width: 768px) {
+  .volume-row {
+    display: none;
+  }
+  .title {
+    font-size: 19px;
+  }
+  .meta-block {
+    padding: 4px 18px 0;
+  }
+  .progress {
+    padding: 12px 18px 0;
+  }
+  .controls {
+    padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  }
+  .tap-hint {
+    display: none;
   }
 }
 

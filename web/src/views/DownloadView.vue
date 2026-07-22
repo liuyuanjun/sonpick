@@ -1,7 +1,12 @@
 <template>
-  <n-space vertical size="large" style="width: 100%">
-    <n-card title="下载">
-      <n-tabs v-model:value="activeTab" type="line" animated>
+  <n-space vertical size="large" style="width: 100%" class="download-page" :class="{ mobile: isMobile }">
+    <n-card :title="isMobile ? undefined : '下载'" class="main-card">
+      <n-tabs
+        v-model:value="activeTab"
+        :type="isMobile ? 'segment' : 'line'"
+        animated
+        class="download-tabs"
+      >
         <n-tab-pane name="search" tab="搜索下载">
           <search-download />
         </n-tab-pane>
@@ -11,7 +16,7 @@
       </n-tabs>
     </n-card>
 
-    <n-card title="曲库目录与命名规范">
+    <n-card title="曲库目录与命名规范" class="help-card">
       <n-space vertical size="small">
         <n-text depth="3" class="layout-help">
           推荐布局（与常见播放器 / NAS 曲库一致）：
@@ -38,9 +43,11 @@ import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import SearchDownload from '@/components/download/SearchDownload.vue'
 import ImportDownload from '@/components/download/ImportDownload.vue'
+import { useIsMobile } from '@/composables/useIsMobile'
 
 const route = useRoute()
 const router = useRouter()
+const isMobile = useIsMobile()
 const activeTab = ref(route.query.tab === 'import' ? 'import' : 'search')
 
 const layoutSample = `艺术家/
@@ -78,5 +85,29 @@ watch(activeTab, (v) => {
 .layout-list code,
 .layout-help code {
   font-size: 12px;
+}
+@media (max-width: 768px) {
+  .main-card :deep(.n-card__content) {
+    padding-top: 12px;
+  }
+  .download-tabs :deep(.n-tabs-nav) {
+    padding: 3px;
+    border: 1px solid var(--n-border-color);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--n-body-color) 78%, var(--n-primary-color) 5%);
+  }
+  .download-tabs :deep(.n-tabs-tab) {
+    flex: 1;
+    justify-content: center;
+  }
+  .download-tabs :deep(.n-tab-pane) {
+    padding-top: 14px;
+  }
+  .help-card :deep(.n-card-header) {
+    padding-bottom: 8px;
+  }
+  .layout-list {
+    padding-left: 1.1em;
+  }
 }
 </style>

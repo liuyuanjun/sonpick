@@ -159,10 +159,20 @@ export function searchMusic(q, page = 1, pageSize = 20, source = 'all') {
   return api.get('/search', { params: { q, page, page_size: pageSize, source }, timeout: 120000 })
 }
 
-export function uploadSongToWebdav(songId, sourceId) {
+export function uploadSongToWebdav(songId, sourceId, policy = null) {
+  const params = {}
+  if (sourceId) params.source_id = sourceId
+  if (policy) params.policy = policy
   return api.post(`/songs/${songId}/upload-webdav`, null, {
-    params: sourceId ? { source_id: sourceId } : {},
+    params,
     timeout: 120000,
+  })
+}
+
+export function checkUploadConflicts(songId, sourceId) {
+  return api.post(`/songs/${songId}/upload-webdav/check`, null, {
+    params: sourceId ? { source_id: sourceId } : {},
+    timeout: 30000,
   })
 }
 

@@ -1,19 +1,19 @@
 <template>
-  <n-space vertical size="large" style="width: 100%">
+  <n-space vertical size="large" style="width: 100%" class="import-download" :class="{ mobile: isMobile }">
     <n-alert type="info" :bordered="false">
       每行一首，推荐格式：歌名 - 歌手。也可只写歌名。
     </n-alert>
     <n-input
       v-model:value="text"
       type="textarea"
-      :rows="12"
+      :rows="isMobile ? 10 : 12"
       placeholder="例如：&#10;晴天 - 周杰伦&#10;海阔天空 - Beyond"
     />
-    <n-space>
-      <n-select v-model:value="source" :options="sourceOptions" style="width: 150px" />
-      <n-select v-model:value="prefer" :options="formatOptions" style="width: 140px" />
-      <n-button type="primary" :loading="loading" @click="start">开始批量下载</n-button>
-    </n-space>
+    <div class="import-toolbar">
+      <n-select v-model:value="source" :options="sourceOptions" class="source-select" />
+      <n-select v-model:value="prefer" :options="formatOptions" class="format-select" />
+      <n-button type="primary" class="start-btn" :loading="loading" @click="start">开始批量下载</n-button>
+    </div>
   </n-space>
 </template>
 
@@ -21,8 +21,10 @@
 import { ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import api from '@/api/client'
+import { useIsMobile } from '@/composables/useIsMobile'
 
 const message = useMessage()
+const isMobile = useIsMobile()
 const text = ref('')
 const prefer = ref('any')
 const source = ref('QQMusicClient')
@@ -62,3 +64,33 @@ async function start() {
   }
 }
 </script>
+
+<style scoped>
+.import-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.source-select {
+  width: 150px;
+}
+.format-select {
+  width: 140px;
+}
+@media (max-width: 768px) {
+  .import-toolbar {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .source-select,
+  .format-select,
+  .start-btn {
+    width: 100%;
+  }
+  .start-btn {
+    grid-column: 1 / -1;
+  }
+}
+</style>

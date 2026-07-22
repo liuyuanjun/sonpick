@@ -10,7 +10,7 @@
     </n-button>
   </n-badge>
 
-  <n-drawer v-model:show="show" placement="right" :width="420">
+  <n-drawer v-model:show="show" class="task-center-drawer" placement="right" :width="drawerWidth">
     <n-drawer-content closable>
       <template #header>
         <n-space align="center" justify="space-between" style="width: 100%">
@@ -119,15 +119,31 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { CloseOutline, ListOutline, SyncOutline } from '@vicons/ionicons5'
 import { cancelTask, listTasks } from '@/api/music'
 import { useWebSocket } from '@/composables/useWebSocket'
 import TaskDetail from '@/components/TaskDetail.vue'
+import { useIsMobile } from '@/composables/useIsMobile'
 
 const message = useMessage()
+const isMobile = useIsMobile()
 const show = ref(false)
+const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1200)
+
+function updateViewportWidth() {
+  viewportWidth.value = window.innerWidth
+}
+
+const drawerWidth = computed(() => {
+  const vw = Number(viewportWidth.value) || 1200
+  // 手机接近全宽，留一点边距看背后页面；桌面保持 420
+  if (isMobile.value || vw <= 768) return Math.min(vw, Math.max(280, vw - 16))
+  if (vw < 480) return Math.max(260, vw - 12)
+  return 420
+})
+
 const loading = ref(false)
 const tasks = ref([])
 const now = ref(Date.now())
@@ -257,6 +273,14 @@ async function loadTasks() {
   }
 }
 
+onMounted(() => {
+  updateViewportWidth()
+  window.addEventListener('resize', updateViewportWidth, { passive: true })
+})
+onUnmounted(() => {
+  window.removeEventListener('resize', updateViewportWidth)
+})
+
 function openDrawer() {
   show.value = true
   loadTasks()
@@ -362,5 +386,32 @@ loadTasks()
 @keyframes task-rotate {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+.task-item,
+.task-item-head,
+.task-item-foot {
+  max-width: 100%;
+}
+.task-item-head :deep(.n-space),
+.task-item-foot :deep(.n-space) {
+  min-width: 0;
+  max-width: 100%;
+}
+</style>
+
+<style>
+.task-center-drawer.n-drawer {
+  max-width: 100vw !important;
+}
+.task-center-drawer .n-drawer-content-wrapper,
+.task-center-drawer .n-drawer-body-content-wrapper,
+.task-center-drawer .n-drawer-body {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.task-center-drawer .n-drawer-header,
+.task-center-drawer .n-drawer-body-content-wrapper {
+  overflow-x: hidden;
 }
 </style>

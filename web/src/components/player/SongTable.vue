@@ -29,6 +29,7 @@
         :key="row.id"
         class="song-row"
         role="listitem"
+        @click="onRowTap(row)"
         @dblclick="playAt(row)"
       >
         <span class="col-idx">{{ i + 1 }}</span>
@@ -59,13 +60,13 @@
         </div>
         <span class="col-time">{{ formatTime(row.duration || 0) }}</span>
         <div class="col-actions">
-          <n-button quaternary circle size="tiny" @click.stop="playAt(row)">
+          <n-button v-if="!isMobile" quaternary circle size="tiny" @click.stop="playAt(row)">
             <n-icon :size="16"><play /></n-icon>
           </n-button>
           <n-button
             quaternary
             circle
-            size="tiny"
+            :size="isMobile ? 'small' : 'tiny'"
             :type="row.is_favorite ? 'error' : 'default'"
             @click.stop="toggleFav(row)"
           >
@@ -77,7 +78,7 @@
           <n-button
             quaternary
             circle
-            size="tiny"
+            :size="isMobile ? 'small' : 'tiny'"
             @click.stop="onAddOrRemove(row)"
           >
             <n-icon :size="16"><add /></n-icon>
@@ -102,6 +103,7 @@ import {
 import { usePlayerStore } from '@/stores/player'
 import { addFavorite, removeFavorite, coverUrl } from '@/api/music'
 import { useAuthStore } from '@/stores/auth'
+import { useIsMobile } from '@/composables/useIsMobile'
 import { formatTime } from '@/utils/lrc'
 
 const props = defineProps({
@@ -116,6 +118,12 @@ const player = usePlayerStore()
 const auth = useAuthStore()
 const message = useMessage()
 const keyword = ref('')
+const isMobile = useIsMobile()
+
+// 移动端没有双击概念，单击行即播放
+function onRowTap(row) {
+  if (isMobile.value) playAt(row)
+}
 
 const filtered = computed(() => {
   const k = keyword.value.trim().toLowerCase()
@@ -330,5 +338,25 @@ function onCoverError(e) {
 .dot {
   margin: 0 4px;
   opacity: 0.55;
+}
+
+@media (max-width: 768px) {
+  .search-input {
+    width: 100%;
+  }
+  .song-list-head {
+    display: none;
+  }
+  .song-row {
+    grid-template-columns: minmax(0, 1fr) 44px auto;
+    padding: 7px 4px;
+  }
+  .col-idx {
+    display: none;
+  }
+  .col-actions {
+    gap: 6px;
+    opacity: 1;
+  }
 }
 </style>

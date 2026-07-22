@@ -1,35 +1,38 @@
 <template>
-  <n-space vertical size="large" style="width: 100%">
-    <n-card title="操作日志">
+  <n-space vertical size="large" style="width: 100%" class="logs-page" :class="{ mobile: isMobile }">
+    <n-card :title="isMobile ? undefined : '操作日志'" class="logs-card">
       <n-space vertical size="medium">
-        <n-space wrap>
+        <div class="filters">
           <n-select
             v-model:value="filters.action"
             clearable
             placeholder="操作类型"
-            style="width: 140px"
+            class="filter-action"
             :options="actionOptions"
           />
           <n-select
             v-model:value="filters.status"
             clearable
             placeholder="状态"
-            style="width: 140px"
+            class="filter-status"
             :options="statusOptions"
           />
           <n-input
             v-model:value="filters.q"
             clearable
             placeholder="搜索标题/路径/说明"
-            style="width: 260px"
+            class="filter-q"
             @keyup.enter="load"
           />
-          <n-button type="primary" :loading="loading" @click="load">查询</n-button>
-          <n-button @click="resetFilters">重置</n-button>
-          <n-button type="error" secondary :loading="clearing" @click="clearAll">清空日志</n-button>
-        </n-space>
+          <div class="filter-actions">
+            <n-button type="primary" class="filter-btn" :loading="loading" @click="load">查询</n-button>
+            <n-button class="filter-btn" @click="resetFilters">重置</n-button>
+            <n-button type="error" secondary class="filter-btn" :loading="clearing" @click="clearAll">清空日志</n-button>
+          </div>
+        </div>
 
         <n-data-table
+          v-if="!isMobile"
           :columns="columns"
           :data="rows"
           :loading="loading"
@@ -37,6 +40,30 @@
           :single-line="false"
           size="small"
         />
+
+        <div v-else class="mobile-log-list">
+          <n-spin :show="loading">
+            <n-empty v-if="!rows.length && !loading" description="暂无操作日志" />
+            <n-space v-else vertical size="small">
+              <div v-for="row in rows" :key="row.id || `${row.created_at}-${row.title}`" class="log-card">
+                <div class="log-head">
+                  <div class="log-tags">
+                    <n-tag size="small" :bordered="false">{{ actionLabel[row.action] || row.action }}</n-tag>
+                    <n-tag size="small" :bordered="false" :type="statusType[row.status] || 'default'">
+                      {{ row.status }}
+                    </n-tag>
+                  </div>
+                  <n-text depth="3" class="log-time">{{ formatTime(row.created_at) }}</n-text>
+                </div>
+                <div class="log-title">{{ row.title || '—' }}</div>
+                <div v-if="row.message" class="log-message">{{ row.message }}</div>
+                <div v-if="row.local_path" class="log-path">本地：{{ row.local_path }}</div>
+                <div v-if="row.remote_path" class="log-path">远程：{{ row.remote_path }}</div>
+                <div v-if="row.task_id != null" class="log-task">任务 #{{ row.task_id }}</div>
+              </div>
+            </n-space>
+          </n-spin>
+        </div>
       </n-space>
     </n-card>
   </n-space>
@@ -44,11 +71,13 @@
 
 <script setup>
 import { h, onMounted, reactive, ref } from 'vue'
-import { NTag, NText, useDialog, useMessage } from 'naive-ui'
+import { NTag, useDialog, useMessage } from 'naive-ui'
 import api from '@/api/client'
+import { useIsMobile } from '@/composables/useIsMobile'
 
 const message = useMessage()
 const dialog = useDialog()
+const isMobile = useIsMobile()
 const loading = ref(false)
 const clearing = ref(false)
 const rows = ref([])
@@ -204,3 +233,85 @@ function clearAll() {
 
 onMounted(load)
 </script>
+
+<style scoped>
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.filter-action,
+.filter-status {
+  width: 140px;
+}
+.filter-q {
+  width: 260px;
+}
+.filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.log-card {
+  border: 1px solid var(--n-border-color);
+  border-radius: 12px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--n-card-color) 92%, transparent);
+}
+.log-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: flex-start;
+}
+.log-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.log-time {
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.log-title {
+  margin-top: 8px;
+  font-weight: 600;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.log-message,
+.log-path,
+.log-task {
+  margin-top: 6px;
+  color: var(--n-text-color-3);
+  font-size: 12px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+@media (max-width: 768px) {
+  .logs-card :deep(.n-card__content) {
+    padding-top: 12px;
+  }
+  .filters {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .filter-action,
+  .filter-status,
+  .filter-q {
+    width: 100%;
+  }
+  .filter-q {
+    grid-column: 1 / -1;
+  }
+  .filter-actions {
+    grid-column: 1 / -1;
+  }
+  .filter-btn {
+    flex: 1;
+  }
+}
+</style>

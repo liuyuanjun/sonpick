@@ -26,7 +26,7 @@
 
 **非目标**：多用户、公网商用、版权绕过。仅供个人学习与备份。
 
-当前版本（以代码为准）：`0.8.0-rc4`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
+当前版本（以代码为准）：`0.9.0-rc8`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
 
 ---
 
@@ -158,16 +158,16 @@ music/
 | `/login` | LoginView | 登录 |
 | `/` | DashboardView | 概览 |
 | `/download` | DownloadView | 搜索下载 + 导入下载 |
-| `/library` | LibraryView | 曲库 |
+| `/library` | LibraryView | 曲库（含 local/WebDAV 来源管理、浏览、扫描/整理/刮削） |
 | `/player` | PlayerView | 播放器 |
-| `/sources` | SourcesView | 歌曲源（local/webdav）管理 |
+| `/sources` | redirect → `/library` | 历史入口，统一收敛到曲库 |
 | `/logs` | LogsView | 操作日志 |
 | `/settings` | SettingsView | 存储路径/默认格式/自动转码/自动上传总开关 |
 
 **配置归属**：
 
-- WebDAV 地址/账号密码/冲突策略/侧车/删本地/远程子目录 → **只在歌曲源页**
-- 设置页可保留「自动上传」总开关，并链接到歌曲源页细项，避免双源维护
+- WebDAV 地址/账号密码/冲突策略/侧车/删本地/远程子目录 → **只在曲库页来源管理**（移动端可用 `?manage=1` 打开底部抽屉）
+- 设置页可保留「自动上传」总开关，并链接到曲库页细项，避免双源维护
 
 ### 5.2 UI / 工程
 
