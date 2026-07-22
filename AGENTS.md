@@ -26,7 +26,7 @@
 
 **非目标**：多用户、公网商用、版权绕过。仅供个人学习与备份。
 
-当前版本（以代码为准）：`0.9.0-rc8`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
+当前版本（以代码为准）：`0.10.0-rc1`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
 
 ---
 
@@ -124,6 +124,13 @@ music/
 - `Song.cover_path` / `Song.lrc_path` 是聚合缓存；`SongFile.cover_path` / `SongFile.lrc_path` 是版本侧车资源。扫描和选中版本时可回填聚合缓存。
 - 扫描接口 `/api/library/scan` 和 `/api/sources/{source_id}/scan` 会创建 `type=scan` 的异步任务；前端经任务中心/单任务 SSE 接收终态。
 - `Task.created_at` 表示入队时间，`Task.started_at` 表示 worker 实际开始执行时间；排队等待与任务耗时必须分别使用这两个时间计算。
+
+### 4.3.1 搜索曲库比对与下载重复决策
+
+- `library_match_service.match_search_results(db, items)`：搜索接口对一页结果批量比对，内存索引，禁止 N+1；三级匹配（平台曲目 ID / 规范化 artist+title+album+时长容差 / artist+title 疑似），版本差异（remix/live/伴奏/重制等）只判 `possible_duplicate`。
+- 搜索结果附 `library_match`：`status` / `song_id` / `versions[]`（location、format、size_bytes、replaceable）；不暴露服务器绝对路径；大小缺失时仅对命中的本地文件 stat。
+- 下载接口可选字段 `duplicate_action`（`keep_both` / `replace`）、`replace_song_file_id`、`matched_song_id`；缺省保持旧行为；`replace` 缺有效目标返回 422；决策随任务 payload 传递，worker 执行前重新校验 SongFile。
+- `download_duplicate_service`：`apply_keep_both` 把新版本并入同一逻辑 Song；`apply_replace` 先校验下载结果，再同目录临时文件 + `os.replace` 近似原子替换，失败不动旧文件；remote-only（WebDAV）版本不提供替换。
 
 ### 4.4 服务层
 

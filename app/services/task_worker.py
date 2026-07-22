@@ -404,6 +404,28 @@ class TaskWorker:
                         )
                         if song is None:
                             raise RuntimeError("未找到可下载版本，或下载文件落盘失败")
+                        # 曲库重复决策：保留两者并入同一逻辑 Song；替换走安全流程
+                        dup_action = payload.get("duplicate_action")
+                        log_message = f"下载完成 ({song.format or ''})"
+                        replaced_path = None
+                        if dup_action == "replace" and payload.get("replace_song_file_id"):
+                            from app.services.download_duplicate_service import apply_replace
+
+                            song = apply_replace(
+                                db,
+                                song,
+                                int(payload["replace_song_file_id"]),
+                                payload.get("matched_song_id"),
+                                task_id=task_id,
+                            )
+                            replaced = db.get(SongFile, int(payload["replace_song_file_id"]))
+                            replaced_path = replaced.local_path if replaced else None
+                            log_message = f"下载完成并替换已有本地版本 ({song.format or ''})"
+                        elif dup_action == "keep_both" and payload.get("matched_song_id"):
+                            from app.services.download_duplicate_service import apply_keep_both
+
+                            song = apply_keep_both(db, song, payload.get("matched_song_id"))
+                            log_message = f"下载完成（保留两个版本）({song.format or ''})"
                         downloaded_file = SongFileResolver(db).resolve_local(song)
                         write_log(
                             db,
@@ -411,14 +433,16 @@ class TaskWorker:
                             target="local",
                             status="success",
                             title=f"{song.artist or ''} - {song.title}".strip(" -"),
-                            message=f"下载完成 ({song.format or ''})",
-                            local_path=downloaded_file.local_path,
+                            message=log_message,
+                            local_path=replaced_path or downloaded_file.local_path,
                             song_id=song.id,
                             task_id=task_id,
                             detail={
                                 "cover_path": song.cover_path,
                                 "lrc_path": song.lrc_path,
                                 "format": song.format,
+                                "duplicate_action": dup_action,
+                                "replace_song_file_id": payload.get("replace_song_file_id"),
                             },
                         )
                     except Exception as e:

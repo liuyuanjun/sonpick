@@ -1,5 +1,5 @@
 <template>
-  <div class="player-page" :class="{ 'queue-open': player.showQueue, 'is-dark': themeStore.isDark }" :style="playerPageStyle">
+  <div class="player-page" :class="{ 'queue-open': player.showQueue, 'is-dark': themeStore.isDark, 'no-mini': !hasMiniPlayer }" :style="playerPageStyle">
     <aside class="side-nav">
       <div
         v-for="item in menus"
@@ -342,6 +342,8 @@ const menus = [
 ]
 
 const sectionTitle = computed(() => menus.find((m) => m.key === section.value)?.label || '播放器')
+// 迷你播放器未展示时不为其预留底部空间，避免页面下方出现一条空白区域
+const hasMiniPlayer = computed(() => player.showPlayer && !!player.current)
 const scrapingVisible = ref(false)
 const visibleSongIds = computed(() => {
   let list = []
@@ -722,6 +724,10 @@ onUnmounted(() => {
 .player-page.queue-open {
   grid-template-columns: 168px minmax(240px, 0.8fr) minmax(600px, 1.4fr);
 }
+.player-page.no-mini {
+  height: calc(100vh - 56px);
+  min-height: calc(100vh - 56px);
+}
 
 .side-nav {
   border-right: 1px solid rgba(127, 127, 127, 0.10);
@@ -983,6 +989,10 @@ onUnmounted(() => {
     flex-direction: column;
     height: calc(100dvh - 56px - 60px - 52px - env(safe-area-inset-bottom, 0px));
     min-height: calc(100dvh - 56px - 60px - 52px - env(safe-area-inset-bottom, 0px));
+  }
+  .player-page.no-mini {
+    height: calc(100dvh - 56px - 52px - env(safe-area-inset-bottom, 0px));
+    min-height: calc(100dvh - 56px - 52px - env(safe-area-inset-bottom, 0px));
   }
   .side-nav {
     flex: 0 0 auto;

@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.routers.auth import get_current_user
-from app.schemas import SearchPageOut, SearchResultItem
+from app.schemas import LibraryMatchOut, SearchPageOut, SearchResultItem
+from app.services.library_match_service import match_search_results
 from app.services.musicdl_service import DEFAULT_DOWNLOAD_SOURCES, SOURCE_LABELS, MusicDLService
 
 router = APIRouter(prefix="/search", tags=["search"])
@@ -48,8 +49,23 @@ def search(
                     file_size=str(size) if size is not None else None,
                     duration=getattr(item, "duration", None),
                     source=getattr(item, "source", None),
+                    song_id=str(getattr(item, "song_id", "") or "") or None,
                 )
             )
+        # 与本地曲库批量比对（Song + SongFile），一次性组装，避免 N+1
+        matches = match_search_results(db, [
+            {
+                "song_name": it.song_name,
+                "singers": it.singers,
+                "album": it.album,
+                "duration": it.duration,
+                "song_id": it.song_id,
+            }
+            for it in out_items
+        ])
+        for it, match in zip(out_items, matches):
+            if match:
+                it.library_match = LibraryMatchOut(**match)
         return SearchPageOut(
             items=out_items,
             total=total,

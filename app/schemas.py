@@ -124,12 +124,35 @@ class DownloadRequest(BaseModel):
     keyword: str
     prefer: str = "any"
     source: str = "all"
+    # 曲库重复决策：None 保持旧行为（直接作为新歌曲下载）
+    duplicate_action: Optional[str] = Field(default=None, pattern="^(keep_both|replace)$")
+    replace_song_file_id: Optional[int] = None
+    matched_song_id: Optional[int] = None
 
 
 class BatchDownloadRequest(BaseModel):
     content: str
     prefer: str = "any"
     source: str = "all"
+
+
+class LibraryMatchVersionOut(BaseModel):
+    song_file_id: int
+    location: str = "local"  # local | webdav
+    format: Optional[str] = None
+    size_bytes: Optional[int] = None
+    duration_seconds: Optional[int] = None
+    replaceable: bool = False
+
+
+class LibraryMatchOut(BaseModel):
+    status: str  # exists | possible_duplicate
+    confidence: str = "medium"  # high | medium | low
+    song_id: int
+    title: Optional[str] = None
+    artist: Optional[str] = None
+    album: Optional[str] = None
+    versions: list[LibraryMatchVersionOut] = Field(default_factory=list)
 
 
 class SearchResultItem(BaseModel):
@@ -144,6 +167,7 @@ class SearchResultItem(BaseModel):
     song_id: Optional[str] = None
     download_url: Optional[str] = None
     raw: Optional[dict] = None
+    library_match: Optional[LibraryMatchOut] = None
 
 
 class SearchPageOut(BaseModel):
