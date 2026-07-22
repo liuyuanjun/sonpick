@@ -87,7 +87,7 @@
 <script setup>
 import { computed, h, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NIcon, useMessage } from 'naive-ui'
+import { NIcon, useMessage, useThemeVars } from 'naive-ui'
 import {
   MusicalNotes,
   HomeOutline,
@@ -115,6 +115,8 @@ const message = useMessage()
 const collapsed = ref(false)
 const isMobile = useIsMobile()
 const player = usePlayerStore()
+// Naive UI 不会全局注入 --n-* 变量，直接用主题变量才能区分激活态
+const themeVars = useThemeVars()
 
 // 移动端底部 Tab（日志入口暂不收进 Tab，可从设置页/直链访问）
 const tabs = [
@@ -218,8 +220,8 @@ function logout() {
   height: calc(52px + env(safe-area-inset-bottom, 0px));
   padding-bottom: env(safe-area-inset-bottom, 0px);
   box-sizing: border-box;
-  background: color-mix(in srgb, var(--n-card-color) 92%, transparent);
-  border-top: 1px solid var(--n-border-color);
+  background: color-mix(in srgb, v-bind('themeVars.cardColor') 92%, transparent);
+  border-top: 1px solid v-bind('themeVars.borderColor');
   backdrop-filter: blur(14px);
 }
 .tab {
@@ -230,13 +232,14 @@ function logout() {
   justify-content: center;
   gap: 2px;
   font-size: 11px;
-  color: var(--n-text-color-3);
+  color: v-bind('themeVars.textColor3');
   cursor: pointer;
   user-select: none;
 }
 .tab.active {
-  color: var(--n-primary-color);
+  color: v-bind('themeVars.primaryColor');
   font-weight: 600;
+  background: color-mix(in srgb, v-bind('themeVars.primaryColor') 10%, transparent);
 }
 @media (max-width: 768px) {
   .header {
