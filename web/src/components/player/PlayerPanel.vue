@@ -187,7 +187,13 @@
     </div>
 
     <div class="progress">
-      <n-slider :value="progress" :step="0.1" :tooltip="false" @update:value="onSeekPercent" />
+      <n-slider
+        :value="progress"
+        :step="0.1"
+        :tooltip="false"
+        :disabled="!player.duration"
+        @update:value="onSeekPercent"
+      />
       <div class="time-row">
         <span>{{ formatTime(player.currentTime) }}</span>
         <span>{{ formatTime(player.duration) }}</span>
@@ -397,6 +403,23 @@ const progress = computed(() => {
   if (!player.duration) return 0
   return (player.currentTime / player.duration) * 100
 })
+
+function requestSeek(time) {
+  const target = Number(time)
+  if (!Number.isFinite(target) || target < 0) return
+  window.dispatchEvent(new CustomEvent('sonpick-seek', { detail: target }))
+}
+
+function onSeekPercent(value) {
+  const duration = Number(player.duration)
+  const percent = Math.min(100, Math.max(0, Number(value) || 0))
+  if (!Number.isFinite(duration) || duration <= 0) return
+  requestSeek((percent / 100) * duration)
+}
+
+function onLyricSeek(time) {
+  requestSeek(time)
+}
 
 const panelStyle = computed(() => {
   const bg = ambientBackground(accent.value, { dark: isDark.value })

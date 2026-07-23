@@ -244,7 +244,6 @@ function onExternalSeek(e) {
   if (!audio.value || Number.isNaN(t)) return
   audio.value.currentTime = t
   player.setProgress(t, audio.value.duration || player.duration || 0)
-  if (!player.playing) player.playing = true
 }
 
 function goPlayer() {
