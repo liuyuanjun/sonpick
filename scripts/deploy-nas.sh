@@ -14,7 +14,6 @@ SSH_HOST="${SONPICK_SSH_HOST:-qnap}"
 REMOTE_DIR="${SONPICK_REMOTE_DIR:-/home/admin/Docker/sonpick}"
 HEALTH_PORT="${SONPICK_HEALTH_PORT:-8301}"
 HEALTH_DELAY="${SONPICK_HEALTH_DELAY:-4}"
-IMAGE_REPO="${SONPICK_IMAGE_REPO:-}"
 VERSION=""
 
 usage() {
@@ -26,8 +25,8 @@ Usage: $0 [--version X.Y.Z | --latest] [--host HOST] [--remote DIR]
   --host HOST       SSH Host（默认 qnap，可用 SONPICK_SSH_HOST 覆盖）
   --remote DIR      远端目录（可用 SONPICK_REMOTE_DIR 覆盖）
 
-镜像仓库：默认要求 SONPICK_IMAGE_REPO（如 registry.cn-beijing.aliyuncs.com/<ns>/sonpick），
-或设置 SONPICK_ACR_NAMESPACE 自动拼出阿里云仓库地址。
+镜像仓库默认为阿里云 ACR（yuanjunl/sonpick）；可用 SONPICK_ACR_NAMESPACE 覆盖命名空间，
+或用 SONPICK_IMAGE_REPO 整体替换为其他 registry（如 ghcr.io/liuyuanjun/sonpick）。
 EOF
 }
 
@@ -48,10 +47,10 @@ fi
 [[ -n "$VERSION" ]] || die "cannot resolve version; pass --version"
 
 if [[ -z "$IMAGE_REPO" ]]; then
-  if [[ -n "${SONPICK_ACR_NAMESPACE:-}" ]]; then
-    IMAGE_REPO="registry.cn-beijing.aliyuncs.com/${SONPICK_ACR_NAMESPACE}/sonpick"
+  if [[ -n "${SONPICK_IMAGE_REPO:-}" ]]; then
+    IMAGE_REPO="${SONPICK_IMAGE_REPO}"
   else
-    die "set SONPICK_IMAGE_REPO (e.g. registry.cn-beijing.aliyuncs.com/<namespace>/sonpick) or SONPICK_ACR_NAMESPACE"
+    IMAGE_REPO="registry.cn-beijing.aliyuncs.com/${SONPICK_ACR_NAMESPACE:-yuanjunl}/sonpick"
   fi
 fi
 IMAGE="${IMAGE_REPO}:${VERSION}"

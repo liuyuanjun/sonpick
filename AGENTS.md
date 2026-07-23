@@ -259,8 +259,8 @@ curl -sS http://127.0.0.1:8000/health
 |----|-----|
 | SSH | `Host qnap` → `nas.liuyuanjun.com:9022` user `admin` |
 | 远端目录 | `/home/admin/Docker/sonpick` |
-| 部署命令 | `SONPICK_ACR_NAMESPACE=<ns> ./scripts/deploy-nas.sh`（默认部署 APP_VERSION；`--version` / `--latest` 可覆盖） |
-| 镜像来源 | 阿里云 ACR（`SONPICK_IMAGE_REPO` 可整体覆盖） |
+| 部署命令 | `./scripts/deploy-nas.sh`（默认部署 APP_VERSION；`--version` / `--latest` 可覆盖） |
+| 镜像来源 | 阿里云 ACR `yuanjunl/sonpick`（`SONPICK_ACR_NAMESPACE` 或 `SONPICK_IMAGE_REPO` 可覆盖） |
 
 脚本流程：同步根 `docker-compose.yml` → 远端 `.env` 固定 `SONPICK_IMAGE` → `docker compose pull && up -d` → 健康检查（8301）。
 
@@ -269,7 +269,7 @@ NAS 一次性前置：
 - 机器相关定制（如 `/vol2/@team/Music` 音乐目录挂载）放远端 `docker-compose.override.yml`，脚本不会覆盖它
 
 ```bash
-SONPICK_ACR_NAMESPACE=<ns> ./scripts/deploy-nas.sh
+./scripts/deploy-nas.sh
 ssh qnap 'curl -sS http://127.0.0.1:8301/health'
 ```
 
