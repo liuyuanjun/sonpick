@@ -49,6 +49,16 @@
           </n-tooltip>
           <n-tooltip>
             <template #trigger>
+              <n-button quaternary circle aria-label="修改密码" @click="showPasswordModal = true">
+                <template #icon>
+                  <n-icon><key-outline /></n-icon>
+                </template>
+              </n-button>
+            </template>
+            修改密码
+          </n-tooltip>
+          <n-tooltip>
+            <template #trigger>
               <n-button quaternary circle aria-label="退出登录" @click="logout">
                 <template #icon>
                   <n-icon><log-out-outline /></n-icon>
@@ -82,6 +92,14 @@
       </nav>
     </n-layout>
   </n-layout>
+
+  <n-modal v-model:show="showPasswordModal" preset="dialog" title="修改密码" positive-text="确认修改" negative-text="取消" :loading="changingPassword" @positive-click="handleChangePassword">
+    <n-space vertical>
+      <n-input v-model:value="pwdForm.old" type="password" show-password-on="click" placeholder="当前密码" />
+      <n-input v-model:value="pwdForm.new" type="password" show-password-on="click" placeholder="新密码（至少 6 位）" />
+      <n-input v-model:value="pwdForm.confirm" type="password" show-password-on="click" placeholder="再次输入新密码" />
+    </n-space>
+  </n-modal>
 </template>
 
 <script setup>
@@ -99,6 +117,7 @@ import {
   Moon,
   Sunny,
   LogOutOutline,
+  KeyOutline,
 } from '@vicons/ionicons5'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
@@ -165,6 +184,37 @@ const activeKey = computed(() => {
 
 function onMenu(key) {
   router.push(key)
+}
+
+const showPasswordModal = ref(false)
+const changingPassword = ref(false)
+const pwdForm = ref({ old: '', new: '', confirm: '' })
+
+async function handleChangePassword() {
+  if (!pwdForm.value.old || !pwdForm.value.new) {
+    message.warning('请填写完整')
+    return false
+  }
+  if (pwdForm.value.new.length < 6) {
+    message.warning('新密码至少 6 位')
+    return false
+  }
+  if (pwdForm.value.new !== pwdForm.value.confirm) {
+    message.warning('两次新密码不一致')
+    return false
+  }
+  changingPassword.value = true
+  try {
+    await auth.changePassword(pwdForm.value.old, pwdForm.value.new)
+    message.success('密码已修改')
+    pwdForm.value = { old: '', new: '', confirm: '' }
+  } catch (err) {
+    message.error(err.response?.data?.detail || '修改失败')
+    changingPassword.value = false
+    return false
+  } finally {
+    changingPassword.value = false
+  }
 }
 
 function logout() {

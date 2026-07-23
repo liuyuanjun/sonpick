@@ -30,7 +30,7 @@ Sonpick 仅用于个人学习与已获授权内容的备份管理，不面向多
 
 ## 日常使用
 
-1. 首次打开站点，使用部署时设置的 `ADMIN_PASSWORD` 登录。首次登录会创建唯一的管理员账户；账户创建后，修改环境变量不会重置已有密码。
+1. 首次打开站点会引导设置管理员密码（至少 6 位）。设置后用该密码登录；密码存储在数据库中，不再依赖环境变量。
 2. 在「下载」页搜索或导入歌曲列表。搜索结果会标记已存在或疑似已存在的曲目；下载前可以选择保留两个版本或替换指定本地版本。
 3. 在「曲库」页管理本地和 WebDAV 来源、扫描目录、浏览文件、整理或刮削。WebDAV 地址、账号、密码及上传冲突策略只在这里配置。
 4. 在「设置」页调整存储路径、格式偏好、自动转码和自动上传总开关。
@@ -54,7 +54,6 @@ mkdir -p data downloads logs
 
 ```dotenv
 SECRET_KEY=replace-with-a-long-random-value
-ADMIN_PASSWORD=replace-with-a-strong-password
 ```
 
 按需修改 `docker-compose.yml` 的端口（`ports`）和音乐目录挂载（`volumes` 中 `/app/downloads` 对应的宿主机路径），然后启动：
@@ -65,7 +64,7 @@ docker compose ps
 docker compose logs -f --tail=100
 ```
 
-在浏览器打开 `http://<server-address>:<host-port>`，使用 `ADMIN_PASSWORD` 登录。健康检查地址为 `http://<server-address>:<host-port>/health`，应返回类似 `{"status":"ok","version":"..."}` 的响应；所有 HTTP 响应也会带 `X-App-Version` 头。
+在浏览器打开 `http://<server-address>:<host-port>`，首次访问会提示设置管理员密码。健康检查地址为 `http://<server-address>:<host-port>/health`，应返回类似 `{"status":"ok","version":"..."}` 的响应；所有 HTTP 响应也会带 `X-App-Version` 头。
 
 镜像同时发布到三个仓库，默认 compose 使用 GHCR；网络环境受限时可任选其一，通过 `SONPICK_IMAGE` 覆盖：
 
@@ -114,7 +113,6 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 ```dotenv
 SECRET_KEY=replace-with-a-long-random-value
-ADMIN_PASSWORD=replace-with-a-local-password
 STORAGE_PATH=/absolute/path/to/music
 DATABASE_PATH=/absolute/path/to/data/music.db
 DATA_DIR=/absolute/path/to/data
@@ -179,7 +177,8 @@ music/
 - 浏览器对 FLAC 的支持不一致，必要时可在曲库中转码为 MP3。
 - 不同 WebDAV 服务端的路径与目录列表行为可能不同；连接异常时先用曲库来源管理中的测试功能确认配置。
 - remote-only（上传后删除本地）的完整曲库体验仍在完善中。
-- 生产环境务必修改 `SECRET_KEY` 与 `ADMIN_PASSWORD`；WebDAV 密码经过加密保存，但其安全性依赖于 `SECRET_KEY`。
+- 生产环境务必修改 `SECRET_KEY`（至少 32 字符的随机字符串）；启动时会检测默认值并打安全警告。WebDAV 密码经过加密保存，其安全性依赖于 `SECRET_KEY`。注意：修改 `SECRET_KEY` 后已存储的 WebDAV 密码将无法解密，需重新填写。
+- 忘记密码时，可通过 CLI 重置：`docker exec -it sonpick python -m app.cli reset-password`，按提示输入新密码即可。
 - 建议仅部署在可信内网，或通过 HTTPS 反向代理对外提供访问。反向代理需支持 WebSocket `/ws/progress`。
 
 ## 相关文档

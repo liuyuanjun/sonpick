@@ -26,7 +26,7 @@
 
 **非目标**：多用户、公网商用、版权绕过。仅供个人学习与备份。
 
-当前版本（以代码为准）：`0.10.0-rc5`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
+当前版本（以代码为准）：`0.11.0-rc1`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
 
 ---
 
@@ -232,7 +232,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 cd web && yarn && yarn dev
 ```
 
-环境变量见 `.env.example`：`SECRET_KEY`、`ADMIN_PASSWORD`、`STORAGE_PATH`、`DATABASE_PATH`、`DATA_DIR`。
+环境变量见 `.env`：`SECRET_KEY`、`STORAGE_PATH`、`DATABASE_PATH`、`DATA_DIR`。
 
 自检：
 
@@ -278,7 +278,7 @@ ssh qnap 'curl -sS http://127.0.0.1:8301/health'
 ### 8.3 数据与密钥
 
 - `data/` `downloads/` `logs/` 留在 NAS；部署脚本**不覆盖/不删除** 这些目录与 `.env`（仅在缺失时创建默认 `.env`）
-- 首次部署后请改 `SECRET_KEY` / `ADMIN_PASSWORD`
+- 首次部署后请改 `SECRET_KEY`；管理员密码在首次访问站点时设置
 
 ### 8.4 502 / Restarting
 

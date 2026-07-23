@@ -75,7 +75,7 @@ log "sync docker-compose.yml → ${SSH_HOST}:${REMOTE_DIR}/"
 rsync -az -e "$RSYNC_SSH_CMD" docker-compose.yml "${SSH_HOST}:${REMOTE_DIR}/docker-compose.yml"
 
 log "ensure remote .env (never overwrite existing)"
-ssh "${SSH_OPTS[@]}" "$SSH_HOST" "cd '$REMOTE_DIR' && if [ ! -f .env ]; then printf 'SECRET_KEY=please-change-me\nADMIN_PASSWORD=please-change-me\n' > .env; echo '[sonpick] created default .env — 请尽快修改'; fi"
+ssh "${SSH_OPTS[@]}" "$SSH_HOST" "cd '$REMOTE_DIR' && if [ ! -f .env ]; then printf 'SECRET_KEY=please-change-me-to-a-long-random-string\n' > .env; echo '[sonpick] created default .env — 请尽快修改 SECRET_KEY'; fi"
 
 log "pin image in remote .env: $IMAGE"
 ssh "${SSH_OPTS[@]}" "$SSH_HOST" "cd '$REMOTE_DIR' && if grep -q '^SONPICK_IMAGE=' .env; then sed -i 's|^SONPICK_IMAGE=.*|SONPICK_IMAGE=$IMAGE|' .env; else printf '\nSONPICK_IMAGE=$IMAGE\n' >> .env; fi"

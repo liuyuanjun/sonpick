@@ -37,6 +37,15 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class SetupRequest(BaseModel):
+    password: str
+
+
+class PasswordChangeRequest(BaseModel):
+    old_password: str
+    new_password: str
+
+
 class SettingsUpdate(BaseModel):
     storage_path: Optional[str] = None
     webdav_url: Optional[str] = None

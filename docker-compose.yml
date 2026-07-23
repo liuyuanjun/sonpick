@@ -13,7 +13,6 @@ services:
         required: false
     environment:
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
       STORAGE_PATH: /app/downloads
       DATABASE_PATH: /app/data/music.db
       DATA_DIR: /app/data

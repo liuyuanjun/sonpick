@@ -14,18 +14,35 @@ from app.routers import auth, download, library, library_extra, library_scan, lo
 from app.services.task_worker import worker, ws_manager
 from app.security import decode_token
 
-APP_VERSION = "0.10.0-rc5"
+APP_VERSION = "0.11.0-rc1"
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
 )
 
+DEFAULT_SECRET = "change-me-in-production"
+
+
+def _warn_insecure_secret() -> None:
+    """SECRET_KEY 是 JWT 签名与 WebDAV 密码加密的根密钥；保持默认值会不安全。"""
+    key = get_settings().secret_key
+    if key == DEFAULT_SECRET or len(key) < 16:
+        logging.warning(
+            "=" * 60 + "\n"
+            "[安全警告] SECRET_KEY 仍为默认值或过短。\n"
+            "JWT 签名与已存储的 WebDAV 密码均依赖此密钥。\n"
+            "请在 .env 中设置一个 32 字符以上的随机字符串后重启。\n"
+            "注意：修改 SECRET_KEY 后，已存储的 WebDAV 密码将无法解密，需重新填写。\n"
+            + "=" * 60
+        )
+
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    _warn_insecure_secret()
     loop = asyncio.get_event_loop()
     worker.set_loop(loop)
     process_task = asyncio.create_task(worker.process_loop())
