@@ -1,6 +1,6 @@
 # CLAUDE.md — 拾音 Sonpick
 
-NAS 部署的个人音乐下载与管理 Web 应用。改代码前先读本文件，再按任务需要读 `AGENTS.md`（协作规范/部署/版本纪律）、`product-overview.md`（产品设计要点）、`CHANGELOG.md`（版本历史）。
+NAS 部署的个人音乐下载与管理 Web 应用。改代码前先读本文件，再按任务需要读 `AGENTS.md`（协作规范/部署/版本纪律/待办）、`CHANGELOG.md`（版本历史）。
 
 ## 技术架构
 

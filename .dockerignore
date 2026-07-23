@@ -1,0 +1,24 @@
+.git
+.github
+venv
+.venv
+__pycache__
+*.pyc
+*.egg-info
+
+# runtime data / secrets
+.env
+data
+downloads
+logs
+*.log
+
+# frontend artifacts (镜像内重新构建)
+web/node_modules
+web/dist
+
+# local only
+local-docs
+tmp
+.DS_Store
+.pnpm-store

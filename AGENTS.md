@@ -1,6 +1,6 @@
 # AGENTS.md — 拾音 Sonpick
 
-面向后续 AI Agent / 协作者的项目操作手册。改代码前先读本文件与 `product-overview.md`、`CHANGELOG.md`。
+面向后续 AI Agent / 协作者的项目操作手册。改代码前先读本文件与 `CHANGELOG.md`。
 
 ---
 
@@ -68,7 +68,6 @@ music/
 ├── Dockerfile                # 多阶段：Node 构建前端 → Python 运行时
 ├── docker-compose.yml        # 基于预构建镜像的通用示例（SONPICK_IMAGE 可覆盖）
 ├── CHANGELOG.md
-├── product-overview.md
 ├── README.md
 └── AGENTS.md                 # 本文件
 ```
@@ -213,7 +212,6 @@ pnpm install && pnpm build
 2. `web/package.json`（及 lock 中顶层 version）
 3. `app/main.py` → `APP_VERSION`
 4. `CHANGELOG.md` 追加条目
-5. `product-overview.md` 中「当前设计要点」版本与要点
 
 API 必须继续暴露 `X-App-Version`。  
 用户要求 git 提交时：打 `v{版本号}` tag，并与代码一并推送（远程为 GitHub 时）。
@@ -298,7 +296,7 @@ ssh qnap 'curl -sS http://127.0.0.1:8301/health'
 4. **服务调用对齐**：改 `MusicDLService` / `ConvertService` / `WebDAVService` 签名时，同步 `task_worker` 与 routers  
 5. **WebDAV 配置单源**：细项放 WebDAV 页；设置页不恢复整套连接表单  
 6. **文件操作写日志**：下载/上传/删除/转码走 `operation_log_service`  
-7. **版本 + CHANGELOG + product-overview** 同一次改完  
+7. **版本 + CHANGELOG** 同一次改完  
 8. **部署相关**：若影响运行镜像，更新 `Dockerfile` 与 `.github/workflows/release.yml`，并确认发版 workflow 通过  
 9. **验证**：
    - 后端：能 import、`/health` 有版本
@@ -326,13 +324,12 @@ ssh qnap 'curl -sS http://127.0.0.1:8301/health'
 - 不同 WebDAV 服务器路径/LIST 行为不一致
 - remote-only（上传后删本地）曲库体验仍不完整
 
-**待办（product-overview）**
+**待办**
 
-- WebSocket 进度体验优化
-- 歌词显示
-- 播放列表/队列
-- 更多音乐源
-- remote-only 曲库完整体验
+- 扫描任务进度更细粒度的实时推送
+- remote-only 曲库的封面/歌词远程侧车直链体验
+- 更多音乐源支持
+- 增量扫描策略与任务重试
 
 ---
 
@@ -340,7 +337,6 @@ ssh qnap 'curl -sS http://127.0.0.1:8301/health'
 
 - [ ] `APP_VERSION` == `setup_app.py` == `web/package.json`
 - [ ] `CHANGELOG.md` 已写本版要点
-- [ ] `product-overview.md` 已更新
 - [ ] 新增/修改的 Pydantic 模型可被 router import
 - [ ] `task_worker` 与 service 方法签名一致
 - [ ] 前端 `main.js` 注册了新用到的 Naive 组件
@@ -354,9 +350,7 @@ ssh qnap 'curl -sS http://127.0.0.1:8301/health'
 | 文件 | 用途 |
 |------|------|
 | `README.md` | 用户向说明与快速开始 |
-| `product-overview.md` | 产品现状与待办 |
 | `CHANGELOG.md` | 版本变更史 |
-| `PROJECT_GUIDE.md` | 历史项目理解文档（可能编码/内容偏旧，**以本 AGENTS.md 与源码为准**） |
 | `scripts/deploy-nas.sh` | 维护者 NAS 一键部署脚本 |
 
 ---

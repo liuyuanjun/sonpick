@@ -170,7 +170,6 @@ music/
 ├── Dockerfile                # 多阶段镜像（前端构建 + Python 运行时）
 ├── docker-compose.yml        # 基于预构建镜像的通用示例
 ├── CHANGELOG.md              # 版本变更记录
-├── product-overview.md       # 当前产品设计与待办
 └── AGENTS.md                 # 协作与发布约定
 ```
 
@@ -185,7 +184,6 @@ music/
 
 ## 相关文档
 
-- [产品概览](product-overview.md)：当前设计、功能状态与待办
 - [变更记录](CHANGELOG.md)：版本历史
 
 ## 许可证
