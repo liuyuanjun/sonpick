@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---------- Stage 1: frontend build ----------
-FROM node:20-alpine AS web-builder
+FROM node:22-alpine AS web-builder
 WORKDIR /build
 RUN corepack enable
 COPY web/package.json web/pnpm-lock.yaml ./
