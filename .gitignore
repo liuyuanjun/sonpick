@@ -22,6 +22,7 @@ __pycache__/
 # local
 .DS_Store
 *.bak
+.pnpm-store/
 batch_download.log
 local-docs
 tmp
