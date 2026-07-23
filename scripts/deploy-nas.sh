@@ -15,6 +15,7 @@ REMOTE_DIR="${SONPICK_REMOTE_DIR:-/home/admin/Docker/sonpick}"
 HEALTH_PORT="${SONPICK_HEALTH_PORT:-8301}"
 HEALTH_DELAY="${SONPICK_HEALTH_DELAY:-4}"
 VERSION=""
+IMAGE_REPO="${SONPICK_IMAGE_REPO:-}"
 
 usage() {
   cat <<EOF
@@ -47,11 +48,7 @@ fi
 [[ -n "$VERSION" ]] || die "cannot resolve version; pass --version"
 
 if [[ -z "$IMAGE_REPO" ]]; then
-  if [[ -n "${SONPICK_IMAGE_REPO:-}" ]]; then
-    IMAGE_REPO="${SONPICK_IMAGE_REPO}"
-  else
-    IMAGE_REPO="registry.cn-beijing.aliyuncs.com/${SONPICK_ACR_NAMESPACE:-yuanjunl}/sonpick"
-  fi
+  IMAGE_REPO="registry.cn-beijing.aliyuncs.com/${SONPICK_ACR_NAMESPACE:-yuanjunl}/sonpick"
 fi
 IMAGE="${IMAGE_REPO}:${VERSION}"
 
