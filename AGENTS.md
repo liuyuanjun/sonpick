@@ -326,10 +326,50 @@ ssh qnap 'curl -sS http://127.0.0.1:8301/health'
 
 **待办**
 
-- 扫描任务进度更细粒度的实时推送
 - remote-only 曲库的封面/歌词远程侧车直链体验
 - 更多音乐源支持
 - 增量扫描策略与任务重试
+
+---
+
+## 10.1 架构速查（原 CLAUDE.md 合并内容）
+
+### 后端分层
+
+- `app/routers/`：薄路由层，约定 `except HTTPException: raise` + 兜底 `HTTPException(400, f"动作失败: {type(e).__name__}: {e}")`
+- 关键服务备注：
+  - `task_worker.py`：后台任务（线程池 max_workers=2，**线程不是进程**）
+  - `musicdl_service.py`：搜索/下载，按格式落盘（`_format_base_dir`）
+  - `library_organize_service.py`：曲库整理（preview/apply × local/webdav）
+  - `library_scan_service.py` / `library_scan.py`：扫描入库
+  - `scrape/`：元数据刮削管线（MusicBrainz → 网易/QQ/咪咕）
+  - `media_meta_service.py`：标签/时长/封面读取（mutagen→tinytag→ffprobe；**无比特率工具**）
+  - `convert_service.py`：转码 MP3（`LOSSLESS_FORMATS = {flac,wav,aiff,alac,ape}` 是全库唯一的无损判断权威）
+  - `library_layout.py`：目录规范 `Artist/Album/Title.ext`、cover.jpg、同名 lrc、`sanitize_component`
+
+### 任务系统细节
+
+- `Task.status`：`pending/running/completed/failed/cancelled`；类型：`scan/scrape/convert/search_download/batch_download`
+- 执行模型：线程池内跑同步函数，`worker_thread_id` 记录线程 ident（旧任务为 NULL）
+- **watchdog**（60s 周期）：future 完成但状态仍 running、线程消亡、或**无 worker_thread_id 且任务时长超 4 小时**（历史遗留任务）→ 标记 `failed`
+- 前端 TaskCenter 抽屉打开时 10s 兜底轮询
+- 注意：**整理（reorganize）不走任务系统**，是同步 HTTP（前端 timeout 120s/600s）；扫描、下载、转码和刮削走 TaskWorker 异步任务
+
+### 曲库整理规则（library_organize_service）
+
+- 元数据优先级：DB（刮削结果）→ 内嵌标签 → 文件名解析；**缺专辑默认跳过**（`skip_missing_album`），失败文件进 `_failed/` 并写 `.error.txt`
+- 目标 base 按文件决定（`_local_base_for_file`）：
+  1. 开「按格式归档」(`relocate_format_dirs`)：按扩展名分流到无损/MP3 存放目录
+  2. 内置曲库未开归档：文件留在其当前所在格式目录内整理（MP3 里的→MP3/歌手/专辑，LOSSLESS 里的同理）
+  3. 其他：**整理到选择的目录**（`root/relative_dir/歌手/专辑/歌曲`）
+- 目标已存在同一首歌：**保留音质好的**（无损>有损，同类比文件大小）；源更差→删源（抢救 .lrc）、SongFile 指向保留文件；源更好→替换目标。preview 标注 `dedup_keep_existing`/`replace_lower_quality`，结果含 `deduped` 计数
+- WebDAV 整理基于 SongFile.webdav_path，目标同样带所选目录前缀
+
+### 易踩的坑
+
+- **music.js 手工列字段**：`previewReorganize`/`applyReorganize` 等函数逐个列 body 字段，新增后端参数时必须同步加上（`relocate_format_dirs` 曾因此被丢，开关形同虚设）
+- macOS 路径比较要先 `resolve()`（`/var` ↔ `/private/var`），`_format_base_dirs` 返回已 resolve 的路径
+- SQLite 读回的 datetime 可能是 naive，比较前归一化 tz
 
 ---
 
@@ -351,6 +391,7 @@ ssh qnap 'curl -sS http://127.0.0.1:8301/health'
 |------|------|
 | `README.md` | 用户向说明与快速开始 |
 | `CHANGELOG.md` | 版本变更史 |
+| `CLAUDE.md` | 指向本文件的软链（Claude Code 入口） |
 | `scripts/deploy-nas.sh` | 维护者 NAS 一键部署脚本 |
 
 ---
