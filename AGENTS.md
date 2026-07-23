@@ -10,7 +10,7 @@
 - 如果我的指令不完整、不明确、不合理、不一致，请随时告诉我询问我，而不是自己猜测或盲目执行。
 - 当需要外部信息时，比如三方文档、数据源、API 文档等，如果使用你的内置工具查询不到，先询问我查找粘贴给你，而不是直接猜测编造。
 - 要适当注意性能问题，尽量避免循环高频查询、一次载入大量数据、重复计算等。对于复杂的计算或数据处理，建议分批处理或使用缓存。
-- 当代码进行了更新后，要及时更新 `AGENTS.md` 文件，和其它相关文档。保持文档与代码的一致性。
+- 当代码进行了更新后，要及时更新 `AGENTS.md`、`README.md`、`CHANGELOG.md` 和其它相关文档。保持文档与代码的一致性。
 
 ---
 
@@ -26,7 +26,7 @@
 
 **非目标**：多用户、公网商用、版权绕过。仅供个人学习与备份。
 
-当前版本（以代码为准）：`0.10.0-rc3`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
+当前版本（以代码为准）：`0.10.0-rc4`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
 
 ---
 
@@ -38,7 +38,7 @@
 | 前端 | Vue 3 + Vite + Naive UI + Pinia + Axios |
 | 下载 | 内嵌 `musicdl/`（editable install） |
 | 转码 | 系统 `ffmpeg` |
-| 部署 | Docker / docker-compose；默认镜像**不含 Node** |
+| 部署 | Docker / docker-compose；多阶段 Dockerfile 镜像内构建前端；GHCR / Docker Hub / 阿里云 ACR 三发 |
 
 包管理：本项目前端 **优先 pnpm**（`packageManager` 字段）；无 pnpm 时再 yarn/npm。发布脚本默认 pnpm。
 
@@ -63,11 +63,10 @@ music/
 │   ├── src/api/client.js     # Axios 封装
 │   └── dist/                 # 构建产物（Docker 默认 COPY 这里）
 ├── musicdl/                  # 下载引擎源码
-├── deploy/                   # NAS 轻量部署包（无 Node 构建）
-├── scripts/prepare-deploy.sh # 同步 app + web/dist + musicdl 到 deploy/
-├── Dockerfile                # 运行时镜像（需本地已 build 前端）
-├── Dockerfile.full           # 应急：容器内 Node 构建前端
-├── docker-compose.yml
+├── .github/workflows/release.yml # tag 触发：版本校验 + 多架构镜像构建 + 三仓库推送
+├── scripts/deploy-nas.sh     # NAS 一键部署（远端 pull 镜像 → up -d → 健康检查）
+├── Dockerfile                # 多阶段：Node 构建前端 → Python 运行时
+├── docker-compose.yml        # 基于预构建镜像的通用示例（SONPICK_IMAGE 可覆盖）
 ├── CHANGELOG.md
 ├── product-overview.md
 ├── README.md
@@ -194,6 +193,8 @@ pnpm install && pnpm build
 
 产物：`web/dist/`。改前端后部署前必须重新 build（默认 Docker 不再容器内构建）。
 
+注：本地开发仍需手动 build 才能让 `uvicorn` 直接托管前端；CI 镜像构建已在 Dockerfile 第一阶段自动完成前端 build。
+
 ---
 
 ## 6. 版本与变更纪律（必须）
@@ -243,41 +244,49 @@ curl -sS http://127.0.0.1:8000/health
 
 ---
 
-## 8. 部署（NAS / Docker）
+## 8. 部署（镜像化发布 / NAS）
 
-### 8.1 生产唯一路径
+### 8.1 发布链路
+
+1. 发版：打 `v{版本号}` tag 并推送 → GitHub Actions（`.github/workflows/release.yml`）校验 tag 与三处版本号一致 → 构建 linux/amd64 + linux/arm64 镜像 → 三推：
+   - `ghcr.io/liuyuanjun/sonpick`
+   - `<DOCKER_USERNAME>/sonpick`（Docker Hub）
+   - `registry.cn-beijing.aliyuncs.com/<ALIYUN_NAMESPACE>/sonpick`
+2. 所需仓库 Secrets：`DOCKER_USERNAME` / `DOCKER_PASSWORD` / `ALIYUN_USERNAME` / `ALIYUN_PASSWORD` / `ALIYUN_NAMESPACE`；GHCR 用 `GITHUB_TOKEN`，无需配置。
+3. 用户部署：根 `docker-compose.yml`（默认 GHCR 镜像，`SONPICK_IMAGE` 可换源）+ `.env` → `docker compose up -d`。
+
+### 8.2 维护者 NAS 一键部署
 
 | 项 | 值 |
 |----|-----|
 | SSH | `Host qnap` → `nas.liuyuanjun.com:9022` user `admin` |
 | 远端目录 | `/home/admin/Docker/sonpick` |
-| 发布命令 | `./scripts/deploy-nas.sh`（可加 `--force-build`） |
-| 前端构建 | 开发机 **pnpm**，产物进 `deploy/web/dist` |
-| NAS 构建 | 仅 Python 镜像，**无 Node** |
+| 部署命令 | `SONPICK_ACR_NAMESPACE=<ns> ./scripts/deploy-nas.sh`（默认部署 APP_VERSION；`--version` / `--latest` 可覆盖） |
+| 镜像来源 | 阿里云 ACR（`SONPICK_IMAGE_REPO` 可整体覆盖） |
+
+脚本流程：同步根 `docker-compose.yml` → 远端 `.env` 固定 `SONPICK_IMAGE` → `docker compose pull && up -d` → 健康检查（8301）。
+
+NAS 一次性前置：
+- 私有 ACR 需 `docker login registry.cn-beijing.aliyuncs.com` 一次（或把仓库设为公开）
+- 机器相关定制（如 `/vol2/@team/Music` 音乐目录挂载）放远端 `docker-compose.override.yml`，脚本不会覆盖它
 
 ```bash
-./scripts/deploy-nas.sh --force-build
-# 远端
+SONPICK_ACR_NAMESPACE=<ns> ./scripts/deploy-nas.sh
 ssh qnap 'curl -sS http://127.0.0.1:8301/health'
-docker compose logs 见远端目录
 ```
 
-只打包：`./scripts/prepare-deploy.sh` 或 `./scripts/deploy-nas.sh --pack-only`。
+当前项目部署于 nas.liuyuanjun.com 上，端口为 8301。服务器 ssh 端口为 9022，用户名为 admin，已配置密钥对。开发期间对安全要求不高，如需可把数据库拉取到本地分析。
 
-当前项目部署于 nas.liuyuanjun.com 上，端口为 8301。
-服务器ssh端口为 9022，用户名为 admin。已经配置好密钥对，如果需要直接登录即可。
-开发期间对安全要求不高，所以如果需要可以把数据库拉取到本地分析。
+### 8.3 数据与密钥
 
-### 8.2 数据与密钥
+- `data/` `downloads/` `logs/` 留在 NAS；部署脚本**不覆盖/不删除** 这些目录与 `.env`（仅在缺失时创建默认 `.env`）
+- 首次部署后请改 `SECRET_KEY` / `ADMIN_PASSWORD`
 
-- `data/` `downloads/` `logs/` 留在 NAS；rsync **不覆盖/不删除** 这些目录与 `.env`
-- 首次自动从 `.env.example` 生成 `.env`，请改 `SECRET_KEY` / `ADMIN_PASSWORD`
-
-### 8.3 502 / Restarting
+### 8.4 502 / Restarting
 
 1. `ssh qnap 'cd /home/admin/Docker/sonpick && docker compose ps && docker compose logs --tail=200'`
 2. `curl http://127.0.0.1:8301/health`
-3. 常见：schemas 缺模型导致 ImportError 启动失败
+3. 常见：schemas 缺模型导致 ImportError 启动失败；镜像 tag 不存在（release workflow 未完成或失败）
 
 
 
@@ -290,7 +299,7 @@ docker compose logs 见远端目录
 5. **WebDAV 配置单源**：细项放 WebDAV 页；设置页不恢复整套连接表单  
 6. **文件操作写日志**：下载/上传/删除/转码走 `operation_log_service`  
 7. **版本 + CHANGELOG + product-overview** 同一次改完  
-8. **部署相关**：若影响运行镜像，更新 `Dockerfile`/`deploy/` 并跑 `prepare-deploy.sh`  
+8. **部署相关**：若影响运行镜像，更新 `Dockerfile` 与 `.github/workflows/release.yml`，并确认发版 workflow 通过  
 9. **验证**：
    - 后端：能 import、`/health` 有版本
    - 前端：`yarn build` 或 `vite build` 通过
@@ -335,7 +344,7 @@ docker compose logs 见远端目录
 - [ ] 新增/修改的 Pydantic 模型可被 router import
 - [ ] `task_worker` 与 service 方法签名一致
 - [ ] 前端 `main.js` 注册了新用到的 Naive 组件
-- [ ] 需要部署时：`web/dist` 已构建，`prepare-deploy.sh` 已跑
+- [ ] 需要发版时：打 `v{版本号}` tag，release workflow 绿后再部署
 - [ ] 无密钥进入 git
 
 ---
@@ -348,7 +357,7 @@ docker compose logs 见远端目录
 | `product-overview.md` | 产品现状与待办 |
 | `CHANGELOG.md` | 版本变更史 |
 | `PROJECT_GUIDE.md` | 历史项目理解文档（可能编码/内容偏旧，**以本 AGENTS.md 与源码为准**） |
-| `deploy/README.md` | NAS 部署目录说明 |
+| `scripts/deploy-nas.sh` | 维护者 NAS 一键部署脚本 |
 
 ---
 

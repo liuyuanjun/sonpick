@@ -16,7 +16,7 @@
 - 全局播放器 + 白天/黑夜主题
 - 单用户密码登录（JWT）
 
-## 当前设计要点（0.10.0-rc3）
+## 当前设计要点（0.10.0-rc4）
 
 - **搜索曲库比对**：下载页搜索结果与 `Song + SongFile` 批量比对，标注「曲库已存在 / 疑似已存在」；三级匹配（平台曲目 ID / 规范化 artist+title+album+时长 / artist+title 疑似），remix/live/伴奏等版本差异只判疑似；命中版本展示格式与实际大小（本地版本大小缺失时按需 stat，不做全目录扫描）
 - **下载前版本选择**：命中曲库时弹窗决策——默认「保留两者，下载为新版本」（新版本并入同一逻辑 Song）、可选「下载完成后替换所选版本」（同目录临时文件 + `os.replace` 原子替换，失败不动旧文件）或取消；WebDAV remote-only 版本仅提示存在，不支持替换
@@ -59,7 +59,7 @@
 - **整理关联文件**：移动音频时同步迁移同名歌词、同名封面与目录级专辑封面
 - **曲库页面**：来源卡片、歌曲工具栏与内容面板分区更清晰；歌曲列表/浏览文件采用带图标的分段切换；歌曲操作统一尺寸，删除为红色描边图标按钮，并适配窄屏
 - **本地曲库连通性**：测试通过 `os.access(..., R_OK | X_OK)` 校验目录读取与进入权限，避免调用 `Path.is_readable()`。
-- **版本可观测**：前后端 `0.10.0-rc3`，API 头 `X-App-Version`。
+- **版本可观测**：前后端 `0.10.0-rc4`，API 头 `X-App-Version`。
 - **文件版本职责**：`SongFile` 是 local/WebDAV 物理路径、格式及封面/歌词侧车的唯一真相源；`Song` 只保留逻辑歌曲和聚合封面/歌词缓存，不再保存物理路径。
 - **扫描异步化**：曲库扫描改为异步任务（type=scan），经 TaskWorker 后台执行，曲库页原地显示进度条，任务中心同步可见，完成后全局 toast 提示。
 - **任务 watchdog**：后台 60s 扫描僵尸 running 任务（>30min 无更新），检查 worker 线程存活，失联则标记失败并推终态；解决容器重启/OOM 后任务永远卡在「进行中」的问题。
@@ -76,8 +76,9 @@
 
 ## 部署约定
 
-- 开发机构建（pnpm）→ `./scripts/deploy-nas.sh` → NAS `/home/admin/Docker/sonpick`
-- SSH Host：`qnap`（nas.liuyuanjun.com:9022）
+- 打 `v*` tag → GitHub Actions 构建多架构镜像并三推（GHCR / Docker Hub / 阿里云 ACR）
+- 用户侧：`docker-compose.yml` + 预构建镜像直接 `docker compose up -d`
+- 维护者 NAS：`./scripts/deploy-nas.sh`（SSH → 远端 pull → up -d → 健康检查）
 
 ## 待完成
 

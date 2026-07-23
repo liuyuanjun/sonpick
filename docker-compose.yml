@@ -1,10 +1,9 @@
-# 本地开发可选。生产请用 deploy/ + scripts/deploy-nas.sh
+# 通用示例配置：按自己的环境修改端口、音乐目录挂载与镜像地址。
+# 默认使用 GHCR 镜像；Docker Hub / 阿里云 ACR 通过 SONPICK_IMAGE 覆盖，例如：
+#   SONPICK_IMAGE=registry.cn-beijing.aliyuncs.com/<namespace>/sonpick:latest docker compose up -d
 services:
   sonpick:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: sonpick:local
+    image: ${SONPICK_IMAGE:-ghcr.io/liuyuanjun/sonpick:latest}
     container_name: sonpick
     restart: unless-stopped
     ports:
@@ -21,12 +20,11 @@ services:
       TZ: Asia/Shanghai
     volumes:
       - ./data:/app/data
-      # - ./downloads:/app/downloads
-      - /vol2/@team/Music:/app/downloads
+      - ./downloads:/app/downloads
       - ./logs:/app/logs
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
       interval: 30s
       timeout: 5s
       retries: 5
-      start_period: 25s
+      start_period: 30s

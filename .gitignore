@@ -1,6 +1,7 @@
 # runtime / secrets
 .env
 deploy/.env
+deploy/
 data/
 downloads/
 logs/

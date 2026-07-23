@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# 打包 + rsync 到 NAS + docker compose up
+# 一键部署到 NAS：同步 compose 文件 → 远端拉取镜像 → 重启 → 健康检查
+# 前置：
+#   1. GitHub Actions 已按 tag 构建并推送镜像（见 .github/workflows/release.yml）
+#   2. NAS 上已能拉取对应 registry（私有 ACR 需先 docker login 一次）
+#   3. NAS 上机器相关的定制放 docker-compose.override.yml（本脚本只更新 docker-compose.yml）
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=lib.sh
@@ -10,37 +14,27 @@ SSH_HOST="${SONPICK_SSH_HOST:-qnap}"
 REMOTE_DIR="${SONPICK_REMOTE_DIR:-/home/admin/Docker/sonpick}"
 HEALTH_PORT="${SONPICK_HEALTH_PORT:-8301}"
 HEALTH_DELAY="${SONPICK_HEALTH_DELAY:-4}"
-PACK_ONLY=0
-RSYNC_ONLY=0
-NO_BUILD=0
-FORCE_BUILD=0
-SKIP_FRONTEND=0
-CLEAN_DEPLOY=0
+IMAGE_REPO="${SONPICK_IMAGE_REPO:-}"
+VERSION=""
 
 usage() {
   cat <<EOF
-Usage: $0 [options]
+Usage: $0 [--version X.Y.Z | --latest] [--host HOST] [--remote DIR]
 
-  -b, --force-build   强制 pnpm build 前端
-  -p, --pack-only     只生成 deploy/，不 rsync
-  -r, --rsync-only    跳过打包构建，直接同步已有 deploy/
-  -n, --no-build      远端只 up/restart，不 docker compose build
-  -s, --skip-frontend 打包时不构建前端（要求 web/dist 已存在）
-  -c, --clean-deploy  成功部署后删除本地 deploy/
-  --host HOST         SSH Host（默认 qnap）
-  --remote DIR        远端目录（默认 /home/admin/Docker/sonpick）
-  -h, --help
+  --version X.Y.Z   部署指定版本镜像（默认读取 app/main.py 的 APP_VERSION）
+  --latest          部署 latest 标签
+  --host HOST       SSH Host（默认 qnap，可用 SONPICK_SSH_HOST 覆盖）
+  --remote DIR      远端目录（可用 SONPICK_REMOTE_DIR 覆盖）
+
+镜像仓库：默认要求 SONPICK_IMAGE_REPO（如 registry.cn-beijing.aliyuncs.com/<ns>/sonpick），
+或设置 SONPICK_ACR_NAMESPACE 自动拼出阿里云仓库地址。
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -b|--force-build) FORCE_BUILD=1; shift ;;
-    -p|--pack-only) PACK_ONLY=1; shift ;;
-    -r|--rsync-only) RSYNC_ONLY=1; shift ;;
-    -n|--no-build) NO_BUILD=1; shift ;;
-    -s|--skip-frontend) SKIP_FRONTEND=1; shift ;;
-    -c|--clean-deploy) CLEAN_DEPLOY=1; shift ;;
+    -v|--version) VERSION="$2"; shift 2 ;;
+    --latest) VERSION="latest"; shift ;;
     --host) SSH_HOST="$2"; shift 2 ;;
     --remote) REMOTE_DIR="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -48,22 +42,19 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "$RSYNC_ONLY" -eq 0 ]]; then
-  prep_args=()
-  [[ "$FORCE_BUILD" -eq 1 ]] && prep_args+=(--force-build)
-  [[ "$SKIP_FRONTEND" -eq 1 ]] && prep_args+=(--skip-build)
-  if [[ ${#prep_args[@]} -gt 0 ]]; then
-    "$ROOT/scripts/prepare-deploy.sh" "${prep_args[@]}"
-  else
-    "$ROOT/scripts/prepare-deploy.sh"
-  fi
-else
-  [[ -f deploy/web/dist/index.html ]] || die "deploy/web/dist missing; run without --rsync-only first"
-  [[ -f deploy/Dockerfile ]] || die "deploy/Dockerfile missing"
-  [[ -f deploy/docker-compose.yml ]] || die "deploy/docker-compose.yml missing"
+if [[ -z "$VERSION" ]]; then
+  VERSION=$(grep -E 'APP_VERSION\s*=' app/main.py | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
 fi
+[[ -n "$VERSION" ]] || die "cannot resolve version; pass --version"
 
-[[ "$PACK_ONLY" -eq 1 ]] && { log "pack done in deploy/"; exit 0; }
+if [[ -z "$IMAGE_REPO" ]]; then
+  if [[ -n "${SONPICK_ACR_NAMESPACE:-}" ]]; then
+    IMAGE_REPO="registry.cn-beijing.aliyuncs.com/${SONPICK_ACR_NAMESPACE}/sonpick"
+  else
+    die "set SONPICK_IMAGE_REPO (e.g. registry.cn-beijing.aliyuncs.com/<namespace>/sonpick) or SONPICK_ACR_NAMESPACE"
+  fi
+fi
+IMAGE="${IMAGE_REPO}:${VERSION}"
 
 # --- SSH connection multiplexing ---
 SSH_SOCK="/tmp/sonpick-${SSH_HOST}-$$"
@@ -84,33 +75,22 @@ ssh "${SSH_OPTS[@]}" "$SSH_HOST" "echo connected"
 log "ensure remote dirs"
 ssh "${SSH_OPTS[@]}" "$SSH_HOST" "mkdir -p '$REMOTE_DIR/data' '$REMOTE_DIR/downloads' '$REMOTE_DIR/logs'"
 
-log "rsync → ${SSH_HOST}:${REMOTE_DIR}/"
-rsync -az --delete --human-readable \
-  -e "$RSYNC_SSH_CMD" \
-  --exclude 'data/' \
-  --exclude 'downloads/' \
-  --exclude 'logs/' \
-  --exclude '.env' \
-  --exclude '__pycache__/' \
-  --exclude '*.pyc' \
-  deploy/ "${SSH_HOST}:${REMOTE_DIR}/"
+log "sync docker-compose.yml → ${SSH_HOST}:${REMOTE_DIR}/"
+rsync -az -e "$RSYNC_SSH_CMD" docker-compose.yml "${SSH_HOST}:${REMOTE_DIR}/docker-compose.yml"
 
 log "ensure remote .env (never overwrite existing)"
-ssh "${SSH_OPTS[@]}" "$SSH_HOST" "cd '$REMOTE_DIR' && if [ ! -f .env ]; then if [ -f .env.example ]; then cp .env.example .env; echo '[sonpick] created .env from example'; else printf 'SECRET_KEY=change-me\nADMIN_PASSWORD=admin\n' > .env; echo '[sonpick] created default .env'; fi; fi"
+ssh "${SSH_OPTS[@]}" "$SSH_HOST" "cd '$REMOTE_DIR' && if [ ! -f .env ]; then printf 'SECRET_KEY=please-change-me\nADMIN_PASSWORD=please-change-me\n' > .env; echo '[sonpick] created default .env — 请尽快修改'; fi"
 
-if [[ "$NO_BUILD" -eq 1 ]]; then
-  log "remote: docker compose up -d (no rebuild)"
-  ssh "${SSH_OPTS[@]}" "$SSH_HOST" "cd '$REMOTE_DIR' && docker compose up -d && docker compose ps"
-else
-  log "remote: docker compose up -d --build"
-  ssh "${SSH_OPTS[@]}" "$SSH_HOST" "cd '$REMOTE_DIR' && docker compose up -d --build && docker compose ps"
-fi
+log "pin image in remote .env: $IMAGE"
+ssh "${SSH_OPTS[@]}" "$SSH_HOST" "cd '$REMOTE_DIR' && if grep -q '^SONPICK_IMAGE=' .env; then sed -i 's|^SONPICK_IMAGE=.*|SONPICK_IMAGE=$IMAGE|' .env; else printf '\nSONPICK_IMAGE=$IMAGE\n' >> .env; fi"
 
-# 容器启动后先等几秒，再轮询健康检查（默认延迟 4s，最多再等 30s）
+log "remote: docker compose pull && up -d"
+ssh "${SSH_OPTS[@]}" "$SSH_HOST" "cd '$REMOTE_DIR' && docker compose pull && docker compose up -d && docker compose ps"
+
 log "wait ${HEALTH_DELAY}s then health check (http://127.0.0.1:${HEALTH_PORT}/health)"
 sleep "$HEALTH_DELAY"
 health_ok=0
-for i in $(seq 1 30); do
+for _ in $(seq 1 30); do
   if ssh "${SSH_OPTS[@]}" "$SSH_HOST" "curl -sfS http://127.0.0.1:${HEALTH_PORT}/health >/dev/null 2>&1"; then
     health_ok=1
     break
@@ -118,15 +98,9 @@ for i in $(seq 1 30); do
   sleep 1
 done
 if [[ "$health_ok" -eq 0 ]]; then
-  log "health check FAILED after ${HEALTH_DELAY}+30s — dumping logs:"
+  log "health check FAILED — dumping logs:"
   ssh "${SSH_OPTS[@]}" "$SSH_HOST" "cd '$REMOTE_DIR' && docker compose logs --tail=80"
   exit 1
 fi
-log "health check OK"
 
-if [[ "$CLEAN_DEPLOY" -eq 1 ]]; then
-  log "remove local deploy/"
-  rm -rf deploy/
-fi
-
-log "done"
+log "deployed $IMAGE — health check OK"

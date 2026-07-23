@@ -1,0 +1,73 @@
+name: Release Docker Image
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify version matches tag
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME#v}"
+          APP=$(sed -nE 's/^APP_VERSION = "([^"]+)".*/\1/p' app/main.py)
+          PKG=$(node -p "require('./web/package.json').version")
+          SETUP=$(sed -nE 's/^ *version="([^"]+)".*/\1/p' setup_app.py)
+          echo "tag=$TAG app=$APP package=$PKG setup=$SETUP"
+          if [ "$TAG" != "$APP" ] || [ "$TAG" != "$PKG" ] || [ "$TAG" != "$SETUP" ]; then
+            echo "::error::tag 与 APP_VERSION / package.json / setup_app.py 不一致"
+            exit 1
+          fi
+          echo "VERSION=$TAG" >> "$GITHUB_ENV"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Login to Aliyun ACR
+        uses: docker/login-action@v3
+        with:
+          registry: registry.cn-beijing.aliyuncs.com
+          username: ${{ secrets.ALIYUN_USERNAME }}
+          password: ${{ secrets.ALIYUN_PASSWORD }}
+
+      - name: Build and push (amd64 + arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/sonpick:${{ env.VERSION }}
+            ghcr.io/${{ github.repository_owner }}/sonpick:latest
+            ${{ secrets.DOCKER_USERNAME }}/sonpick:${{ env.VERSION }}
+            ${{ secrets.DOCKER_USERNAME }}/sonpick:latest
+            registry.cn-beijing.aliyuncs.com/${{ secrets.ALIYUN_NAMESPACE }}/sonpick:${{ env.VERSION }}
+            registry.cn-beijing.aliyuncs.com/${{ secrets.ALIYUN_NAMESPACE }}/sonpick:latest

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.10.0-rc4
+
+### 部署架构调整
+- **镜像化发布**：打 `v*` tag 触发 GitHub Actions 构建多架构镜像（linux/amd64 + linux/arm64），三推至 GHCR、Docker Hub 与阿里云 ACR；workflow 内置 tag 与 `APP_VERSION`/`package.json`/`setup_app.py` 版本一致性校验
+- **单一多阶段 Dockerfile**：前端在镜像内由 pnpm 构建（`pnpm-lock.yaml` 已入库，frozen-lockfile），合并原 `Dockerfile` 与 `Dockerfile.full`；pip 源可通过 `--build-arg PIP_INDEX_URL` 覆盖
+- **部署脚本重构**：`deploy-nas.sh` 改为「同步 compose → 远端 docker compose pull → up -d → 健康检查」，镜像通过远端 `.env` 的 `SONPICK_IMAGE` 固定；NAS 机器相关定制（如音乐目录挂载）改放 `docker-compose.override.yml`
+- **仓库瘦身**：`deploy/` 快照目录不再入库（加入 .gitignore），删除 `docker-compose.prod.yml`、`prepare-deploy.sh`；根 `docker-compose.yml` 改为基于镜像的通用示例
+
+### 文档
+- README 改为面向用户的通用 Docker 部署指南（占位符替代个人环境信息）
+
 ## 0.10.0-rc3
 
 ### 修复
