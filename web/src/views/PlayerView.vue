@@ -166,7 +166,7 @@
                 <n-button size="tiny" quaternary type="error" @click="onDeletePlaylist(p)">删除</n-button>
               </div>
             </div>
-            <n-empty v-if="!playlists.length" description="还没有歌单，点右上角新建" />
+            <n-empty v-if="!playlists.length" class="playlist-empty" description="还没有歌单，点右上角新建" />
           </div>
           <div v-else>
             <n-space align="center" style="margin-bottom: 12px">
@@ -958,6 +958,14 @@ onUnmounted(() => {
   grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
   gap: 14px;
   padding-bottom: 12px;
+}
+.playlist-empty {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+  text-align: center;
 }
 .media-card {
   border-radius: 14px;

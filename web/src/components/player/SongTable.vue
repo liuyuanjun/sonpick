@@ -233,11 +233,23 @@ function onCoverError(e) {
   width: min(220px, 100%);
 }
 .pagination-bar {
+  position: sticky;
+  bottom: 12px;
+  z-index: 4;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
   margin-top: 16px;
+  padding: 10px 12px;
+  border: 1px solid rgba(127, 127, 127, 0.16);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--n-card-color) 88%, transparent);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.10);
+  backdrop-filter: blur(14px);
+}
+.pagination-bar :deep(.n-pagination) {
+  justify-content: flex-end;
 }
 
 .song-list {
@@ -373,6 +385,18 @@ function onCoverError(e) {
 
 @media (max-width: 768px) {
   .search-input {
+    width: 100%;
+  }
+  .pagination-bar {
+    bottom: 8px;
+    padding: 8px 10px;
+    gap: 8px;
+  }
+  .pagination-bar :deep(.n-text) {
+    display: none;
+  }
+  .pagination-bar :deep(.n-pagination) {
+    justify-content: center;
     width: 100%;
   }
   .song-list-head {
