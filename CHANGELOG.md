@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.2
+
+### 构建修复
+- CI release workflow 修复阿里云 ACR 镜像分发：改为 build 阶段直接向 GHCR / Docker Hub / 阿里云 ACR 推送架构专属 tag，manifest 阶段在各 registry 本地合并多架构 manifest，避免 GHCR→ACR 跨 registry 复制时的 HTTP/2 PROTOCOL_ERROR。
+
 ## 0.12.1-rc1
 
 ### 修复

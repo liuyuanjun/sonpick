@@ -50,6 +50,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Login to Aliyun ACR
+        uses: docker/login-action@v3
+        with:
+          registry: registry.cn-beijing.aliyuncs.com
+          username: ${{ secrets.ALIYUN_USERNAME }}
+          password: ${{ secrets.ALIYUN_PASSWORD }}
+
       - name: Build and push (${{ matrix.platform }})
         uses: docker/build-push-action@v6
         with:
@@ -63,9 +76,11 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.suffix }}
           tags: |
             ghcr.io/${{ github.repository_owner }}/sonpick:${{ env.VERSION }}-${{ matrix.suffix }}
+            ${{ secrets.DOCKER_USERNAME }}/sonpick:${{ env.VERSION }}-${{ matrix.suffix }}
+            registry.cn-beijing.aliyuncs.com/${{ secrets.ALIYUN_NAMESPACE }}/sonpick:${{ env.VERSION }}-${{ matrix.suffix }}
 
   manifest:
-    name: Assemble and distribute manifests
+    name: Assemble manifests
     needs: build
     runs-on: ubuntu-24.04
     steps:
@@ -104,32 +119,31 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${{ env.VERSION }}"
-          SRC="ghcr.io/${{ github.repository_owner }}/sonpick:${VERSION}"
           docker buildx imagetools create \
-            -t "${SRC}" \
+            -t "ghcr.io/${{ github.repository_owner }}/sonpick:${VERSION}" \
             -t "ghcr.io/${{ github.repository_owner }}/sonpick:latest" \
             "ghcr.io/${{ github.repository_owner }}/sonpick:${VERSION}-amd64" \
             "ghcr.io/${{ github.repository_owner }}/sonpick:${VERSION}-arm64"
 
-      - name: Copy multi-arch manifest to Docker Hub
+      - name: Assemble multi-arch manifest on Docker Hub
         run: |
           set -euo pipefail
           VERSION="${{ env.VERSION }}"
-          SRC="ghcr.io/${{ github.repository_owner }}/sonpick:${VERSION}"
           docker buildx imagetools create \
             -t "${{ secrets.DOCKER_USERNAME }}/sonpick:${VERSION}" \
             -t "${{ secrets.DOCKER_USERNAME }}/sonpick:latest" \
-            "${SRC}"
+            "${{ secrets.DOCKER_USERNAME }}/sonpick:${VERSION}-amd64" \
+            "${{ secrets.DOCKER_USERNAME }}/sonpick:${VERSION}-arm64"
 
-      - name: Copy multi-arch manifest to Aliyun ACR
+      - name: Assemble multi-arch manifest on Aliyun ACR
         run: |
           set -euo pipefail
           VERSION="${{ env.VERSION }}"
-          SRC="ghcr.io/${{ github.repository_owner }}/sonpick:${VERSION}"
           docker buildx imagetools create \
             -t "registry.cn-beijing.aliyuncs.com/${{ secrets.ALIYUN_NAMESPACE }}/sonpick:${VERSION}" \
             -t "registry.cn-beijing.aliyuncs.com/${{ secrets.ALIYUN_NAMESPACE }}/sonpick:latest" \
-            "${SRC}"
+            "registry.cn-beijing.aliyuncs.com/${{ secrets.ALIYUN_NAMESPACE }}/sonpick:${VERSION}-amd64" \
+            "registry.cn-beijing.aliyuncs.com/${{ secrets.ALIYUN_NAMESPACE }}/sonpick:${VERSION}-arm64"
 
       - name: Inspect GHCR manifest
         run: |
@@ -137,11 +151,15 @@ jobs:
           docker buildx imagetools inspect \
             "ghcr.io/${{ github.repository_owner }}/sonpick:${{ env.VERSION }}"
 
-      - name: Clean up arch-specific tags on GHCR
-        if: env.KEEP_ARCH_TAGS != 'true'
+      - name: Inspect Aliyun ACR manifest
+        run: |
+          set -euo pipefail
+          docker buildx imagetools inspect \
+            "registry.cn-beijing.aliyuncs.com/${{ secrets.ALIYUN_NAMESPACE }}/sonpick:${{ env.VERSION }}"
+
+      - name: Note on arch-specific tags
         run: |
           set -euo pipefail
           VERSION="${{ env.VERSION }}"
-          echo "Note: arch-specific tags (${VERSION}-amd64, ${VERSION}-arm64) are left on GHCR for reproducibility."
-          echo "Set KEEP_ARCH_TAGS=true to keep them explicitly, or delete them manually from GHCR if desired."
-          # GHCR 删除 tag 需要调用 GitHub API，这里不自动清理，避免误删风险。
+          echo "Arch-specific tags (${VERSION}-amd64, ${VERSION}-arm64) are kept on all registries for reproducibility."
+          echo "Set KEEP_ARCH_TAGS=true to keep them explicitly, or delete them manually if desired."
