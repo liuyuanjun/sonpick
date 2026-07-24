@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.1
+
+### 构建优化
+- CI release workflow 改为矩阵 + 原生 arm64 runner，消除 QEMU 模拟；构建后通过 `docker buildx imagetools create` 合并多架构 manifest 并分发到 GHCR / Docker Hub / 阿里云 ACR。
+
 ## 0.12.0
 
 ### 优化
