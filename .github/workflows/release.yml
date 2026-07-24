@@ -9,8 +9,19 @@ permissions:
   packages: write
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
+  build:
+    name: Build (${{ matrix.suffix }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            suffix: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            suffix: arm64
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,8 +40,42 @@ jobs:
           fi
           echo "VERSION=$TAG" >> "$GITHUB_ENV"
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push (${{ matrix.platform }})
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          platforms: ${{ matrix.platform }}
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=${{ matrix.suffix }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.suffix }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/sonpick:${{ env.VERSION }}-${{ matrix.suffix }}
+
+  manifest:
+    name: Assemble and distribute manifests
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Resolve version
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Owner/repository: ${{ github.repository_owner }} / sonpick"
+          echo "Version: $VERSION"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -55,19 +100,48 @@ jobs:
           username: ${{ secrets.ALIYUN_USERNAME }}
           password: ${{ secrets.ALIYUN_PASSWORD }}
 
-      - name: Build and push (amd64 + arm64)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile
-          push: true
-          platforms: linux/amd64,linux/arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/sonpick:${{ env.VERSION }}
-            ghcr.io/${{ github.repository_owner }}/sonpick:latest
-            ${{ secrets.DOCKER_USERNAME }}/sonpick:${{ env.VERSION }}
-            ${{ secrets.DOCKER_USERNAME }}/sonpick:latest
-            registry.cn-beijing.aliyuncs.com/${{ secrets.ALIYUN_NAMESPACE }}/sonpick:${{ env.VERSION }}
-            registry.cn-beijing.aliyuncs.com/${{ secrets.ALIYUN_NAMESPACE }}/sonpick:latest
+      - name: Assemble multi-arch manifest on GHCR
+        run: |
+          set -euo pipefail
+          VERSION="${{ env.VERSION }}"
+          SRC="ghcr.io/${{ github.repository_owner }}/sonpick:${VERSION}"
+          docker buildx imagetools create \
+            -t "${SRC}" \
+            -t "ghcr.io/${{ github.repository_owner }}/sonpick:latest" \
+            "ghcr.io/${{ github.repository_owner }}/sonpick:${VERSION}-amd64" \
+            "ghcr.io/${{ github.repository_owner }}/sonpick:${VERSION}-arm64"
+
+      - name: Copy multi-arch manifest to Docker Hub
+        run: |
+          set -euo pipefail
+          VERSION="${{ env.VERSION }}"
+          SRC="ghcr.io/${{ github.repository_owner }}/sonpick:${VERSION}"
+          docker buildx imagetools create \
+            -t "${{ secrets.DOCKER_USERNAME }}/sonpick:${VERSION}" \
+            -t "${{ secrets.DOCKER_USERNAME }}/sonpick:latest" \
+            "${SRC}"
+
+      - name: Copy multi-arch manifest to Aliyun ACR
+        run: |
+          set -euo pipefail
+          VERSION="${{ env.VERSION }}"
+          SRC="ghcr.io/${{ github.repository_owner }}/sonpick:${VERSION}"
+          docker buildx imagetools create \
+            -t "registry.cn-beijing.aliyuncs.com/${{ secrets.ALIYUN_NAMESPACE }}/sonpick:${VERSION}" \
+            -t "registry.cn-beijing.aliyuncs.com/${{ secrets.ALIYUN_NAMESPACE }}/sonpick:latest" \
+            "${SRC}"
+
+      - name: Inspect GHCR manifest
+        run: |
+          set -euo pipefail
+          docker buildx imagetools inspect \
+            "ghcr.io/${{ github.repository_owner }}/sonpick:${{ env.VERSION }}"
+
+      - name: Clean up arch-specific tags on GHCR
+        if: env.KEEP_ARCH_TAGS != 'true'
+        run: |
+          set -euo pipefail
+          VERSION="${{ env.VERSION }}"
+          echo "Note: arch-specific tags (${VERSION}-amd64, ${VERSION}-arm64) are left on GHCR for reproducibility."
+          echo "Set KEEP_ARCH_TAGS=true to keep them explicitly, or delete them manually from GHCR if desired."
+          # GHCR 删除 tag 需要调用 GitHub API，这里不自动清理，避免误删风险。
