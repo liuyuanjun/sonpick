@@ -2,22 +2,25 @@
   <div class="song-table">
     <div class="toolbar">
       <n-space>
-        <n-button type="primary" :disabled="!songs.length" @click="playAll">
+        <n-button type="primary" :disabled="!songs.length" @click="playPage">
           <template #icon><n-icon><play /></n-icon></template>
-          播放全部
+          播放本页（{{ songs.length }} 首）
+        </n-button>
+        <n-button v-if="serverPaginated" secondary :disabled="!total" :loading="playingAll" @click="emit('play-all-results')">
+          {{ hasActiveFilter ? '播放当前结果' : '播放全部' }}（{{ total }} 首）
         </n-button>
         <n-button quaternary :disabled="!songs.length" @click="enqueueAll">加入队列</n-button>
       </n-space>
       <n-input
         v-if="showSearch"
-        v-model:value="keyword"
+        v-model:value="searchKeyword"
         clearable
         placeholder="筛选歌曲"
         class="search-input"
       />
     </div>
 
-    <div v-if="filtered.length" class="song-list" role="list">
+    <div v-if="visibleSongs.length" class="song-list" role="list">
       <div class="song-list-head">
         <span class="col-idx">#</span>
         <span class="col-main">歌曲 / 专辑</span>
@@ -25,7 +28,7 @@
         <span class="col-actions"></span>
       </div>
       <div
-        v-for="(row, i) in filtered"
+        v-for="(row, i) in visibleSongs"
         :key="row.id"
         class="song-row"
         role="listitem"
@@ -87,6 +90,10 @@
       </div>
     </div>
     <n-empty v-else description="暂无歌曲" style="padding: 36px 0" />
+    <div v-if="serverPaginated" class="pagination-bar">
+      <n-text depth="3">共 {{ total }} 首</n-text>
+      <n-pagination :page="page" :page-size="pageSize" :item-count="total" @update:page="emit('page-change', $event)" />
+    </div>
   </div>
 </template>
 
@@ -110,9 +117,15 @@ const props = defineProps({
   songs: { type: Array, default: () => [] },
   showSearch: { type: Boolean, default: true },
   playlistId: { type: Number, default: null },
+  serverPaginated: { type: Boolean, default: false },
+  total: { type: Number, default: 0 },
+  page: { type: Number, default: 1 },
+  pageSize: { type: Number, default: 100 },
+  searchValue: { type: String, default: '' },
+  playingAll: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['changed', 'add-to-playlist', 'remove-from-playlist'])
+const emit = defineEmits(['changed', 'add-to-playlist', 'remove-from-playlist', 'search', 'page-change', 'play-all-results'])
 
 const player = usePlayerStore()
 const auth = useAuthStore()
@@ -120,12 +133,23 @@ const message = useMessage()
 const keyword = ref('')
 const isMobile = useIsMobile()
 
+const searchKeyword = computed({
+  get: () => props.serverPaginated ? props.searchValue : keyword.value,
+  set: (value) => {
+    if (props.serverPaginated) emit('search', value)
+    else keyword.value = value
+  },
+})
+
+const hasActiveFilter = computed(() => Boolean(props.searchValue.trim()))
+
 // 移动端没有双击概念，单击行即播放
 function onRowTap(row) {
   if (isMobile.value) playAt(row)
 }
 
-const filtered = computed(() => {
+const visibleSongs = computed(() => {
+  if (props.serverPaginated) return props.songs
   const k = keyword.value.trim().toLowerCase()
   if (!k) return props.songs
   return props.songs.filter((s) => {
@@ -139,18 +163,18 @@ function subLine(row) {
 }
 
 function playAt(row) {
-  const list = filtered.value
+  const list = visibleSongs.value
   const idx = list.findIndex((s) => s.id === row.id)
   player.playList(list, idx >= 0 ? idx : 0)
 }
 
-function playAll() {
-  if (!filtered.value.length) return
-  player.playList(filtered.value, 0)
+function playPage() {
+  if (!props.songs.length) return
+  player.playList(props.songs, 0)
 }
 
 function enqueueAll() {
-  player.enqueue(filtered.value)
+  player.enqueue(visibleSongs.value)
   message.success('已加入播放队列')
 }
 
@@ -207,6 +231,13 @@ function onCoverError(e) {
 }
 .search-input {
   width: min(220px, 100%);
+}
+.pagination-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
 }
 
 .song-list {

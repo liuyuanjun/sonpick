@@ -208,6 +208,13 @@ class SongOut(BaseModel):
     updated_at: Optional[str]
 
 
+class SongPageOut(BaseModel):
+    items: list[SongOut]
+    total: int
+    page: int
+    page_size: int
+
+
 class ArtistOut(BaseModel):
     name: str
     song_count: int

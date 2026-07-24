@@ -66,7 +66,16 @@
         <song-table
           v-else-if="section === 'songs'"
           :songs="songs"
+          :server-paginated="true"
+          :total="songsTotal"
+          :page="songsPage"
+          :page-size="songsPageSize"
+          :search-value="songsQuery"
+          :playing-all="playingAllSongs"
           @changed="loadSongs"
+          @search="searchSongs"
+          @page-change="changeSongsPage"
+          @play-all-results="playAllSongs"
           @add-to-playlist="openAddToPlaylist"
         />
 
@@ -305,6 +314,13 @@ const isMobile = useIsMobile()
 const section = ref('favorites')
 const loading = ref(false)
 const songs = ref([])
+const songsTotal = ref(0)
+const songsPage = ref(1)
+const songsPageSize = 100
+const songsQuery = ref('')
+const playingAllSongs = ref(false)
+let songsRequestId = 0
+let songsSearchTimer = null
 const favorites = ref([])
 const artists = ref([])
 const albums = ref([])
@@ -524,8 +540,48 @@ async function loadStats() {
 }
 
 async function loadSongs() {
-  const res = await fetchSongs({ page: 1, page_size: 500 })
-  songs.value = res.data || []
+  const requestId = ++songsRequestId
+  const res = await fetchSongs({
+    q: songsQuery.value || undefined,
+    page: songsPage.value,
+    page_size: songsPageSize,
+  })
+  if (requestId !== songsRequestId) return
+  songs.value = res.data?.items || []
+  songsTotal.value = res.data?.total || 0
+  songsPage.value = res.data?.page || songsPage.value
+}
+
+function changeSongsPage(page) {
+  songsPage.value = page
+  loadSongs()
+}
+
+function searchSongs(value) {
+  songsQuery.value = value
+  songsPage.value = 1
+  clearTimeout(songsSearchTimer)
+  songsSearchTimer = setTimeout(loadSongs, 280)
+}
+
+async function playAllSongs() {
+  if (!songsTotal.value) return
+  playingAllSongs.value = true
+  try {
+    const res = await fetchSongs({
+      q: songsQuery.value || undefined,
+      page: 1,
+      page_size: Math.min(songsTotal.value, 2000),
+    })
+    const items = res.data?.items || []
+    if (!items.length) return
+    player.playList(items, 0)
+    message.success(`已将 ${items.length} 首歌曲加入播放队列`)
+  } catch (err) {
+    message.error(err.response?.data?.detail || '加载播放队列失败')
+  } finally {
+    playingAllSongs.value = false
+  }
 }
 
 async function loadFavorites() {

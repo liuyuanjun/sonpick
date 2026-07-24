@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal, get_db
 from app.models import AppSettings, Favorite, MediaSource, Song, SongFile
 from app.routers.auth import get_current_user
-from app.schemas import SongOut
+from app.schemas import SongOut, SongPageOut
 from app.services.convert_service import LOSSLESS_FORMATS, ConvertService
 from app.services.operation_log_service import write_log
 from app.services.song_file_resolver import NoPlayableSongFileError, SongFileResolver
@@ -117,11 +117,11 @@ def _favorite_ids(db: Session, song_ids: list[int]) -> set[int]:
     return {r[0] for r in rows}
 
 
-@router.get("", response_model=list[SongOut])
+@router.get("", response_model=SongPageOut)
 def list_songs(
     q: str = Query(None),
     page: int = Query(1, ge=1),
-    page_size: int = Query(500, ge=1, le=2000),
+    page_size: int = Query(100, ge=1, le=2000),
     source_id: int | None = Query(None),
     include_unavailable: bool = Query(False),
     user: str = Depends(get_current_user),
@@ -193,7 +193,7 @@ def list_songs(
         data["available_formats"] = sorted({item.format for item in versions if item.format})
         data["has_playable_file"] = primary is not None
         result.append(SongOut(**data))
-    return result
+    return SongPageOut(items=result, total=total, page=page, page_size=page_size)
 
 
 @router.get("/{song_id}/stream")

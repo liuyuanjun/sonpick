@@ -117,11 +117,11 @@
           <n-space vertical size="medium">
             <n-space class="library-toolbar" justify="space-between" align="center" wrap>
               <n-input
-                v-model:value="q"
+                v-model:value="songsQuery"
                 clearable
                 placeholder="搜索歌名/歌手"
                 class="library-search"
-                @keydown.enter="loadSongs"
+                @keydown.enter="loadSongs({ resetPage: true })"
               />
               <n-space size="small" wrap class="library-toolbar-actions">
                 <n-button @click="loadSongs" :loading="songsLoading">刷新</n-button>
@@ -136,6 +136,10 @@
               :row-key="(r) => r.id"
               :scroll-x="isMobile ? 0 : undefined"
             />
+            <n-space justify="space-between" align="center">
+              <n-text depth="3">共 {{ songsTotal }} 首</n-text>
+              <n-pagination :page="songsPage" :page-size="songsPageSize" :item-count="songsTotal" @update:page="changeSongsPage" />
+            </n-space>
           </n-space>
         </template>
 
@@ -442,7 +446,12 @@ const songsLoading = ref(false)
 const browseLoading = ref(false)
 const sources = ref([])
 const songs = ref([])
-const q = ref('')
+const songsTotal = ref(0)
+const songsPage = ref(1)
+const songsPageSize = 100
+const songsQuery = ref('')
+let songsRequestId = 0
+let songsSearchTimer = null
 const webdavSources = ref([])
 const selectedSourceId = ref(null)
 const browsePath = ref('')
@@ -713,7 +722,7 @@ function selectDefaultSource(list) {
   if (selectedSourceId.value && list.some((s) => s.id === selectedSourceId.value)) return
   selectedSourceId.value = (list.find((s) => s.name === '本地曲库') || list.find((s) => s.type === 'local') || list[0]).id
 }
-function selectSource(source) { selectedSourceId.value = source.id; browsePath.value = ''; if (mode.value === 'songs') loadSongs(); else loadBrowse() }
+function selectSource(source) { selectedSourceId.value = source.id; browsePath.value = ''; songsPage.value = 1; if (mode.value === 'songs') loadSongs(); else loadBrowse() }
 function selectSourceMobile(source) {
   selectSource(source)
   showSourceSheet.value = false
@@ -760,16 +769,22 @@ async function loadSources() {
   } catch (err) { message.error(formatApiError(err, '加载曲库失败')) }
   finally { sourcesLoading.value = false }
 }
-async function loadSongs() {
+async function loadSongs({ resetPage = false } = {}) {
+  if (resetPage) songsPage.value = 1
+  const requestId = ++songsRequestId
   songsLoading.value = true
   try {
-    const params = { q: q.value || undefined, page: 1, page_size: 500 }
+    const params = { q: songsQuery.value || undefined, page: songsPage.value, page_size: songsPageSize }
     if (selectedSourceId.value != null) params.source_id = selectedSourceId.value
     const res = await fetchSongs(params)
-    songs.value = res.data || []
+    if (requestId !== songsRequestId) return
+    songs.value = res.data?.items || []
+    songsTotal.value = res.data?.total || 0
+    songsPage.value = res.data?.page || songsPage.value
   } catch (err) { message.error(formatApiError(err, '加载歌曲失败')) }
-  finally { songsLoading.value = false }
+  finally { if (requestId === songsRequestId) songsLoading.value = false }
 }
+function changeSongsPage(page) { songsPage.value = page; loadSongs() }
 async function loadBrowse() {
   if (!selectedSource.value) return
   browseLoading.value = true; browseError.value = ''
@@ -974,6 +989,10 @@ onMounted(async () => {
 
 watch(() => route.query.manage, () => {
   consumeManageQuery()
+})
+watch(songsQuery, () => {
+  clearTimeout(songsSearchTimer)
+  songsSearchTimer = setTimeout(() => loadSongs({ resetPage: true }), 280)
 })
 </script>
 

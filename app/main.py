@@ -14,7 +14,7 @@ from app.routers import auth, download, library, library_extra, library_scan, lo
 from app.services.task_worker import worker, ws_manager
 from app.security import decode_token
 
-APP_VERSION = "0.11.0-rc1"
+APP_VERSION = "0.12.0"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -53,7 +53,7 @@ async def lifespan(app: FastAPI):
     watchdog_task.cancel()
 
 
-app = FastAPI(title="拾音 Sonpick", lifespan=lifespan)
+app = FastAPI(title="拾音 Sonpick", version=APP_VERSION, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
