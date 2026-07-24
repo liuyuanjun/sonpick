@@ -1034,7 +1034,7 @@ onUnmounted(() => {
 @media (max-width: 1100px) {
   .player-page,
   .player-page.queue-open {
-    grid-template-columns: 64px minmax(0, 1fr) minmax(300px, 1fr);
+    grid-template-columns: 64px minmax(480px, 1fr) minmax(300px, 1fr);
   }
   .nav-item span {
     display: none;

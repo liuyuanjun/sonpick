@@ -242,6 +242,7 @@ function onCoverError(e) {
   gap: 12px;
   margin-top: 16px;
   padding: 10px 12px;
+  font-size: 12px;
   border: 1px solid rgba(127, 127, 127, 0.16);
   border-radius: 14px;
   background: color-mix(in srgb, var(--n-card-color) 88%, transparent);
@@ -250,6 +251,8 @@ function onCoverError(e) {
 }
 .pagination-bar :deep(.n-pagination) {
   justify-content: flex-end;
+  font-size: 12px;
+  --n-font-size: 12px;
 }
 
 .song-list {
