@@ -1,5 +1,5 @@
 import api from './client'
-import { taskEventsUrl } from '@/api/client'
+import { searchEventsUrl, taskEventsUrl } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 
 export function fetchSongs(params = {}) {
@@ -203,6 +203,55 @@ export function scanLibrary(payload = { all: true }) {
 export function searchMusic(q, page = 1, pageSize = 20, source = 'all') {
   // musicdl 搜索需逐条探测下载链接，可能耗时 1 分钟以上，前端超时放宽到 120s
   return api.get('/search', { params: { q, page, page_size: pageSize, source }, timeout: 120000 })
+}
+
+/**
+ * SSE 流式搜索：搜索期间持续收到 progress/heartbeat 事件，
+ * 最终以 onResult(分页数据) 或 onError(Error) 收尾。返回取消函数。
+ */
+export function streamSearchMusic({ q, page = 1, pageSize = 20, source = 'all' }, { onEvent, onResult, onError } = {}) {
+  const auth = useAuthStore()
+  const url = searchEventsUrl({ q, page, pageSize, source, token: auth.token || '' })
+  const es = new EventSource(url)
+  let closed = false
+
+  const close = () => {
+    if (closed) return
+    closed = true
+    try { es.close() } catch (_) {}
+  }
+
+  es.onmessage = (ev) => {
+    if (!ev?.data) return
+    let payload
+    try {
+      payload = JSON.parse(ev.data)
+    } catch (_) {
+      return
+    }
+    if (payload.type === 'result') {
+      if (typeof onResult === 'function') onResult(payload.data || {})
+      close()
+    } else if (payload.type === 'error') {
+      if (typeof onError === 'function') onError(new Error(payload.message || '搜索失败'))
+      close()
+    } else if (typeof onEvent === 'function') {
+      onEvent(payload)
+    }
+  }
+  es.addEventListener('end', () => {
+    close()
+  })
+  es.onerror = () => {
+    if (closed) return
+    // EventSource 会自动重连；仅连接彻底关闭时判定为失败
+    if (es.readyState === EventSource.CLOSED) {
+      if (typeof onError === 'function') onError(new Error('搜索连接中断'))
+      close()
+    }
+  }
+
+  return close
 }
 
 export function uploadSongToWebdav(songId, sourceId, policy = null) {

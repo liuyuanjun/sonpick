@@ -26,7 +26,7 @@
 
 **非目标**：多用户、公网商用、版权绕过。仅供个人学习与备份。
 
-当前版本（以代码为准）：`0.13.0-rc2`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
+当前版本（以代码为准）：`0.14.0`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
 
 ### 1.1 歌词与元信息边界
 
@@ -121,7 +121,7 @@ music/
 |------|------|------|
 | `/api/auth` | `auth.py` | 登录、JWT |
 | `/api/settings` | `settings.py` | 系统/WebDAV 相关设置 |
-| `/api/search` | `search.py` | 搜索 |
+| `/api/search` | `search.py` | 搜索；`/search/stream` 为 SSE 流式搜索（progress/heartbeat/result 事件） |
 | `/api/download` | `download.py` | 创建下载任务 |
 | `/api/songs` | `library.py` | 曲库、播放、转码、上传、删除 |
 | `/api/webdav` | `webdav.py` | 列表、流式播放 |

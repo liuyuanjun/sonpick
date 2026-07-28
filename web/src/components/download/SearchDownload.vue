@@ -23,19 +23,39 @@
       </div>
     </div>
 
+    <div v-if="searching" class="search-progress">
+      <div class="search-progress-head">
+        <n-spin size="small" />
+        <n-text depth="2">正在搜索，请稍候…（各来源并发请求，慢的来源可能需要 1 分钟以上）</n-text>
+      </div>
+      <div ref="logEl" class="search-progress-log">
+        <div
+          v-for="(line, idx) in searchLogs"
+          :key="idx"
+          class="log-line"
+          :class="`log-${line.kind}`"
+        >
+          <span class="log-time">{{ line.time }}</span>
+          <span>{{ line.text }}</span>
+        </div>
+        <div v-if="heartbeatText" class="log-line log-heartbeat">
+          <span class="log-time">{{ heartbeatTime }}</span>
+          <span>{{ heartbeatText }}</span>
+        </div>
+      </div>
+    </div>
+
     <n-data-table
-      v-if="!isMobile"
+      v-else-if="!isMobile"
       :columns="columns"
       :data="results"
       :row-key="rowKey"
-      :loading="searching"
       :checked-row-keys="checked"
       @update:checked-row-keys="checked = $event"
     />
 
     <div v-else class="mobile-result-list">
-      <n-spin :show="searching">
-        <n-empty v-if="!results.length && !searching" description="暂无搜索结果" />
+      <n-empty v-if="!results.length" description="暂无搜索结果" />
         <n-space v-else vertical size="small">
           <div
             v-for="row in results"
@@ -72,10 +92,9 @@
             </div>
           </div>
         </n-space>
-      </n-spin>
     </div>
 
-    <n-space class="pager" :justify="isMobile ? 'center' : 'end'" align="center" :wrap="true">
+    <n-space v-if="!searching" class="pager" :justify="isMobile ? 'center' : 'end'" align="center" :wrap="true">
       <n-text depth="3">共 {{ total }} 条（每源约 10 条），当前第 {{ page }} 页</n-text>
       <n-pagination
         v-model:page="page"
@@ -133,10 +152,10 @@
 </template>
 
 <script setup>
-import { computed, h, ref } from 'vue'
+import { computed, h, nextTick, onUnmounted, ref } from 'vue'
 import { NButton, NTag, NTooltip, useMessage } from 'naive-ui'
 import api from '@/api/client'
-import { searchMusic } from '@/api/music'
+import { streamSearchMusic } from '@/api/music'
 import { useIsMobile } from '@/composables/useIsMobile'
 
 const message = useMessage()
@@ -151,6 +170,28 @@ const checked = ref([])
 const page = ref(1)
 const pageSize = 20
 const total = ref(0)
+
+// SSE 搜索进度日志
+const searchLogs = ref([])
+const heartbeatText = ref('')
+const heartbeatTime = ref('')
+const logEl = ref(null)
+let closeSearchStream = null
+
+function timeStr() {
+  return new Date().toLocaleTimeString('zh-CN', { hour12: false })
+}
+
+function pushLog(text, kind = 'info') {
+  searchLogs.value.push({ time: timeStr(), text, kind })
+  nextTick(() => {
+    if (logEl.value) logEl.value.scrollTop = logEl.value.scrollHeight
+  })
+}
+
+onUnmounted(() => {
+  if (closeSearchStream) closeSearchStream()
+})
 
 const formatOptions = [
   { label: '任意', value: 'any' },
@@ -259,17 +300,40 @@ async function doSearch(p = page.value) {
   page.value = p
   searching.value = true
   checked.value = []
-  try {
-    const res = await searchMusic(keyword.value.trim(), page.value, pageSize, source.value)
-    const d = res.data || {}
-    results.value = d.items || []
-    total.value = d.total || 0
-    if (!results.value.length) message.info('没有搜索结果')
-  } catch (err) {
-    message.error(err.response?.data?.detail || '搜索失败')
-  } finally {
-    searching.value = false
-  }
+  results.value = []
+  total.value = 0
+  searchLogs.value = []
+  heartbeatText.value = ''
+  pushLog(`开始搜索「${keyword.value.trim()}」，正在连接后端…`)
+  if (closeSearchStream) closeSearchStream()
+  closeSearchStream = streamSearchMusic(
+    { q: keyword.value.trim(), page: page.value, pageSize, source: source.value },
+    {
+      onEvent: (ev) => {
+        if (ev.type === 'progress') {
+          const kind = ev.status === 'fail' ? 'error' : ev.status === 'done' ? 'ok' : 'info'
+          pushLog(ev.message || '', kind)
+        } else if (ev.type === 'heartbeat') {
+          const pending = (ev.pending || []).join('、')
+          heartbeatText.value = pending
+            ? `已等待 ${ev.elapsed}s，仍在处理：${pending}`
+            : `已等待 ${ev.elapsed}s…`
+          heartbeatTime.value = timeStr()
+        }
+      },
+      onResult: (data) => {
+        results.value = data.items || []
+        total.value = data.total || 0
+        if (!results.value.length) message.info('没有搜索结果')
+        searching.value = false
+      },
+      onError: (err) => {
+        pushLog(err.message || '搜索失败', 'error')
+        message.error(err.message || '搜索失败')
+        searching.value = false
+      },
+    },
+  )
 }
 
 // 曲库重复决策对话框
@@ -373,6 +437,47 @@ async function downloadSelected() {
 </script>
 
 <style scoped>
+.search-progress {
+  border: 1px solid var(--n-border-color);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: color-mix(in srgb, var(--n-card-color) 92%, transparent);
+}
+.search-progress-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.search-progress-log {
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(128, 128, 128, 0.12);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.8;
+}
+.log-line {
+  display: flex;
+  gap: 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.log-time {
+  flex-shrink: 0;
+  opacity: 0.55;
+}
+.log-ok {
+  color: var(--n-success-color, #18a058);
+}
+.log-error {
+  color: var(--n-error-color, #d03050);
+}
+.log-heartbeat {
+  opacity: 0.7;
+}
 .toolbar {
   display: flex;
   flex-wrap: wrap;

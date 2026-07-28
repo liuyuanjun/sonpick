@@ -4,7 +4,7 @@ import re
 import sys
 import shutil
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout, as_completed
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -73,6 +73,20 @@ DEFAULT_SCRAPE_SOURCES = [
     "QQMusicClient",
     "MiguMusicClient",
 ]
+
+
+class SearchCancelled(Exception):
+    """SSE 搜索在客户端断开后被主动取消。"""
+
+
+def _safe_emit(on_event, **payload):
+    """向调用方推送搜索进度事件；回调异常不影响搜索本身。"""
+    if not on_event:
+        return
+    try:
+        on_event(payload)
+    except Exception:
+        pass
 
 
 class MusicDLService:
@@ -167,15 +181,41 @@ class MusicDLService:
         src: str,
         work_dir: Path,
         search_size_per_source: int,
+        on_event: Callable[[dict], None] | None = None,
+        cancelled=None,
     ) -> tuple[list, str | None]:
-        """搜索单个源（含重试与硬超时），返回 (items, error)。"""
+        """搜索单个源（含重试与硬超时），返回 (items, error)。
+
+        on_event 用于 SSE 进度推送：status 为 start / retry / done / fail。
+        cancelled（threading.Event）置位时在尝试边界抛出 SearchCancelled。
+        """
+        label = SOURCE_LABELS.get(src, src)
         last_error: Exception | None = None
         for attempt in range(SEARCH_RETRY_COUNT):
+            if cancelled is not None and cancelled.is_set():
+                raise SearchCancelled()
+            _safe_emit(
+                on_event,
+                type="progress",
+                source=src,
+                label=label,
+                status="start" if attempt == 0 else "retry",
+                message=f"正在请求 {label}…" if attempt == 0 else f"{label} 第 {attempt + 1} 次尝试…",
+            )
             pool = ThreadPoolExecutor(max_workers=1)
             try:
                 client = self._new_client(work_dir, [src], search_size_per_source)
                 results = pool.submit(client.search, keyword=keyword).result(timeout=SEARCH_TIMEOUT_SECONDS)
-                return self._flatten_single_source(results, src), None
+                items = self._flatten_single_source(results, src)
+                _safe_emit(
+                    on_event,
+                    type="progress",
+                    source=src,
+                    label=label,
+                    status="done",
+                    message=f"{label} 返回 {len(items)} 条结果",
+                )
+                return items, None
             except FuturesTimeout:
                 last_error = RuntimeError(f"搜索超时（>{SEARCH_TIMEOUT_SECONDS}s）")
             except Exception as exc:
@@ -183,8 +223,24 @@ class MusicDLService:
             finally:
                 pool.shutdown(wait=False, cancel_futures=True)
             if attempt + 1 < SEARCH_RETRY_COUNT:
+                _safe_emit(
+                    on_event,
+                    type="progress",
+                    source=src,
+                    label=label,
+                    status="retry",
+                    message=f"{label} {last_error}，{SEARCH_RETRY_DELAY_SECONDS}s 后重试…",
+                )
                 time.sleep(SEARCH_RETRY_DELAY_SECONDS)
-        return [], f"{SOURCE_LABELS.get(src, src)}: {last_error}"
+        _safe_emit(
+            on_event,
+            type="progress",
+            source=src,
+            label=label,
+            status="fail",
+            message=f"{label} 搜索失败：{last_error}",
+        )
+        return [], f"{label}: {last_error}"
 
     def _search_sources(
         self,
@@ -193,32 +249,49 @@ class MusicDLService:
         music_sources: list[str] | None,
         work_dir: Path,
         search_size_per_source: int = DEFAULT_SEARCH_SIZE_PER_SOURCE,
+        on_event: Callable[[dict], None] | None = None,
+        cancelled=None,
     ) -> tuple[list, list[str]]:
         """并发搜索各源并合并结果：单个源挂起/失败不影响其他源，
 
         总耗时 ≈ 最慢的源而非各源之和。返回 (items, errors)。
+        事件按完成先后推送，但结果仍按来源声明顺序合并，保证分页稳定。
         """
         sources = list(music_sources or DEFAULT_DOWNLOAD_SOURCES)
         if not sources:
             sources = list(DEFAULT_DOWNLOAD_SOURCES)
-        items: list = []
-        errors: list[str] = []
+        per_source: dict[str, tuple[list, str | None]] = {}
         pool = ThreadPoolExecutor(max_workers=min(len(sources), 4))
         try:
             futures = {
-                pool.submit(self._search_one_source, keyword, src, work_dir, search_size_per_source): src
+                pool.submit(
+                    self._search_one_source,
+                    keyword,
+                    src,
+                    work_dir,
+                    search_size_per_source,
+                    on_event,
+                    cancelled,
+                ): src
                 for src in sources
             }
-            for fut in futures:
+            for fut in as_completed(futures):
+                src = futures[fut]
                 try:
-                    found, error = fut.result()
+                    per_source[src] = fut.result()
+                except SearchCancelled:
+                    raise
                 except Exception as exc:
-                    found, error = [], f"{SOURCE_LABELS.get(futures[fut], futures[fut])}: {exc}"
-                items.extend(found)
-                if error:
-                    errors.append(error)
+                    per_source[src] = ([], f"{SOURCE_LABELS.get(src, src)}: {exc}")
         finally:
             pool.shutdown(wait=False, cancel_futures=True)
+        items: list = []
+        errors: list[str] = []
+        for src in sources:
+            found, error = per_source.get(src, ([], None))
+            items.extend(found)
+            if error:
+                errors.append(error)
         return items, errors
 
     def search(
@@ -229,12 +302,16 @@ class MusicDLService:
         music_sources: list[str] | None = None,
         search_size_per_source: int = DEFAULT_SEARCH_SIZE_PER_SOURCE,
         require_download_url: bool = True,
+        on_event: Callable[[dict], None] | None = None,
+        cancelled=None,
     ):
         items, errors = self._search_sources(
             keyword,
             music_sources=music_sources,
             work_dir=Path("/tmp/musicdl_search"),
             search_size_per_source=search_size_per_source,
+            on_event=on_event,
+            cancelled=cancelled,
         )
         if not items and errors:
             raise RuntimeError("音乐源搜索失败：" + "；".join(errors))
@@ -858,7 +935,7 @@ class MusicDLService:
         sources = list(music_sources or DEFAULT_SCRAPE_SOURCES)
         best_out: dict = {}
         best_score = -1
-        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout, as_completed
 
         for src in sources:
             def _search_one(source=src):
