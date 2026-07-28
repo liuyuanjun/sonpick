@@ -79,6 +79,7 @@ def _ensure_columns(engine: Engine):
             ),
             "scan_audio_exts": "VARCHAR(255) DEFAULT 'mp3,flac,m4a,wav,ogg,aac,ape,wma'",
             "scrape_sources_json": "TEXT DEFAULT '[]'",
+            "lyrics_sources_json": "TEXT DEFAULT '[]'",
             "acoustid_api_key_enc": "VARCHAR(1024)",
             "mp3_output_path": "VARCHAR(512)",
             "lossless_output_path": "VARCHAR(512)",
@@ -98,6 +99,14 @@ def _ensure_columns(engine: Engine):
         },
         "songs": {
             "source_id": "VARCHAR(128)",
+            "year": "VARCHAR(16)",
+            "genre": "VARCHAR(255)",
+            "lyrics_provider": "VARCHAR(64)",
+            "lyrics_source_id": "VARCHAR(128)",
+            "lyrics_type": "VARCHAR(16)",
+            "lyrics_score": "INTEGER",
+            "lyrics_fetched_at": "DATETIME",
+            "lyrics_instrumental": "BOOLEAN DEFAULT 0",
             "meta_confidence": "INTEGER DEFAULT 0",
             "meta_provider": "VARCHAR(64)",
             "scrape_status": "VARCHAR(16) DEFAULT 'none'",
@@ -210,16 +219,19 @@ def _migrate_song_path_responsibility(engine: Engine):
 
         # SQLite DROP COLUMN 对旧 SQLite 版本与外键约束不可靠，采用表重建。
         kept = [
-            "id", "title", "artist", "album", "source", "source_id", "format", "duration", "file_size",
-            "cover_path", "lrc_path", "library_source_id", "status", "play_count", "meta_confidence",
+            "id", "title", "artist", "album", "year", "genre", "source", "source_id", "format", "duration", "file_size",
+            "cover_path", "lrc_path", "lyrics_provider", "lyrics_source_id", "lyrics_type", "lyrics_score",
+            "lyrics_fetched_at", "lyrics_instrumental", "library_source_id", "status", "play_count", "meta_confidence",
             "meta_provider", "scrape_status", "meta_locked", "created_at", "updated_at",
         ]
         definitions = [
             "id INTEGER PRIMARY KEY AUTOINCREMENT",
             "title VARCHAR(255) NOT NULL",
-            "artist VARCHAR(255)", "album VARCHAR(255)", "source VARCHAR(64)", "source_id VARCHAR(128)",
+            "artist VARCHAR(255)", "album VARCHAR(255)", "year VARCHAR(16)", "genre VARCHAR(255)",
+            "source VARCHAR(64)", "source_id VARCHAR(128)",
             "format VARCHAR(16)", "duration INTEGER", "file_size INTEGER", "cover_path VARCHAR(1024)",
-            "lrc_path VARCHAR(1024)",
+            "lrc_path VARCHAR(1024)", "lyrics_provider VARCHAR(64)", "lyrics_source_id VARCHAR(128)",
+            "lyrics_type VARCHAR(16)", "lyrics_score INTEGER", "lyrics_fetched_at DATETIME", "lyrics_instrumental BOOLEAN DEFAULT 0",
             "library_source_id INTEGER REFERENCES media_sources(id) ON DELETE SET NULL",
             "status VARCHAR(16)", "play_count INTEGER", "meta_confidence INTEGER", "meta_provider VARCHAR(64)",
             "scrape_status VARCHAR(16)", "meta_locked BOOLEAN", "created_at DATETIME", "updated_at DATETIME",

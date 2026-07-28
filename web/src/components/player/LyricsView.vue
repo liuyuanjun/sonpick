@@ -8,8 +8,8 @@
     @touchstart="onUserScroll"
   >
     <div v-if="!lines.length" class="empty">
-      <div class="empty-title">暂无歌词</div>
-      <div class="empty-sub">播放带 LRC 的歌曲后会在这里滚动高亮</div>
+      <div class="empty-title">{{ emptyTitle }}</div>
+      <div class="empty-sub">{{ emptyDescription }}</div>
     </div>
     <template v-else>
       <div class="pad" aria-hidden="true"></div>
@@ -37,6 +37,8 @@ const props = defineProps({
   activeIndex: { type: Number, default: -1 },
   immersive: { type: Boolean, default: false },
   fontSize: { type: Number, default: 18 },
+  emptyTitle: { type: String, default: '暂无歌词' },
+  emptyDescription: { type: String, default: '播放带 LRC 的歌曲后会在这里滚动高亮' },
 })
 defineEmits(['seek'])
 

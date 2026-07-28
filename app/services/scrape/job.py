@@ -105,7 +105,7 @@ def run_scrape_job(
                 allow_network=False,
                 force=overwrite,
             )
-            for key in ("title", "artist", "album", "duration", "cover_path", "lrc_path"):
+            for key in ("title", "artist", "album", "duration", "cover_path"):
                 val = meta.get(key)
                 if not val:
                     continue
@@ -154,6 +154,7 @@ def run_scrape_job(
                         db=db,
                         timeout_per_provider=80.0,
                         total_timeout=160.0,
+                        write_lyrics=False,
                     ) or {}
                     log.info("联网刮削结果 song_id=%s filled=%s", song.id, filled)
                     for key, val in list(filled.items()):
@@ -185,15 +186,8 @@ def run_scrape_job(
                 song.album = None
                 changes["album"] = None
 
-            # write embedded tags for the selected local SongFile
+            # write embedded metadata tags for the selected local SongFile
             if write_file_tags and local_file:
-                lyrics_path = local_file.lrc_path or song.lrc_path
-                lyrics_text = None
-                if lyrics_path and Path(str(lyrics_path)).is_file():
-                    try:
-                        lyrics_text = Path(str(lyrics_path)).read_text(encoding="utf-8", errors="ignore")
-                    except Exception:
-                        lyrics_text = None
                 cover_file = local_file.cover_path or song.cover_path
                 cover_file = cover_file if cover_file and Path(str(cover_file)).is_file() else None
                 tag_written = write_audio_tags(
@@ -201,7 +195,6 @@ def run_scrape_job(
                     title=song.title,
                     artist=song.artist,
                     album=song.album,
-                    lyrics=lyrics_text,
                     cover_path=cover_file,
                 )
                 if tag_written:

@@ -35,8 +35,9 @@
           </n-button>
           <n-button secondary type="primary" @click="openScanModal">扫描曲库</n-button>
           <n-button secondary :loading="scrapingVisible" :disabled="!visibleSongIds.length" @click="scrapeVisibleSongs">
-            刮削本页
+            刮削信息
           </n-button>
+          <n-button secondary :disabled="!visibleSongIds.length" @click="openBatchLyrics">获取歌词</n-button>
           <n-button quaternary @click="refresh">刷新</n-button>
         </n-space>
       </div>
@@ -228,6 +229,11 @@
       />
     </n-modal>
 
+    <BatchLyricsModal
+      v-model:show="showBatchLyrics"
+      :song-ids="batchLyricsSongIds"
+      :target-label="`当前列表 ${batchLyricsSongIds.length} 首歌曲`"
+    />
     <n-modal v-model:show="showScanModal" preset="card" title="扫描曲库" style="width: 520px">
       <n-space vertical>
         <n-text depth="3">选择要扫描的歌曲源，或扫描全部已启用源。</n-text>
@@ -261,6 +267,7 @@
 </template>
 
 <script setup>
+import BatchLyricsModal from '@/components/BatchLyricsModal.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { onUnmounted } from 'vue'
 import { useMessage, useDialog } from 'naive-ui'
@@ -361,6 +368,8 @@ const sectionTitle = computed(() => menus.find((m) => m.key === section.value)?.
 // 迷你播放器未展示时不为其预留底部空间，避免页面下方出现一条空白区域
 const hasMiniPlayer = computed(() => player.showPlayer && !!player.current)
 const scrapingVisible = ref(false)
+const showBatchLyrics = ref(false)
+const batchLyricsSongIds = ref([])
 const visibleSongIds = computed(() => {
   let list = []
   if (section.value === 'favorites') list = favorites.value
@@ -374,14 +383,21 @@ const visibleSongIds = computed(() => {
 const mobileActions = computed(() => {
   const opts = []
   if (section.value === 'playlists') opts.push({ label: '新建歌单', key: 'create-playlist' })
-  opts.push({ label: '刮削本页', key: 'scrape', disabled: !visibleSongIds.value.length })
+  opts.push({ label: '刮削信息', key: 'scrape', disabled: !visibleSongIds.value.length })
+  opts.push({ label: '获取歌词', key: 'lyrics', disabled: !visibleSongIds.value.length })
   opts.push({ label: '刷新', key: 'refresh' })
   return opts
 })
 
+function openBatchLyrics() {
+  batchLyricsSongIds.value = [...visibleSongIds.value]
+  showBatchLyrics.value = true
+}
+
 function onMobileAction(key) {
   if (key === 'create-playlist') showCreatePlaylist.value = true
   else if (key === 'scrape') scrapeVisibleSongs()
+  else if (key === 'lyrics') openBatchLyrics()
   else if (key === 'refresh') refresh()
 }
 const playlistOptions = computed(() => playlists.value.map((p) => ({ label: p.name, value: p.id })))

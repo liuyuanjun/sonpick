@@ -269,7 +269,7 @@ def enrich_song_via_pipeline(
     has_local_cover = bool(song.cover_path and is_local_file(song.cover_path))
     needs_cover = not has_local_cover
     has_local_lrc = bool(song.lrc_path and Path(str(song.lrc_path)).is_file())
-    needs_lyrics = not has_local_lrc
+    needs_lyrics = bool(write_lyrics and not has_local_lrc)
     needs_artist = (not raw_artist) or is_generic_dir_name(raw_artist) or looks_like_opaque_id(raw_artist)
     needs_title_cleanup = bool(cleaned_title and cleaned_title != raw_title)
     needs_artist_split = bool(cleaned_artist and cleaned_artist != raw_artist)

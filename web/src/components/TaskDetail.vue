@@ -29,6 +29,10 @@
         {{ resultMessage }}
       </n-text>
     </div>
+    <div v-if="lyricsStats" class="task-detail-row">
+      <n-text depth="3">歌词统计</n-text>
+      <n-text class="task-detail-pre">{{ lyricsStats }}</n-text>
+    </div>
     <div v-if="logs.length" class="task-detail-logs">
       <n-text depth="3">运行日志（{{ logs.length }} 条）</n-text>
       <div class="task-detail-log-list">
@@ -63,6 +67,13 @@ const resultMessage = computed(() => {
   const r = props.task.result
   if (!r || typeof r !== 'object') return ''
   return r.message || ''
+})
+
+const lyricsStats = computed(() => {
+  if (props.task.type !== 'lyrics') return ''
+  const r = props.task.result || {}
+  if (r.total == null) return ''
+  return `总数 ${r.total} · 已处理 ${r.processed || 0} · 匹配 ${r.matched || 0} · 写入 ${r.written || 0} · 纯音乐 ${r.instrumental || 0} · 跳过已有 ${r.skipped_existing || 0} · 未命中 ${r.not_found || 0} · 限流等待 ${r.rate_limit_waits || 0} · 失败 ${r.failed || 0}`
 })
 
 const heartbeatMs = computed(() => {

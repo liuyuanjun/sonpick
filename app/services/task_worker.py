@@ -292,6 +292,32 @@ class TaskWorker:
                 self.emit(task_id, "刮削完成", 100)
                 return
 
+            if task.type == "lyrics":
+                from app.services.lyrics_job import run_lyrics_job
+
+                result = run_lyrics_job(
+                    db,
+                    song_ids=payload.get("song_ids"),
+                    source_id=payload.get("source_id") or "auto",
+                    only_missing=bool(payload.get("only_missing", True)),
+                    overwrite=bool(payload.get("overwrite", False)),
+                    write_file_tags=bool(payload.get("write_file_tags", True)),
+                    library_source_id=payload.get("library_source_id"),
+                    emit=lambda message, percent=0: self.emit(task_id, message, percent),
+                    is_cancelled=lambda: self._is_cancelled(task_id, db),
+                )
+                if result.get("cancelled"):
+                    task.status = "cancelled"
+                    status = "cancelled"
+                else:
+                    task.status = "completed"
+                    status = "completed"
+                task.result_json = json.dumps(result, ensure_ascii=False)
+                task.updated_at = datetime.now(timezone.utc)
+                db.commit()
+                self.emit(task_id, result.get("message") or "歌词任务完成", 100)
+                return
+
             if task.type == "convert":
                 from app.services.convert_service import ConvertService
 
@@ -595,9 +621,13 @@ class TaskWorker:
                 pass
         self.emit(task_id, f"失败: {exc}", 100)
 
-    def _is_cancelled(self, task_id: int, db: Session) -> bool:
-        task = db.get(Task, task_id)
-        return task is None or task.status == "cancelled"
+    def _is_cancelled(self, task_id: int, db: Session | None = None) -> bool:
+        check_db = SessionLocal()
+        try:
+            status = check_db.query(Task.status).filter(Task.id == task_id).scalar()
+            return status is None or status == "cancelled"
+        finally:
+            check_db.close()
 
     def _remove_future(self, task_id: int):
         with self._future_lock:

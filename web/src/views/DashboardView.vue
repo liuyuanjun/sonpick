@@ -472,7 +472,7 @@ function statusTagType(s) {
 }
 
 function actionLabel(a) {
-  return ({ download: '下载', upload: '上传', delete: '删除', convert: '转码', scrape: '刮削', scan: '扫描' })[a] || a || '操作'
+  return ({ download: '下载', upload: '上传', delete: '删除', convert: '转码', scrape: '刮削信息', lyrics: '获取歌词', scan: '扫描' })[a] || a || '操作'
 }
 
 function actionIcon(a) {

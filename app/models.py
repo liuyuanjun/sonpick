@@ -57,6 +57,7 @@ class AppSettings(Base):
     )
     scan_audio_exts = Column(String(255), default="mp3,flac,m4a,wav,ogg,aac,ape,wma")
     scrape_sources_json = Column(Text, default="[]")
+    lyrics_sources_json = Column(Text, default="[]")
     acoustid_api_key_enc = Column(String(1024), nullable=True)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -193,6 +194,8 @@ class Song(Base):
     title = Column(String(255), nullable=False)
     artist = Column(String(255), nullable=True)
     album = Column(String(255), nullable=True)
+    year = Column(String(16), nullable=True)
+    genre = Column(String(255), nullable=True)
     source = Column(String(64), nullable=True)
     source_id = Column(String(128), nullable=True)
     format = Column(String(16), nullable=True)
@@ -200,6 +203,12 @@ class Song(Base):
     file_size = Column(Integer, nullable=True)
     cover_path = Column(String(1024), nullable=True)
     lrc_path = Column(String(1024), nullable=True)
+    lyrics_provider = Column(String(64), nullable=True)
+    lyrics_source_id = Column(String(128), nullable=True)
+    lyrics_type = Column(String(16), nullable=True)
+    lyrics_score = Column(Integer, nullable=True)
+    lyrics_fetched_at = Column(DateTime, nullable=True)
+    lyrics_instrumental = Column(Boolean, default=False)
     library_source_id = Column(Integer, ForeignKey("media_sources.id", ondelete="SET NULL"), nullable=True)
     status = Column(String(16), default="local")  # local / uploaded / both / remote
     play_count = Column(Integer, default=0)
@@ -216,6 +225,8 @@ class Song(Base):
             "title": self.title,
             "artist": self.artist,
             "album": self.album,
+            "year": self.year,
+            "genre": self.genre,
             "source": self.source,
             "source_id": self.source_id,
             "format": self.format,
@@ -223,6 +234,12 @@ class Song(Base):
             "file_size": self.file_size,
             "cover_path": self.cover_path,
             "lrc_path": self.lrc_path,
+            "lyrics_provider": self.lyrics_provider,
+            "lyrics_source_id": self.lyrics_source_id,
+            "lyrics_type": self.lyrics_type,
+            "lyrics_score": self.lyrics_score,
+            "lyrics_fetched_at": iso_utc(self.lyrics_fetched_at),
+            "lyrics_instrumental": bool(self.lyrics_instrumental),
             "library_source_id": self.library_source_id,
             "status": self.status,
             "play_count": self.play_count or 0,

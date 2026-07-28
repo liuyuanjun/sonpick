@@ -91,10 +91,15 @@ def _ensure_settings(db: Session) -> AppSettings:
 def _to_response(s: AppSettings) -> SettingsResponse:
     from app.services.scrape.providers.acoustid import fingerprint_status
     from app.services.scrape.source_registry import source_configs
+    from app.services.lyrics_source_registry import lyrics_source_configs
 
     acoustid_key = decrypt_text(getattr(s, "acoustid_api_key_enc", None))
     acoustid = fingerprint_status(acoustid_key)
     sources = source_configs(getattr(s, "scrape_sources_json", None))
+    lyrics_sources = lyrics_source_configs(
+        getattr(s, "lyrics_sources_json", None),
+        scrape_raw=getattr(s, "scrape_sources_json", None),
+    )
     for source in sources:
         if source["id"] == "acoustid":
             source["available"] = acoustid["available"]
@@ -121,6 +126,7 @@ def _to_response(s: AppSettings) -> SettingsResponse:
         scan_exclude_globs=_parse_json_list(getattr(s, "scan_exclude_globs", None), DEFAULT_SCAN_EXCLUDE),
         scan_audio_exts=getattr(s, "scan_audio_exts", None) or DEFAULT_SCAN_EXTS,
         scrape_sources=sources,
+        lyrics_sources=lyrics_sources,
         acoustid_ready=acoustid["available"],
         acoustid_message=acoustid["message"],
         updated_at=iso_utc(s.updated_at),
@@ -151,6 +157,33 @@ def test_scrape_source(source_id: str, keyword: str = "周杰伦", user: str = D
     }
     hit = provider_map[source_id].lookup(ScrapeQuery(title=keyword), timeout=15)
     return {"ok": bool(hit), "message": "连接正常" if hit else "未得到候选，请更换关键词或稍后重试", "result": hit.raw if hit else None}
+
+
+@router.post("/lyrics-sources/{source_id}/test")
+def test_lyrics_source(
+    source_id: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.lyrics_search_service import LyricsSearchService
+    from app.services.lyrics_source_registry import LYRICS_SOURCE_IDS, lyrics_source_configs
+
+    if source_id not in LYRICS_SOURCE_IDS:
+        raise HTTPException(status_code=404, detail="未知歌词源")
+    settings = _ensure_settings(db)
+    config = next((item for item in lyrics_source_configs(settings.lyrics_sources_json, scrape_raw=settings.scrape_sources_json) if item["id"] == source_id), None)
+    if not config or not config["enabled"]:
+        raise HTTPException(status_code=400, detail="请先启用该歌词源")
+    try:
+        from app.services.lyrics_provider import LyricsQuery
+
+        candidates = LyricsSearchService.provider(config).search(
+            LyricsQuery(track_name="Yesterday", artist_name="The Beatles", keyword="Yesterday The Beatles"),
+            limit=1,
+        )
+        return {"ok": bool(candidates), "message": "连接正常" if candidates else "连接正常，但测试歌曲未命中"}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"歌词源测试失败: {exc}") from exc
 
 
 @router.get("", response_model=SettingsResponse)
@@ -216,6 +249,10 @@ def update_settings(req: SettingsUpdate, user: str = Depends(get_current_user), 
         from app.services.scrape.source_registry import dump_source_configs
 
         s.scrape_sources_json = dump_source_configs(req.scrape_sources)
+    if req.lyrics_sources is not None:
+        from app.services.lyrics_source_registry import dump_lyrics_source_configs
+
+        s.lyrics_sources_json = dump_lyrics_source_configs(req.lyrics_sources)
     if req.acoustid_api_key is not None and req.acoustid_api_key != "":
         s.acoustid_api_key_enc = encrypt_text(req.acoustid_api_key.strip())
 

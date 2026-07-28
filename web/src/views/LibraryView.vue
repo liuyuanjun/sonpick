@@ -45,7 +45,8 @@
                   <n-button size="tiny" @click="onTest(source)">测试</n-button>
                   <n-button size="tiny" type="primary" @click="onScan(source)">扫描</n-button>
                   <n-button size="tiny" @click="openReorg(source)">整理</n-button>
-                  <n-button size="tiny" @click="openScrape(source)">刮削</n-button>
+                  <n-button size="tiny" @click="openScrape(source)">刮削信息</n-button>
+                  <n-button size="tiny" @click="openBatchLyrics(source)">获取歌词</n-button>
                   <n-button size="tiny" type="info" @click="openBrowseMode(source)">浏览</n-button>
                   <n-button v-if="source.type === 'webdav' && !source.is_default_upload" size="tiny" @click="onDefault(source)">默认上传</n-button>
                   <n-button v-if="source.deletable !== false && !source.is_builtin" size="tiny" type="error" @click="onDeleteSource(source)">删除</n-button>
@@ -125,7 +126,8 @@
               />
               <n-space size="small" wrap class="library-toolbar-actions">
                 <n-button @click="loadSongs" :loading="songsLoading">刷新</n-button>
-                <n-button v-if="songs.length" type="primary" secondary @click="openScrape(selectedSource)">刮削</n-button>
+                <n-button v-if="songs.length" type="primary" secondary @click="openScrape(selectedSource)">刮削信息</n-button>
+                <n-button v-if="songs.length" secondary @click="openBatchLyrics(selectedSource)">获取歌词</n-button>
               </n-space>
             </n-space>
             <n-data-table
@@ -348,7 +350,12 @@
     </n-form>
   </n-modal>
 
-  <n-modal v-model:show="showScrape" preset="card" title="刮削曲库" class="library-modal" style="width: 640px; max-width: 96vw">
+  <BatchLyricsModal
+    v-model:show="showBatchLyrics"
+    :library-source-id="batchLyricsSource?.id"
+    :target-label="batchLyricsSource ? `当前曲库：${batchLyricsSource.name}` : '当前曲库'"
+  />
+  <n-modal v-model:show="showScrape" preset="card" title="刮削信息" class="library-modal" style="width: 640px; max-width: 96vw">
     <n-form :label-placement="isMobile ? 'top' : 'left'" :label-width="isMobile ? 'auto' : 130">
       <n-alert type="info" style="margin-bottom: 12px">
         当前曲库：{{ scrapeTarget?.name || '-' }}
@@ -404,6 +411,7 @@
 </template>
 
 <script setup>
+import BatchLyricsModal from '@/components/BatchLyricsModal.vue'
 import { computed, h, onMounted, reactive, ref, watch } from 'vue'
 import { NButton, NDropdown, NIcon, NSpace, NTag, NTooltip, useMessage } from 'naive-ui'
 import { ChevronDownOutline, FolderOpenOutline, MusicalNotesOutline, PlayOutline, TrashOutline, CloudUploadOutline, SwapHorizontalOutline } from '@vicons/ionicons5'
@@ -492,6 +500,8 @@ const reorgSelectedChild = ref(null)
 
 const showScrape = ref(false)
 const scrapeTarget = ref(null)
+const showBatchLyrics = ref(false)
+const batchLyricsSource = ref(null)
 const scrapeLoading = ref(false)
 const scrapeResult = ref(null)
 const scrapeForm = reactive({ allow_network: true, overwrite: false, write_file_tags: true, limit: 20 })
@@ -738,7 +748,7 @@ function sourceActionOptions(source, { compact = false } = {}) {
     opts.push({ label: '测试连接', key: 'test' })
   }
   opts.push({ label: '整理', key: 'reorg' })
-  opts.push({ label: '刮削', key: 'scrape' })
+  opts.push({ label: '刮削信息', key: 'scrape' })
   opts.push({ label: '浏览文件', key: 'browse' })
   if (source.type === 'webdav' && !source.is_default_upload) opts.push({ label: '设为默认上传', key: 'default' })
   if (source.deletable !== false && !source.is_builtin) opts.push({ label: '删除曲库', key: 'delete' })
@@ -882,6 +892,11 @@ async function runReorgApply() {
   try { reorgResult.value = (await applyReorganize(reorgSource.value.id, reorgPayload())).data || {}; message.success('整理完成'); await loadSources(); await loadSongs() }
   catch (err) { message.error(formatApiError(err, '整理失败')) }
   finally { reorgLoading.value = false }
+}
+function openBatchLyrics(row) {
+  if (!row?.id) return
+  batchLyricsSource.value = { ...row }
+  showBatchLyrics.value = true
 }
 function openScrape(row) { scrapeTarget.value = row; scrapeResult.value = null; scrapeTaskId.value = null; scrapeTaskStatus.value = ''; scrapeTaskMessage.value = ''; scrapeForm.allow_network = true; scrapeForm.overwrite = false; scrapeForm.write_file_tags = true; scrapeForm.limit = 20; showScrape.value = true }
 async function pollScrapeTask(taskId) {

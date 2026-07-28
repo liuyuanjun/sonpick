@@ -68,6 +68,7 @@ class SettingsUpdate(BaseModel):
     scan_exclude_globs: Optional[list[str]] = None
     scan_audio_exts: Optional[str] = None
     scrape_sources: Optional[list[dict[str, Any]]] = None
+    lyrics_sources: Optional[list[dict[str, Any]]] = None
     acoustid_api_key: Optional[str] = Field(default=None, max_length=512)
 
 
@@ -93,6 +94,7 @@ class SettingsResponse(BaseModel):
     scan_exclude_globs: list[str] = Field(default_factory=list)
     scan_audio_exts: str = "mp3,flac,m4a,wav,ogg,aac,ape,wma"
     scrape_sources: list[dict[str, Any]] = Field(default_factory=list)
+    lyrics_sources: list[dict[str, Any]] = Field(default_factory=list)
     acoustid_ready: bool = False
     acoustid_message: Optional[str] = None
     updated_at: Optional[str]
@@ -191,12 +193,20 @@ class SongOut(BaseModel):
     title: str
     artist: Optional[str]
     album: Optional[str]
+    year: Optional[str] = None
+    genre: Optional[str] = None
     source: Optional[str]
     format: Optional[str]
     duration: Optional[int]
     file_size: Optional[int]
     cover_path: Optional[str]
     lrc_path: Optional[str]
+    lyrics_provider: Optional[str] = None
+    lyrics_source_id: Optional[str] = None
+    lyrics_type: Optional[str] = None
+    lyrics_score: Optional[int] = None
+    lyrics_fetched_at: Optional[str] = None
+    lyrics_instrumental: bool = False
     library_source_id: Optional[int] = None
     status: str
     play_count: int = 0
@@ -238,6 +248,11 @@ class LyricsOut(BaseModel):
     song_id: int
     lines: list[LyricsLineOut] = Field(default_factory=list)
     raw: Optional[str] = None
+    lyrics_type: Optional[str] = None
+    provider: Optional[str] = None
+    source_id: Optional[str] = None
+    fetched_at: Optional[str] = None
+    instrumental: bool = False
 
 
 class PlaylistCreate(BaseModel):

@@ -166,7 +166,8 @@ const recentTasks = computed(() => tasks.value.filter((t) => TERMINAL_STATUSES.i
 const TYPE_LABELS = {
   search_download: '搜索下载',
   batch_download: '批量下载',
-  scrape: '刮削',
+  scrape: '刮削信息',
+  lyrics: '获取歌词',
   convert: '转码',
   scan: '扫描',
 }
@@ -195,7 +196,11 @@ function taskTitle(task) {
     const kws = payload.keywords || []
     return kws.length ? `批量下载 ${kws.length} 首：${kws[0]}${kws.length > 1 ? ' 等' : ''}` : `批量下载 #${task.id}`
   }
-  if (task.type === 'scrape') return `刮削曲库 #${payload.source_id ?? task.id}`
+  if (task.type === 'scrape') return `刮削信息 #${payload.source_id ?? task.id}`
+  if (task.type === 'lyrics') {
+    const count = payload.song_ids?.length || 0
+    return count ? `获取歌词 ${count} 首` : `获取歌词 #${task.id}`
+  }
   if (task.type === 'scan') return `扫描曲库 #${payload.source_ids?.[0] ?? task.id}`
   if (task.type === 'convert') return `转码歌曲 #${payload.song_id ?? task.id}`
   return `任务 #${task.id}`
@@ -205,6 +210,12 @@ function taskPercent(task) {
   return Math.max(0, Math.min(100, Math.round(p)))
 }
 function taskMessage(task) {
+  if (task.type === 'lyrics') {
+    const stats = task.progress?.stats || task.result || {}
+    if (stats.total != null) {
+      return `已处理 ${stats.processed || 0}/${stats.total || 0} · 写入 ${stats.written || 0} · 纯音乐 ${stats.instrumental || 0} · 未命中 ${stats.not_found || 0} · 限流 ${stats.rate_limit_waits || 0} · 失败 ${stats.failed || 0}`
+    }
+  }
   return task.progress?.message || ''
 }
 function formatTime(value) {

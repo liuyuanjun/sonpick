@@ -70,7 +70,8 @@
                 </template>
                 <n-button v-else size="small" type="primary" @click="onScan(row)">扫描</n-button>
                 <n-button size="small" @click="openReorg(row)">整理</n-button>
-                <n-button size="small" @click="openScrape(row)">刮削</n-button>
+                <n-button size="small" @click="openScrape(row)">刮削信息</n-button>
+                <n-button size="small" @click="openBatchLyrics(row)">获取歌词</n-button>
                 <n-button v-if="row.type === 'webdav'" size="small" type="info" @click="openBrowse(row)">浏览</n-button>
                 <n-button
                   v-if="row.type === 'webdav' && !row.is_default_upload"
@@ -274,7 +275,12 @@
     </n-modal>
 
     <!-- 刮削 -->
-    <n-modal v-model:show="showScrape" preset="card" title="刮削元数据" :style="isMobile ? 'width: min(520px, 96vw)' : 'width: 520px'">
+    <BatchLyricsModal
+      v-model:show="showBatchLyrics"
+      :library-source-id="batchLyricsSource?.id"
+      :target-label="batchLyricsSource ? `当前曲库：${batchLyricsSource.name}` : '当前曲库'"
+    />
+    <n-modal v-model:show="showScrape" preset="card" title="刮削信息" :style="isMobile ? 'width: min(520px, 96vw)' : 'width: 520px'">
       <n-form :label-placement="isMobile ? 'top' : 'left'" :label-width="isMobile ? 'auto' : 120">
         <n-form-item label="目标源">
           <n-text>{{ scrapeTarget?.name }}</n-text>
@@ -315,9 +321,11 @@
 </template>
 
 <script setup>
+import BatchLyricsModal from '@/components/BatchLyricsModal.vue'
 import { computed, h, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { NButton, NSpace, NTag, NProgress, useMessage } from 'naive-ui'
+import { useIsMobile } from '@/composables/useIsMobile'
 import {
   createSource,
   deleteSource,
@@ -362,6 +370,8 @@ const sources = ref([])
 const showForm = ref(false)
 const saving = ref(false)
 const editingId = ref(null)
+const editingBuiltin = ref(false)
+const isEditingBuiltin = computed(() => editingBuiltin.value)
 
 const form = reactive({
   name: '',
@@ -422,6 +432,8 @@ const reorgColumns = [
 // scrape
 const showScrape = ref(false)
 const scrapeTarget = ref(null)
+const showBatchLyrics = ref(false)
+const batchLyricsSource = ref(null)
 const scrapeLoading = ref(false)
 const scrapeResult = ref(null)
 const scrapeForm = reactive({
@@ -530,7 +542,8 @@ const columns = [
       }
       buttons.push(
         h(NButton, { size: 'tiny', onClick: () => openReorg(row) }, { default: () => '整理' }),
-        h(NButton, { size: 'tiny', onClick: () => openScrape(row) }, { default: () => '刮削' }),
+        h(NButton, { size: 'tiny', onClick: () => openScrape(row) }, { default: () => '刮削信息' }),
+        h(NButton, { size: 'tiny', onClick: () => openBatchLyrics(row) }, { default: () => '获取歌词' }),
       )
       if (row.type === 'webdav') {
         buttons.push(
@@ -733,6 +746,12 @@ function stopScrapePoll() {
     try { stopScrapeWatch() } catch (_) {}
     stopScrapeWatch = null
   }
+}
+
+function openBatchLyrics(row) {
+  if (!row?.id) return
+  batchLyricsSource.value = { ...row }
+  showBatchLyrics.value = true
 }
 
 function openScrape(row) {

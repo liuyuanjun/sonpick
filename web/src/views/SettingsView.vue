@@ -17,6 +17,7 @@
         >
           <n-tab-pane name="general" tab="系统设置" />
           <n-tab-pane name="scrape" tab="刮削源" />
+          <n-tab-pane name="lyrics" tab="歌词源" />
         </n-tabs>
       </n-card>
     </n-gi>
@@ -117,7 +118,7 @@
             </n-space>
           </n-card>
         </template>
-        <template v-else>
+        <template v-else-if="activeSection === 'scrape'">
           <n-card title="刮削源">
             <template #header-extra>
               <n-button :loading="saving" type="primary" @click="saveScrapeSources">保存刮削源配置</n-button>
@@ -187,6 +188,45 @@
             </n-space>
           </n-card>
         </template>
+        <template v-else>
+          <n-card title="歌词源">
+            <template #header-extra>
+              <n-button :loading="saving" type="primary" @click="saveLyricsSources">保存歌词源配置</n-button>
+            </template>
+            <n-alert type="info" :show-icon="false" style="margin-bottom: 16px">
+              歌词检索与歌曲信息刮削相互独立。LRCLIB 无需 API Key，批量操作会串行请求并遵守公共服务限流。
+            </n-alert>
+            <n-data-table
+              v-if="!isMobile"
+              :columns="lyricsSourceColumns"
+              :data="lyricsSources"
+              :bordered="false"
+              :single-line="false"
+              size="small"
+            />
+            <n-space v-else vertical size="medium" class="scrape-mobile-list">
+              <n-card v-for="row in lyricsSources" :key="row.id" size="small" class="scrape-card" :bordered="true">
+                <div class="scrape-card-head">
+                  <div>
+                    <div class="scrape-name">{{ row.name }}</div>
+                    <div class="source-tier">{{ row.description }}</div>
+                  </div>
+                  <n-tag size="small" :type="row.enabled ? 'success' : 'default'">{{ row.enabled ? '启用' : '停用' }}</n-tag>
+                </div>
+                <n-form label-placement="left" label-width="90" size="small">
+                  <n-form-item label="启用"><n-switch v-model:value="row.enabled" /></n-form-item>
+                  <n-form-item label="自动检索"><n-switch v-model:value="row.auto_enabled" :disabled="!row.enabled" /></n-form-item>
+                  <n-form-item label="优先级"><n-input :value="String(row.priority)" @update:value="value => { row.priority = Number(value) || 999 }" /></n-form-item>
+                  <n-form-item label="超时（秒）"><n-input :value="String(row.timeout)" @update:value="value => { row.timeout = Number(value) || 15 }" /></n-form-item>
+                </n-form>
+                <div class="source-test">
+                  <span class="source-status">{{ row.status_message || row.capabilities?.join(' / ') }}</span>
+                  <n-button size="small" secondary :disabled="!row.enabled" @click="testLyricsSource(row)">测试</n-button>
+                </div>
+              </n-card>
+            </n-space>
+          </n-card>
+        </template>
       </n-space>
     </n-gi>
   </n-grid>
@@ -206,9 +246,11 @@ const acoustidApiKey = ref('')
 const acoustidReady = ref(false)
 const acoustidMessage = ref('未检测')
 const scrapeSources = ref([])
+const lyricsSources = ref([])
 const menuOptions = [
   { label: '系统设置', key: 'general' },
   { label: '刮削源', key: 'scrape' },
+  { label: '歌词源', key: 'lyrics' },
 ]
 const regionOptions = [
   { label: '中国大陆', value: 'cn' },
@@ -301,6 +343,31 @@ const sourceColumns = [
   },
 ]
 
+const lyricsSourceColumns = [
+  { title: '歌词源', key: 'name', minWidth: 130 },
+  {
+    title: '启用', key: 'enabled', width: 78,
+    render: row => h(NSwitch, { value: row.enabled, 'onUpdate:value': value => { row.enabled = value } }),
+  },
+  {
+    title: '自动检索', key: 'auto_enabled', width: 96,
+    render: row => h(NSwitch, { value: row.auto_enabled, disabled: !row.enabled, 'onUpdate:value': value => { row.auto_enabled = value } }),
+  },
+  {
+    title: '优先级', key: 'priority', width: 96,
+    render: row => h(NInput, { value: String(row.priority), size: 'small', onUpdateValue: value => { row.priority = Number(value) || 999 } }),
+  },
+  {
+    title: '超时', key: 'timeout', width: 96,
+    render: row => h(NInput, { value: String(row.timeout), size: 'small', onUpdateValue: value => { row.timeout = Number(value) || 15 } }),
+  },
+  { title: '能力 / 说明', key: 'description', minWidth: 260, render: row => h('div', [h('div', row.capabilities?.join(' / ') || '-'), h('small', row.description || '')]) },
+  {
+    title: '测试', key: 'test', width: 100,
+    render: row => h(NButton, { size: 'tiny', secondary: true, disabled: !row.enabled, onClick: () => testLyricsSource(row) }, { default: () => '测试' }),
+  },
+]
+
 async function load() {
   try {
     const { data: d } = await api.get('/settings')
@@ -314,6 +381,7 @@ async function load() {
       auto_upload_webdav: !!d.auto_upload_webdav,
     })
     scrapeSources.value = d.scrape_sources || []
+    lyricsSources.value = d.lyrics_sources || []
     acoustidReady.value = !!d.acoustid_ready
     acoustidMessage.value = d.acoustid_message || '未检测'
   } catch (err) {
@@ -339,11 +407,16 @@ async function saveScrapeSources() {
   await save({ scrape_sources: scrapeSources.value }, '刮削源配置已保存')
 }
 
+async function saveLyricsSources() {
+  await save({ lyrics_sources: lyricsSources.value }, '歌词源配置已保存')
+}
+
 async function save(payload, success) {
   saving.value = true
   try {
     const { data } = await api.put('/settings', payload)
     scrapeSources.value = data.scrape_sources || scrapeSources.value
+    lyricsSources.value = data.lyrics_sources || lyricsSources.value
     acoustidReady.value = !!data.acoustid_ready
     acoustidMessage.value = data.acoustid_message || acoustidMessage.value
     message.success(success)
@@ -357,6 +430,18 @@ async function save(payload, success) {
 async function testSource(row) {
   try {
     const { data } = await api.post(`/settings/scrape-sources/${row.id}/test`)
+    row.status_message = data.message || (data.ok ? '连接正常' : '测试失败')
+    message[data.ok ? 'success' : 'warning'](`${row.name}：${row.status_message}`)
+  } catch (err) {
+    row.status_message = err.response?.data?.detail || '测试失败'
+    message.error(`${row.name}：${row.status_message}`)
+  }
+}
+
+async function testLyricsSource(row) {
+  row.status_message = '测试中…'
+  try {
+    const { data } = await api.post(`/settings/lyrics-sources/${row.id}/test`)
     row.status_message = data.message || (data.ok ? '连接正常' : '测试失败')
     message[data.ok ? 'success' : 'warning'](`${row.name}：${row.status_message}`)
   } catch (err) {

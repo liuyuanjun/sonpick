@@ -42,6 +42,7 @@ export const usePlayerStore = defineStore('player', () => {
   const currentTime = ref(0)
   const duration = ref(0)
   const lyrics = ref([])
+  const lyricsMeta = ref({ type: null, provider: null, sourceId: null, fetchedAt: null, instrumental: false })
   const lyricIndex = ref(-1)
   const showQueue = ref(false)
   const expanded = ref(false)
@@ -66,6 +67,8 @@ export const usePlayerStore = defineStore('player', () => {
     if (current.value?.id) src.value = streamUrl(current.value.id, token(), losslessPreferred.value)
   }
 
+  let lyricsRequestSeq = 0
+
   function applySong(song, autoplay = true) {
     if (!song?.id) return
     current.value = song
@@ -77,7 +80,8 @@ export const usePlayerStore = defineStore('player', () => {
     duration.value = song.duration || 0
     lyricIndex.value = -1
     lyrics.value = []
-    loadLyrics(song.id)
+    const requestSeq = ++lyricsRequestSeq
+    loadLyrics(song.id, requestSeq)
     recordPlay(song.id).catch(() => {})
   }
 
@@ -102,18 +106,29 @@ export const usePlayerStore = defineStore('player', () => {
     })
   }
 
-  async function loadLyrics(songId) {
+  async function loadLyrics(songId, requestSeq = ++lyricsRequestSeq) {
     try {
       const res = await fetchLyrics(songId)
+      if (requestSeq !== lyricsRequestSeq || current.value?.id !== songId) return false
       const data = res?.data || res || {}
-      // API: { lines:[{time,text}], raw }
       let lines = Array.isArray(data?.lines) ? data.lines : []
       if (!lines.length && data?.raw) lines = parseLrc(data.raw)
       lyrics.value = lines
+      lyricsMeta.value = {
+        type: data.lyrics_type || current.value?.lyrics_type || null,
+        provider: data.provider || current.value?.lyrics_provider || null,
+        sourceId: data.source_id || current.value?.lyrics_source_id || null,
+        fetchedAt: data.fetched_at || current.value?.lyrics_fetched_at || null,
+        instrumental: !!data.instrumental || current.value?.lyrics_type === 'instrumental',
+      }
       lyricIndex.value = findLyricIndex(lyrics.value, currentTime.value)
+      return true
     } catch {
+      if (requestSeq !== lyricsRequestSeq || current.value?.id !== songId) return false
       lyrics.value = []
+      lyricsMeta.value = { type: null, provider: null, sourceId: null, fetchedAt: null, instrumental: false }
       lyricIndex.value = -1
+      return false
     }
   }
 
@@ -288,6 +303,7 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   function close() {
+    lyricsRequestSeq += 1
     current.value = null
     src.value = ''
     cover.value = ''
@@ -296,6 +312,7 @@ export const usePlayerStore = defineStore('player', () => {
     queue.value = []
     currentIndex.value = -1
     lyrics.value = []
+    lyricsMeta.value = { type: null, provider: null, sourceId: null, fetchedAt: null, instrumental: false }
     lyricIndex.value = -1
     currentTime.value = 0
     duration.value = 0
@@ -312,7 +329,7 @@ export const usePlayerStore = defineStore('player', () => {
   return {
     current, src, cover, playing, showPlayer, queue, currentIndex, mode, modeLabel,
     losslessPreferred,
-    volume, muted, currentTime, duration, lyrics, lyricIndex, showQueue, expanded, fullPlayerOpen,
+    volume, muted, currentTime, duration, lyrics, lyricsMeta, lyricIndex, showQueue, expanded, fullPlayerOpen,
     stageView, showLyrics, lyricFontSize,
     hasPrev, hasNext, play, playList, enqueue, removeFromQueue, clearQueue, jumpTo,
     next, prev, toggleMode, toggleLosslessPreferred, setVolume, toggleMute, pause, resume, togglePlay, toggle,

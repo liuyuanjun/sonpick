@@ -87,11 +87,57 @@ export function fetchScrapeCandidates(songId, payload = {}) {
   return api.post(`/songs/${songId}/scrape/candidates`, { source: 'auto', limit: 8, ...payload }, { timeout: 120000 })
 }
 
+export function fetchScrapeCandidateDetails(songId, candidate) {
+  return api.post(`/songs/${songId}/scrape/candidate-details`, {
+    candidate,
+    selected_fields: [],
+    write_file_tags: false,
+  }, { timeout: 120000 })
+}
+
 export function applyScrapeCandidate(songId, candidate, options = {}) {
   return api.post(`/songs/${songId}/scrape/apply`, {
     candidate,
+    selected_fields: options.selected_fields || [],
     write_file_tags: options.write_file_tags !== false,
   }, { timeout: 120000 })
+}
+
+export function searchLyricsCandidates(songId, payload = {}) {
+  return api.post(`/songs/${songId}/lyrics/candidates`, { source: 'auto', limit: 20, ...payload }, { timeout: 120000 })
+}
+
+export function fetchLyricsCandidateDetails(songId, candidate) {
+  return api.post(`/songs/${songId}/lyrics/candidate-details`, {
+    source: candidate.source,
+    source_id: candidate.source_id,
+    candidate,
+  }, { timeout: 120000 })
+}
+
+export function applyLyricsCandidate(songId, candidate, options = {}) {
+  return api.post(`/songs/${songId}/lyrics/apply`, {
+    candidate,
+    write_file_tags: options.write_file_tags !== false,
+  }, { timeout: 120000 })
+}
+
+export function clearLyrics(songId, options = {}) {
+  return api.delete(`/songs/${songId}/lyrics`, {
+    params: { confirm: true, clear_file_tags: options.clear_file_tags !== false },
+    timeout: 120000,
+  })
+}
+
+export function lyricsSongs(payload = {}) {
+  return api.post('/songs/lyrics', {
+    source_id: 'auto',
+    only_missing: true,
+    overwrite: false,
+    write_file_tags: true,
+    async_mode: true,
+    ...payload,
+  }, { timeout: 30000 })
 }
 
 export function enrichSong(songId, params = {}) {

@@ -343,6 +343,8 @@ def read_audio_tags(path: str | Path) -> dict[str, Optional[str]]:
         "title": None,
         "artist": None,
         "album": None,
+        "year": None,
+        "genre": None,
         "lyrics": None,
     }
     p = Path(path)
@@ -365,6 +367,12 @@ def read_audio_tags(path: str | Path) -> dict[str, Optional[str]]:
             album = _first_tag_value(tags, [
                 "TALB", "ALBUM", "©alb", "album",
             ])
+            year = _first_tag_value(tags, [
+                "TDRC", "TDOR", "DATE", "YEAR", "©day", "date", "year",
+            ])
+            genre = _first_tag_value(tags, [
+                "TCON", "GENRE", "©gen", "genre",
+            ])
             # embedded lyrics
             lyrics = None
             try:
@@ -383,13 +391,15 @@ def read_audio_tags(path: str | Path) -> dict[str, Optional[str]]:
             result["title"] = _clean_meta_text(title)
             result["artist"] = _clean_meta_text(artist)
             result["album"] = _clean_meta_text(album)
+            result["year"] = _clean_meta_text(year)
+            result["genre"] = _clean_meta_text(genre)
             if lyrics and str(lyrics).strip():
                 result["lyrics"] = str(lyrics).strip()
     except Exception:
         pass
 
     # 2) tinytag fallback for missing fields
-    if not (result["title"] and result["artist"] and result["album"]):
+    if not all(result[key] for key in ("title", "artist", "album", "year", "genre")):
         try:
             from tinytag import TinyTag
 
@@ -401,6 +411,10 @@ def read_audio_tags(path: str | Path) -> dict[str, Optional[str]]:
                     result["artist"] = _clean_meta_text(getattr(tag, "artist", None))
                 if not result["album"]:
                     result["album"] = _clean_meta_text(getattr(tag, "album", None))
+                if not result["year"]:
+                    result["year"] = _clean_meta_text(getattr(tag, "year", None))
+                if not result["genre"]:
+                    result["genre"] = _clean_meta_text(getattr(tag, "genre", None))
         except Exception:
             pass
 
@@ -419,12 +433,15 @@ def write_audio_tags(
     album: str | None = None,
     lyrics: str | None = None,
     year: str | int | None = None,
+    genre: str | None = None,
     track: str | int | None = None,
     cover_path: str | Path | None = None,
     cover_bytes: bytes | None = None,
     cover_mime: str | None = None,
+    clear_fields: set[str] | None = None,
 ) -> dict[str, Any]:
-    """Write tags (+ optional lyrics/year/track/cover) into local audio file."""
+    """Write or explicitly clear selected tags and artwork in a local audio file."""
+    clear_fields = set(clear_fields or ())
     p = Path(path) if not isinstance(path, Path) else path
     if not p.is_file():
         return {}
@@ -447,6 +464,7 @@ def write_audio_tags(
             pic_data = None
 
     year_s = str(year).strip() if year not in (None, "") else None
+    genre_s = str(genre).strip() if genre not in (None, "") else None
     track_s = str(track).strip() if track not in (None, "") else None
     lyrics_s = str(lyrics).strip() if lyrics else None
 
@@ -461,7 +479,13 @@ def write_audio_tags(
 
     def _set_easy(audio_obj, mapping):
         for k, v in mapping.items():
-            if not v:
+            if v in (None, ""):
+                if k in clear_fields:
+                    try:
+                        del audio_obj[k]
+                        written[k] = None
+                    except Exception:
+                        pass
                 continue
             try:
                 audio_obj[k] = str(v)
@@ -484,7 +508,7 @@ def write_audio_tags(
                 except Exception:
                     pass
                 tags = audio
-            easy_map = {"title": title, "artist": artist, "album": album}
+            easy_map = {"title": title, "artist": artist, "album": album, "genre": genre_s}
             if year_s:
                 easy_map["date"] = year_s
             if track_s:
@@ -503,6 +527,9 @@ def write_audio_tags(
                     pass
                 id3.add(USLT(encoding=3, lang="chi", desc="", text=lyrics_s))
                 written["lyrics"] = True
+            elif "lyrics" in clear_fields:
+                id3.delall("USLT")
+                written["lyrics"] = None
             if pic_data:
                 try:
                     id3.delall("APIC")
@@ -518,28 +545,52 @@ def write_audio_tags(
                     )
                 )
                 written["cover"] = True
-            if lyrics_s or pic_data:
+            elif "cover" in clear_fields:
+                id3.delall("APIC")
+                written["cover"] = None
+            if lyrics_s or pic_data or "lyrics" in clear_fields or "cover" in clear_fields:
                 id3.save(str(p))
         elif suffix == ".flac":
             audio = FLAC(str(p))
             if title:
                 audio["title"] = title
                 written["title"] = title
+            elif "title" in clear_fields:
+                audio.pop("title", None)
+                written["title"] = None
             if artist:
                 audio["artist"] = artist
                 written["artist"] = artist
+            elif "artist" in clear_fields:
+                audio.pop("artist", None)
+                written["artist"] = None
             if album:
                 audio["album"] = album
                 written["album"] = album
+            elif "album" in clear_fields:
+                audio.pop("album", None)
+                written["album"] = None
+            if genre_s:
+                audio["genre"] = genre_s
+                written["genre"] = genre_s
+            elif "genre" in clear_fields:
+                audio.pop("genre", None)
+                written["genre"] = None
             if year_s:
                 audio["date"] = year_s
                 written["year"] = year_s
+            elif "year" in clear_fields:
+                audio.pop("date", None)
+                written["year"] = None
             if track_s:
                 audio["tracknumber"] = track_s
                 written["track"] = track_s
             if lyrics_s:
                 audio["lyrics"] = lyrics_s
                 written["lyrics"] = True
+            elif "lyrics" in clear_fields:
+                audio.pop("lyrics", None)
+                written["lyrics"] = None
             if pic_data:
                 pic = Picture()
                 pic.type = 3
@@ -552,21 +603,42 @@ def write_audio_tags(
                     pass
                 audio.add_picture(pic)
                 written["cover"] = True
+            elif "cover" in clear_fields:
+                audio.clear_pictures()
+                written["cover"] = None
             audio.save()
         elif suffix in {".m4a", ".mp4", ".aac"}:
             audio = MP4(str(p))
             if title:
                 audio["\xa9nam"] = [title]
                 written["title"] = title
+            elif "title" in clear_fields:
+                audio.pop("\xa9nam", None)
+                written["title"] = None
             if artist:
                 audio["\xa9ART"] = [artist]
                 written["artist"] = artist
+            elif "artist" in clear_fields:
+                audio.pop("\xa9ART", None)
+                written["artist"] = None
             if album:
                 audio["\xa9alb"] = [album]
                 written["album"] = album
+            elif "album" in clear_fields:
+                audio.pop("\xa9alb", None)
+                written["album"] = None
+            if genre_s:
+                audio["\xa9gen"] = [genre_s]
+                written["genre"] = genre_s
+            elif "genre" in clear_fields:
+                audio.pop("\xa9gen", None)
+                written["genre"] = None
             if year_s:
                 audio["\xa9day"] = [year_s]
                 written["year"] = year_s
+            elif "year" in clear_fields:
+                audio.pop("\xa9day", None)
+                written["year"] = None
             if track_s:
                 try:
                     tn = int(str(track_s).split("/")[0])
@@ -577,10 +649,16 @@ def write_audio_tags(
             if lyrics_s:
                 audio["\xa9lyr"] = [lyrics_s]
                 written["lyrics"] = True
+            elif "lyrics" in clear_fields:
+                audio.pop("\xa9lyr", None)
+                written["lyrics"] = None
             if pic_data:
                 fmt = MP4Cover.FORMAT_PNG if "png" in pic_mime else MP4Cover.FORMAT_JPEG
                 audio["covr"] = [MP4Cover(pic_data, imageformat=fmt)]
                 written["cover"] = True
+            elif "cover" in clear_fields:
+                audio.pop("covr", None)
+                written["cover"] = None
             audio.save()
         else:
             audio = MutagenFile(str(p), easy=True)
@@ -591,7 +669,7 @@ def write_audio_tags(
                     audio.add_tags()
             except Exception:
                 pass
-            mapping = {"title": title, "artist": artist, "album": album}
+            mapping = {"title": title, "artist": artist, "album": album, "genre": genre_s}
             if year_s:
                 mapping["date"] = year_s
             if track_s:
@@ -601,6 +679,12 @@ def write_audio_tags(
                 try:
                     audio["lyrics"] = lyrics_s
                     written["lyrics"] = True
+                except Exception:
+                    pass
+            elif "lyrics" in clear_fields:
+                try:
+                    del audio["lyrics"]
+                    written["lyrics"] = None
                 except Exception:
                     pass
             audio.save()

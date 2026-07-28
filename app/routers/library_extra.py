@@ -7,6 +7,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -25,7 +26,7 @@ from app.schemas import (
     SongOut,
 )
 from app.services.lyrics_service import load_lyrics_for_song
-from app.services.scrape.cover_utils import download_cover_with_diagnostics, enrich_cover_fields, extract_qq_songmid, qq_song_detail_cover
+from app.services.scrape.cover_utils import download_cover_with_diagnostics, enrich_cover_fields, qq_song_detail_cover
 from app.services.media_meta_service import (
     extract_embedded_cover_bytes,
     is_local_file,
@@ -127,6 +128,11 @@ def get_lyrics(
         song_id=song_id,
         lines=[LyricsLineOut(**ln) for ln in lines],
         raw=raw,
+        lyrics_type=song.lyrics_type,
+        provider=song.lyrics_provider,
+        source_id=song.lyrics_source_id,
+        fetched_at=iso_utc(song.lyrics_fetched_at),
+        instrumental=bool(song.lyrics_instrumental),
     )
 
 
@@ -231,6 +237,187 @@ def enrich_song(
         return {"async": False, "song": song_payload, "result": result}
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"刮削失败: {type(e).__name__}: {e}") from e
+
+
+class LyricsCandidateSearchRequest(BaseModel):
+    source: str = "auto"
+    keyword: str | None = Field(default=None, max_length=500)
+    limit: int = Field(20, ge=1, le=20)
+
+
+class LyricsCandidateDetailRequest(BaseModel):
+    source: str
+    source_id: str
+    candidate: dict = Field(default_factory=dict)
+
+
+class LyricsCandidateApplyRequest(BaseModel):
+    candidate: dict
+    write_file_tags: bool = True
+
+
+class SongsLyricsRequest(BaseModel):
+    song_ids: list[int] | None = None
+    source_id: str = "auto"
+    library_source_id: int | None = None
+    only_missing: bool = True
+    overwrite: bool = False
+    write_file_tags: bool = True
+    async_mode: bool = True
+
+
+@router.post("/songs/{song_id}/lyrics/candidates")
+def search_lyrics_candidates(
+    song_id: int,
+    body: LyricsCandidateSearchRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.lyrics_search_service import LyricsApplicationError, LyricsSearchService
+
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(status_code=404, detail="歌曲不存在")
+    try:
+        result = LyricsSearchService(db).search(song, source=body.source, keyword=body.keyword or "", limit=body.limit)
+        if body.source != "auto" and not result.get("candidates") and result.get("errors"):
+            error = result["errors"][0]
+            status_code = 429 if error.get("code") == "rate_limited" else 502
+            headers = {"Retry-After": str(error.get("retry_after"))} if error.get("retry_after") else None
+            raise HTTPException(status_code=status_code, detail=error, headers=headers)
+        return result
+    except LyricsApplicationError as exc:
+        raise HTTPException(status_code=400, detail=exc.detail()) from exc
+
+
+@router.post("/songs/{song_id}/lyrics/candidate-details")
+def get_lyrics_candidate_details(
+    song_id: int,
+    body: LyricsCandidateDetailRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.lyrics_search_service import LyricsApplicationError, LyricsSearchService
+
+    if not db.get(Song, song_id):
+        raise HTTPException(status_code=404, detail="歌曲不存在")
+    try:
+        return LyricsSearchService(db).details(body.source, body.source_id, fallback=body.candidate)
+    except LyricsApplicationError as exc:
+        raise HTTPException(status_code=400, detail=exc.detail()) from exc
+
+
+@router.post("/songs/{song_id}/lyrics/apply")
+def apply_lyrics_candidate(
+    song_id: int,
+    body: LyricsCandidateApplyRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.lyrics_search_service import LyricsApplicationError, LyricsSearchService
+    from app.services.operation_log_service import write_log
+
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(status_code=404, detail="歌曲不存在")
+    try:
+        result = LyricsSearchService(db).apply(
+            song,
+            body.candidate,
+            write_file_tags=body.write_file_tags,
+        )
+        write_log(
+            db,
+            action="lyrics",
+            target="local",
+            status="success",
+            title=f"{song.artist or ''} - {song.title}".strip(" -"),
+            message=f"歌词已更新，来源 {result.get('source')}",
+            local_path=result.get("lrc_path"),
+            song_id=song.id,
+            detail={"source": result.get("source"), "source_id": result.get("source_id"), "lyrics_type": result.get("lyrics_type")},
+        )
+        return result
+    except LyricsApplicationError as exc:
+        raise HTTPException(status_code=400, detail=exc.detail()) from exc
+
+
+@router.delete("/songs/{song_id}/lyrics")
+def clear_song_lyrics(
+    song_id: int,
+    confirm: bool = Query(False),
+    clear_file_tags: bool = Query(True),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.lyrics_search_service import LyricsApplicationError, LyricsSearchService
+    from app.services.operation_log_service import write_log
+
+    if not confirm:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "confirmation_required", "message": "清空歌词需要 confirm=true"},
+        )
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(status_code=404, detail="歌曲不存在")
+    try:
+        result = LyricsSearchService(db).clear(song, write_file_tags=clear_file_tags)
+        write_log(
+            db,
+            action="lyrics",
+            target="local",
+            status="success",
+            title=f"{song.artist or ''} - {song.title}".strip(" -"),
+            message="歌词已清空",
+            song_id=song.id,
+            detail={"operation": "clear", "removed_paths": result.get("removed_paths", []), "embedded_cleared": result.get("written_file_tags", False)},
+        )
+        return result
+    except LyricsApplicationError as exc:
+        raise HTTPException(status_code=400, detail=exc.detail()) from exc
+
+
+@router.post("/songs/lyrics")
+def fetch_songs_lyrics(
+    body: SongsLyricsRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    import json
+
+    from app.services.lyrics_job import run_lyrics_job
+    from app.services.task_worker import worker
+
+    if body.only_missing and body.overwrite:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_batch_options", "message": "仅补缺失与覆盖已有不能同时启用"},
+        )
+    payload = {
+        "song_ids": sorted(set(body.song_ids or [])) or None,
+        "source_id": body.source_id or "auto",
+        "library_source_id": body.library_source_id,
+        "only_missing": bool(body.only_missing),
+        "overwrite": bool(body.overwrite),
+        "write_file_tags": bool(body.write_file_tags),
+    }
+    if body.async_mode:
+        task = Task(
+            type="lyrics",
+            status="pending",
+            payload_json=json.dumps(payload, ensure_ascii=False),
+            progress_json=json.dumps({"percent": 0, "message": "等待获取歌词", "logs": []}, ensure_ascii=False),
+            result_json="{}",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        db.add(task)
+        db.commit()
+        db.refresh(task)
+        worker.enqueue(task.id)
+        return {"async": True, "task_id": task.id, "status": task.status, "payload": payload}
+    return run_lyrics_job(db, **payload)
 
 
 @router.post("/songs/{song_id}/favorite", response_model=SongOut)
@@ -488,9 +675,6 @@ def library_stats(
     )
 
 
-from pydantic import BaseModel, Field
-
-
 class ScrapeCandidateRequest(BaseModel):
     source: str = "auto"  # auto / netease / migu / qq
     keyword: str | None = Field(default=None, max_length=500)
@@ -499,6 +683,7 @@ class ScrapeCandidateRequest(BaseModel):
 
 class ApplyScrapeCandidateRequest(BaseModel):
     candidate: dict
+    selected_fields: list[str] = Field(default_factory=lambda: ["title", "artist", "album", "year", "genre", "cover"])
     write_file_tags: bool = True
 
 
@@ -601,19 +786,33 @@ def _search_candidates(song: Song, *, source: str = "auto", keyword: str | None 
         except Exception:
             continue
     candidates = _score_candidates(rows, title=score_title, artist=score_artist, duration=duration)
-    return {"query": {"title": score_title, "artist": score_artist, "duration": duration, "keyword": keyword}, "candidates": candidates[:limit]}
+    return {
+        "query": {"title": score_title, "artist": score_artist, "duration": duration, "keyword": keyword},
+        "current": _candidate_current_values(song, db),
+        "candidates": candidates[:limit],
+    }
 
 
-def _write_lrc_for_song(db: Session, song: Song, lyrics: str | None) -> tuple[str | None, SongFile | None]:
-    if not lyrics:
-        return None, None
+def normalized_candidate_value(candidate: dict, key: str) -> str:
+    value = candidate.get("cover_url") if key == "cover" else candidate.get(key)
+    return "" if value is None else str(value).strip()
+
+
+def _hydrate_candidate_details(candidate: dict) -> dict:
+    return dict(candidate or {})
+
+
+def _candidate_current_values(song: Song, db: Session) -> dict:
     song_file = _local_song_file(db, song)
-    dest = Path(song_file.local_path).with_suffix(".lrc") if song_file else Path("/tmp/sonpick_lyrics") / f"song_{song.id}.lrc"
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(str(lyrics).strip(), encoding="utf-8")
-    if song_file:
-        song_file.lrc_path = str(dest)
-    return str(dest), song_file
+    tags = read_audio_tags(song_file.local_path) if song_file else {}
+    return {
+        "title": song.title or tags.get("title"),
+        "artist": song.artist or tags.get("artist"),
+        "album": song.album or tags.get("album"),
+        "year": song.year or tags.get("year"),
+        "genre": song.genre or tags.get("genre"),
+        "cover": song.cover_path,
+    }
 
 
 def _download_candidate_cover(db: Session, song: Song, cover_url: str | None) -> tuple[dict, SongFile | None]:
@@ -638,7 +837,7 @@ def get_song_tags(
     return {
         "song_id": song.id,
         "file_version_id": song_file.id if song_file else None,
-        "db": {"title": song.title, "artist": song.artist, "album": song.album, "duration": song.duration, "cover_path": song.cover_path, "lrc_path": song.lrc_path},
+        "db": {"title": song.title, "artist": song.artist, "album": song.album, "year": song.year, "genre": song.genre, "duration": song.duration, "cover_path": song.cover_path, "lrc_path": song.lrc_path},
         "embedded": {**(tags or {}), "duration": duration, "cover_embedded": bool(cover_bytes), "cover_size": len(cover_bytes or b"")},
     }
 
@@ -656,6 +855,22 @@ def scrape_candidates(
     return _search_candidates(song, source=body.source, keyword=body.keyword, limit=body.limit, db=db)
 
 
+@router.post("/songs/{song_id}/scrape/candidate-details")
+def scrape_candidate_details(
+    song_id: int,
+    body: ApplyScrapeCandidateRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(status_code=404, detail="歌曲不存在")
+    return {
+        "current": _candidate_current_values(song, db),
+        "candidate": _hydrate_candidate_details(body.candidate),
+    }
+
+
 @router.post("/songs/{song_id}/scrape/apply")
 def apply_scrape_candidate(
     song_id: int,
@@ -666,40 +881,29 @@ def apply_scrape_candidate(
     song = db.get(Song, song_id)
     if not song:
         raise HTTPException(status_code=404, detail="歌曲不存在")
-    cand = body.candidate or {}
+    cand = _hydrate_candidate_details(body.candidate)
+    selected_fields = set(body.selected_fields or [])
+    allowed_fields = {"title", "artist", "album", "year", "genre", "cover"}
+    unknown_fields = selected_fields - allowed_fields
+    if unknown_fields:
+        raise HTTPException(status_code=422, detail=f"不支持的刮削字段: {', '.join(sorted(unknown_fields))}")
     changes = {}
-    for key in ("title", "artist", "album", "duration"):
+    for key in ("title", "artist", "album", "year", "genre"):
+        if key not in selected_fields:
+            continue
         val = cand.get(key)
-        if val not in (None, "") and str(getattr(song, key, "") or "") != str(val):
-            setattr(song, key, val)
-            changes[key] = val
-    cover_url = cand.get("cover_url")
+        if str(getattr(song, key, "") or "") != str(val or ""):
+            setattr(song, key, (val or "") if key == "title" else (val or None))
+            changes[key] = val or None
+    cover_url = cand.get("cover_url") if "cover" in selected_fields else None
     cover_lookup = None
-    candidate_source = str(cand.get("source") or "").lower()
-    if not cover_url and candidate_source == "netease":
-        from app.services.scrape.providers.netease_http import fetch_netease_song_cover
-
-        cover_lookup = fetch_netease_song_cover(cand.get("id"))
-        if cover_lookup.get("cover_url"):
-            cover_url = cover_lookup["cover_url"]
-            cand["cover_url"] = cover_url
-            cand["cover_source"] = cover_lookup.get("source")
-    if not cover_url:
-        version_paths = [
-            value
-            for file in db.query(SongFile).filter(SongFile.song_id == song.id).all()
-            for value in (file.webdav_path, file.lrc_path, file.local_path)
-        ]
-        for value in (cand.get("id"), *version_paths, song.title):
-            mid = extract_qq_songmid(value)
-            if mid:
-                cover_lookup = qq_song_detail_cover(mid)
-                if cover_lookup.get("cover_url"):
-                    cover_url = cover_lookup["cover_url"]
-                    cand["cover_url"] = cover_url
-                    cand["cover_source"] = cover_lookup.get("source")
-                    break
-    cover_result, cover_file = _download_candidate_cover(db, song, cover_url)
+    if "cover" in selected_fields:
+        if cover_url:
+            cover_result, cover_file = _download_candidate_cover(db, song, cover_url)
+        else:
+            cover_result, cover_file = {"ok": False, "cleared": True}, _local_song_file(db, song)
+    else:
+        cover_result, cover_file = {"ok": False, "skipped": True}, None
     if cover_lookup:
         cover_result["lookup"] = cover_lookup
     cover_path = cover_result.get("path") if cover_result.get("ok") else None
@@ -708,13 +912,11 @@ def apply_scrape_candidate(
             cover_file.cover_path = cover_path
         song.cover_path = cover_path
         changes["cover_path"] = cover_path
-    lyrics = cand.get("lyrics")
-    lrc_path, lrc_file = _write_lrc_for_song(db, song, lyrics)
-    if lrc_path:
-        if lrc_file:
-            lrc_file.lrc_path = lrc_path
-        song.lrc_path = lrc_path
-        changes["lrc_path"] = lrc_path
+    elif "cover" in selected_fields and not cover_url:
+        if cover_file:
+            cover_file.cover_path = None
+        song.cover_path = None
+        changes["cover_path"] = None
     song.meta_provider = cand.get("provider") or cand.get("source") or "manual"
     song.meta_confidence = int(min(100, max(0, float(cand.get("score") or 0) * 20))) if cand.get("score") is not None else song.meta_confidence
     song.scrape_status = "done"
@@ -728,11 +930,17 @@ def apply_scrape_candidate(
     if body.write_file_tags and song_file:
         tag_written = write_audio_tags(
             song_file.local_path,
-            title=song.title,
-            artist=song.artist,
-            album=song.album,
-            lyrics=lyrics,
-            cover_path=cover_path or song_file.cover_path or song.cover_path,
+            title=song.title if "title" in selected_fields else None,
+            artist=song.artist if "artist" in selected_fields else None,
+            album=song.album if "album" in selected_fields else None,
+            year=song.year if "year" in selected_fields else None,
+            genre=song.genre if "genre" in selected_fields else None,
+            cover_path=(cover_path or song_file.cover_path or song.cover_path) if "cover" in selected_fields else None,
+            clear_fields={
+                key
+                for key in selected_fields
+                if normalized_candidate_value(cand, key) == ""
+            },
         )
     fav = _favorite_ids(db, [song.id])
     return {"ok": True, "changes": changes, "cover_result": cover_result, "file_tags": tag_written, "song": _song_out(song, fav).model_dump()}

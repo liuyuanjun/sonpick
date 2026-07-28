@@ -64,13 +64,30 @@
               size="small"
               :disabled="!player.current || scraping"
               :loading="scraping"
-              :aria-label="scraping ? (scrapeHint || '检索中') : '刮削'"
+              :aria-label="scraping ? (scrapeHint || '检索中') : '刮削信息'"
               @click="openScrapeModal"
             >
               <n-icon v-if="!scraping" size="18"><color-wand-outline /></n-icon>
             </n-button>
           </template>
-          {{ scraping ? (scrapeHint || '检索中') : '刮削' }}
+          {{ scraping ? (scrapeHint || '检索中') : '刮削信息' }}
+        </n-tooltip>
+        <n-tooltip>
+          <template #trigger>
+            <n-button
+              class="icon-top-btn"
+              quaternary
+              circle
+              size="small"
+              :disabled="!player.current || lyricsLoading"
+              :loading="lyricsLoading"
+              :aria-label="lyricsLoading ? (lyricsHint || '检索歌词中') : '获取歌词'"
+              @click="openLyricsModal"
+            >
+              <n-icon v-if="!lyricsLoading" size="18"><document-text-outline /></n-icon>
+            </n-button>
+          </template>
+          {{ lyricsLoading ? (lyricsHint || '检索歌词中') : '获取歌词' }}
         </n-tooltip>
         <n-tooltip>
           <template #trigger>
@@ -141,6 +158,8 @@
             :active-index="player.lyricIndex"
             :font-size="player.lyricFontSize"
             :immersive="true"
+            :empty-title="player.lyricsMeta.instrumental ? '纯音乐' : '暂无歌词'"
+            :empty-description="player.lyricsMeta.instrumental ? '该歌曲已标记为纯音乐' : '可点击上方获取歌词'"
             @seek="onLyricSeek"
           />
         </div>
@@ -153,6 +172,8 @@
           :active-index="player.lyricIndex"
           :font-size="player.lyricFontSize"
           :immersive="true"
+          :empty-title="player.lyricsMeta.instrumental ? '纯音乐' : '暂无歌词'"
+          :empty-description="player.lyricsMeta.instrumental ? '该歌曲已标记为纯音乐' : '可点击上方获取歌词'"
           @seek="onLyricSeek"
         />
       </div>
@@ -267,7 +288,7 @@
       </n-spin>
     </n-modal>
 
-    <n-modal v-model:show="scrapeModalVisible" preset="card" title="刮削当前歌曲" style="width: 980px; max-width: 96vw">
+    <n-modal v-model:show="scrapeModalVisible" preset="card" title="刮削当前歌曲信息" style="width: 980px; max-width: 96vw">
       <n-space vertical size="medium">
         <n-form label-placement="top" size="small">
           <n-form-item label="歌曲文件">
@@ -290,12 +311,123 @@
       </n-space>
     </n-modal>
 
+    <n-modal v-model:show="lyricsModalVisible" preset="card" title="获取当前歌曲歌词" style="width: 1080px; max-width: 96vw">
+      <n-space vertical size="medium">
+        <n-alert v-if="lyricsStatusError" :type="lyricsStatusError.type" :show-icon="false">
+          {{ lyricsStatusError.message }}
+        </n-alert>
+        <n-alert v-if="lyricsQuery && !lyricsQuery.complete_signature" type="warning" :show-icon="false">
+          当前歌曲缺少专辑或时长，无法进行 LRCLIB 精确匹配，将自动使用宽松搜索，请重点核对版本和时长。
+        </n-alert>
+        <n-form label-placement="top" size="small">
+          <n-grid cols="1 m:2" responsive="screen" :x-gap="12">
+            <n-gi><n-form-item label="目标歌曲"><n-input :value="lyricsTargetLabel" readonly /></n-form-item></n-gi>
+            <n-gi><n-form-item label="检索关键词"><n-input v-model:value="lyricsKeyword" placeholder="歌曲名、艺术家或专辑" clearable /></n-form-item></n-gi>
+          </n-grid>
+        </n-form>
+        <n-space align="center" wrap>
+          <n-radio-group v-model:value="lyricsMode" size="small">
+            <n-radio-button value="auto">自动选择歌词源</n-radio-button>
+            <n-radio-button value="manual">指定歌词源</n-radio-button>
+          </n-radio-group>
+          <n-select v-if="lyricsMode === 'manual'" v-model:value="lyricsSource" :options="lyricsSourceOptions" style="width: 180px" />
+          <n-button type="primary" :loading="lyricsLoading" @click="searchLyrics">检索歌词</n-button>
+          <n-text depth="3">{{ lyricsHint || lyricsQueryText }}</n-text>
+        </n-space>
+        <div class="lyrics-workbench">
+          <n-data-table
+            class="lyrics-candidates"
+            :columns="lyricsCandidateColumns"
+            :data="lyricsCandidates"
+            :loading="lyricsLoading"
+            :pagination="false"
+            size="small"
+            max-height="440"
+            :row-props="lyricsRowProps"
+          />
+          <div class="lyrics-preview lyrics-compare">
+            <section class="lyrics-compare-pane">
+              <div class="lyrics-preview-header">
+                <strong>当前歌词</strong>
+                <n-space size="small">
+                  <n-tag v-if="lyricsCurrent.source" size="small">{{ lyricsSourceLabel(lyricsCurrent.source) }}</n-tag>
+                  <n-tag v-if="lyricsCurrent.lyrics_type" size="small">{{ lyricsTypeLabel(lyricsCurrent) }}</n-tag>
+                </n-space>
+              </div>
+              <n-text v-if="lyricsCurrent.fetched_at" depth="3" class="lyrics-fetched-at">获取于 {{ formatFetchedAt(lyricsCurrent.fetched_at) }}</n-text>
+              <pre class="lyrics-preview-text">{{ lyricsCurrentText }}</pre>
+            </section>
+            <section class="lyrics-compare-pane">
+              <div class="lyrics-preview-header">
+                <strong>候选歌词</strong>
+                <n-space v-if="lyricsPreviewCandidate" size="small">
+                  <n-tag size="small" type="info">{{ lyricsSourceLabel(lyricsPreviewCandidate.source) }}</n-tag>
+                  <n-tag size="small" :type="lyricsPreviewCandidate.lyrics_type === 'synced' ? 'success' : 'default'">{{ lyricsTypeLabel(lyricsPreviewCandidate) }}</n-tag>
+                </n-space>
+              </div>
+              <n-alert v-if="lyricsPreviewCandidate && (lyricsCurrent.has_lyrics || lyricsCurrent.instrumental)" type="warning" :show-icon="false" size="small">保存后将覆盖当前歌词，请核对版本与时长。</n-alert>
+              <pre class="lyrics-preview-text">{{ lyricsCandidateText }}</pre>
+            </section>
+          </div>
+        </div>
+        <n-space justify="space-between" align="center" wrap class="lyrics-actions">
+          <n-space align="center" wrap>
+            <n-checkbox v-model:checked="lyricsWriteFileTags">同时写入音频内嵌歌词</n-checkbox>
+            <n-button
+              type="error"
+              secondary
+              :disabled="!lyricsCurrent.has_lyrics && !lyricsCurrent.instrumental"
+              @click="confirmClearLyrics"
+            >清空当前歌词</n-button>
+          </n-space>
+          <n-space>
+            <n-button @click="lyricsModalVisible = false">取消</n-button>
+            <n-button type="primary" :disabled="!lyricsPreviewCandidate" :loading="lyricsLoading" @click="applyLyrics">保存所选歌词</n-button>
+          </n-space>
+        </n-space>
+      </n-space>
+    </n-modal>
+
+    <n-modal v-model:show="scrapeApplyModalVisible" preset="card" title="选择要应用的更改" style="width: 920px; max-width: 96vw">
+      <n-space vertical size="medium">
+        <n-alert type="info" :show-icon="false">
+          新值为空或与当前值一致时默认关闭；仍可手动开启。提交后只修改已开启的项目。
+        </n-alert>
+        <div class="scrape-compare-list">
+          <div v-for="field in scrapeApplyRows" :key="field.key" class="scrape-compare-row">
+            <div class="scrape-field-heading">
+              <strong>{{ field.label }}</strong>
+              <n-tag v-if="field.empty" size="small" type="warning">新值为空</n-tag>
+              <n-tag v-else-if="field.changed" size="small" type="success">有变化</n-tag>
+              <n-tag v-else size="small">一致</n-tag>
+            </div>
+            <div class="scrape-value-block">
+              <span class="scrape-value-label">当前</span>
+              <div class="scrape-value-text">{{ scrapeValuePreview(field.currentValue, field) }}</div>
+            </div>
+            <div class="scrape-value-block">
+              <span class="scrape-value-label">新值</span>
+              <div class="scrape-value-text" :class="{ empty: field.empty }">{{ scrapeValuePreview(field.newValue, field) }}</div>
+            </div>
+            <n-switch
+              :value="scrapeFieldSelected(field.key)"
+              @update:value="(enabled) => setScrapeFieldSelected(field.key, enabled)"
+            />
+          </div>
+        </div>
+        <n-space justify="end">
+          <n-button @click="scrapeApplyModalVisible = false">取消</n-button>
+          <n-button type="primary" :loading="scraping" @click="applyCandidate">应用所选更改</n-button>
+        </n-space>
+      </n-space>
+    </n-modal>
+
   </div>
 </template>
 
 <script setup>
 import { computed, h, onMounted, ref, watch } from 'vue'
-import { useMessage } from 'naive-ui'
+import { NTag, useDialog, useMessage } from 'naive-ui'
 import {
   MusicalNotes,
   Heart,
@@ -311,6 +443,7 @@ import {
   ReaderOutline,
   PricetagOutline,
   ColorWandOutline,
+  DocumentTextOutline,
   PlaySkipBack,
   PlaySkipForward,
   Play,
@@ -318,7 +451,18 @@ import {
   VolumeHigh,
   VolumeMute,
 } from '@vicons/ionicons5'
-import { addFavorite, removeFavorite, applyScrapeCandidate, fetchScrapeCandidates, fetchSongTags } from '@/api/music'
+import {
+  addFavorite,
+  removeFavorite,
+  applyLyricsCandidate,
+  clearLyrics,
+  applyScrapeCandidate,
+  fetchLyricsCandidateDetails,
+  fetchScrapeCandidateDetails,
+  fetchScrapeCandidates,
+  fetchSongTags,
+  searchLyricsCandidates,
+} from '@/api/music'
 import api from '@/api/client'
 import { usePlayerStore } from '@/stores/player'
 import { useThemeStore } from '@/stores/theme'
@@ -330,6 +474,7 @@ import LyricsView from '@/components/player/LyricsView.vue'
 const player = usePlayerStore()
 const themeStore = useThemeStore()
 const message = useMessage()
+const dialog = useDialog()
 const isMobile = useIsMobile()
 const coverBroken = ref(false)
 const accent = ref(null)
@@ -339,12 +484,145 @@ const tagModalVisible = ref(false)
 const tagLoading = ref(false)
 const tagData = ref(null)
 const scrapeModalVisible = ref(false)
+const scrapeTargetSong = ref(null)
 const scrapeMode = ref('auto')
 const scrapeSource = ref('netease')
 const scrapeKeyword = ref('')
 const scrapeCandidates = ref([])
 const scrapeQuery = ref(null)
+const scrapeCurrentValues = ref({})
+const scrapeApplyModalVisible = ref(false)
+const scrapeApplyCandidate = ref(null)
+const scrapeApplyFields = ref([])
 const scrapeSourceOptions = ref([])
+const lyricsLoading = ref(false)
+const lyricsHint = ref('')
+const lyricsModalVisible = ref(false)
+const lyricsTargetSong = ref(null)
+const lyricsMode = ref('auto')
+const lyricsSource = ref('lrclib')
+const lyricsKeyword = ref('')
+const lyricsSourceOptions = ref([])
+const lyricsQuery = ref(null)
+const lyricsCurrent = ref({})
+const lyricsStatusError = ref(null)
+const lyricsCandidates = ref([])
+const lyricsSelectedCandidate = ref(null)
+const lyricsPreviewCandidate = ref(null)
+const lyricsWriteFileTags = ref(true)
+let lyricsModalSession = 0
+
+const SCRAPE_FIELD_DEFINITIONS = [
+  { key: 'title', label: '标题' },
+  { key: 'artist', label: '艺术家' },
+  { key: 'album', label: '专辑' },
+  { key: 'year', label: '年份' },
+  { key: 'cover', label: '封面' },
+  { key: 'genre', label: '风格' },
+]
+
+function normalizedCompareValue(value) {
+  return value == null ? '' : String(value).trim()
+}
+
+function candidateFieldValue(candidate, key) {
+  if (key === 'cover') return candidate?.cover_url || ''
+  return candidate?.[key] ?? ''
+}
+
+const scrapeApplyRows = computed(() => SCRAPE_FIELD_DEFINITIONS.map((field) => {
+  const currentValue = scrapeCurrentValues.value?.[field.key] ?? ''
+  const newValue = candidateFieldValue(scrapeApplyCandidate.value, field.key)
+  return {
+    ...field,
+    currentValue,
+    newValue,
+    empty: normalizedCompareValue(newValue) === '',
+    changed: normalizedCompareValue(currentValue) !== normalizedCompareValue(newValue),
+  }
+}))
+
+function scrapeFieldSelected(key) {
+  return scrapeApplyFields.value.includes(key)
+}
+
+function setScrapeFieldSelected(key, enabled) {
+  const selected = new Set(scrapeApplyFields.value)
+  if (enabled) selected.add(key)
+  else selected.delete(key)
+  scrapeApplyFields.value = [...selected]
+}
+
+function scrapeValuePreview(value, field) {
+  if (field.key === 'cover') return value ? '有封面' : '无封面'
+  if (value == null || String(value).trim() === '') return '空'
+  const text = String(value)
+  if (field.multiline && text.length > 180) return `${text.slice(0, 180)}…`
+  return text
+}
+
+const lyricsTargetLabel = computed(() => {
+  const song = lyricsTargetSong.value || {}
+  return `${song.artist || ''} - ${song.title || ''}`.replace(/^\s*-\s*|\s*-\s*$/g, '')
+})
+
+const lyricsQueryText = computed(() => {
+  const query = lyricsQuery.value
+  if (!query) return ''
+  const duration = query.duration ? formatTime(query.duration) : '未知时长'
+  return `${query.artist_name || '未知艺术家'} · ${query.album_name || '未知专辑'} · ${duration}`
+})
+
+const lyricsCurrentText = computed(() => {
+  if (lyricsCurrent.value?.instrumental) return '该歌曲已标记为纯音乐。'
+  return lyricsCurrent.value?.text || '当前歌曲暂无歌词。'
+})
+
+const lyricsCandidateText = computed(() => {
+  const candidate = lyricsPreviewCandidate.value
+  if (!candidate) return '请从左侧选择一个歌词候选。'
+  if (candidate.instrumental) return '该候选标记为纯音乐。'
+  return candidate.synced_lyrics || candidate.plain_lyrics || '该候选暂无歌词正文。'
+})
+
+function formatFetchedAt(value) {
+  if (!value) return ''
+  try { return new Date(value).toLocaleString('zh-CN') } catch { return value }
+}
+
+function lyricsSourceLabel(source) {
+  return lyricsSourceOptions.value.find(item => item.value === source)?.label || source || '未知来源'
+}
+
+function lyricsTypeLabel(candidate) {
+  if (candidate?.instrumental) return '纯音乐'
+  if (candidate?.synced_lyrics || candidate?.lyrics_type === 'synced') return '同步歌词'
+  return candidate?.plain_lyrics || candidate?.lyrics_type === 'plain' ? '纯文本' : '空歌词'
+}
+
+function lyricsScoreType(score) {
+  const value = Number(score || 0)
+  if (value >= 90) return 'success'
+  if (value >= 70) return 'info'
+  return 'warning'
+}
+
+const lyricsCandidateColumns = computed(() => [
+  { title: '匹配', key: 'score', width: 72, render: row => h(NTag, { size: 'small', type: lyricsScoreType(row.score) }, { default: () => Number(row.score || 0).toFixed(0) }) },
+  { title: '来源', key: 'source', width: 90, render: row => lyricsSourceLabel(row.source) },
+  { title: '标题', key: 'track_name', ellipsis: { tooltip: true } },
+  { title: '艺术家', key: 'artist_name', ellipsis: { tooltip: true } },
+  { title: '专辑', key: 'album_name', ellipsis: { tooltip: true } },
+  { title: '时长差', key: 'duration_delta', width: 76, render: row => row.match_detail?.duration_delta == null ? '-' : `${row.match_detail.duration_delta}s` },
+  { title: '类型', key: 'lyrics_type', width: 92, render: row => lyricsTypeLabel(row) },
+])
+
+function lyricsRowProps(row) {
+  return {
+    class: lyricsSelectedCandidate.value?.source === row.source && lyricsSelectedCandidate.value?.source_id === row.source_id ? 'lyrics-row-selected' : '',
+    onClick: () => selectLyricsCandidate(row),
+  }
+}
 
 const isDark = computed(() => themeStore.isDark)
 const stageViewLabel = computed(() => {
@@ -365,11 +643,15 @@ const tagRows = computed(() => {
     { key: 'db_title', label: 'DB 标题', value: db.title },
     { key: 'db_artist', label: 'DB 艺术家', value: db.artist },
     { key: 'db_album', label: 'DB 专辑', value: db.album },
+    { key: 'db_year', label: 'DB 年份', value: db.year },
+    { key: 'db_genre', label: 'DB 风格', value: db.genre },
     { key: 'db_duration', label: 'DB 时长', value: formatTime(db.duration || 0) },
     { key: 'db_cover', label: 'DB 封面', value: db.cover_path },
     { key: 'tag_title', label: '内嵌标题', value: em.title },
     { key: 'tag_artist', label: '内嵌艺术家', value: em.artist },
     { key: 'tag_album', label: '内嵌专辑', value: em.album },
+    { key: 'tag_year', label: '内嵌年份', value: em.year },
+    { key: 'tag_genre', label: '内嵌风格', value: em.genre },
     { key: 'tag_duration', label: '内嵌时长', value: formatTime(em.duration || 0) },
     { key: 'tag_cover', label: '内嵌封面', value: em.cover_embedded ? `有（${em.cover_size || 0} bytes）` : '无' },
     { key: 'tag_lyrics', label: '内嵌歌词', value: em.lyrics ? `${String(em.lyrics).slice(0, 120)}...` : '' },
@@ -378,7 +660,7 @@ const tagRows = computed(() => {
 })
 
 const scrapeSongPath = computed(() => {
-  const song = player.current || {}
+  const song = scrapeTargetSong.value || {}
   return `${song.artist || ''} - ${song.title || song.name || ''}`.replace(/^\s*-\s*|\s*-\s*$/g, '')
 })
 
@@ -396,7 +678,7 @@ const candidateColumns = computed(() => [
   { title: '专辑', key: 'album', ellipsis: { tooltip: true } },
   { title: '时长', key: 'duration', width: 76, render: (row) => row.duration ? formatTime(row.duration) : '-' },
   { title: '封面', key: 'cover_url', width: 92, render: (row) => row.has_cover || row.cover_url ? (row.cover_source ? `有/${row.cover_source}` : '有') : '无' },
-  { title: '操作', key: 'actions', width: 90, render: (row) => h('button', { class: 'mini-apply-btn', onClick: () => applyCandidate(row) }, '采用') },
+  { title: '操作', key: 'actions', width: 90, render: (row) => h('button', { class: 'mini-apply-btn', onClick: () => openApplyCandidate(row) }, '采用') },
 ])
 
 const progress = computed(() => {
@@ -443,24 +725,156 @@ watch(
   { immediate: true },
 )
 
-async function loadScrapeSourceOptions() {
+async function loadSourceOptions() {
   try {
     const { data } = await api.get('/settings')
     scrapeSourceOptions.value = (data.scrape_sources || [])
       .filter(source => source.enabled && source.id !== 'acoustid')
       .map(source => ({ label: source.name, value: source.id }))
+    lyricsSourceOptions.value = (data.lyrics_sources || [])
+      .filter(source => source.enabled)
+      .map(source => ({ label: source.name, value: source.id }))
     if (!scrapeSourceOptions.value.some(option => option.value === scrapeSource.value)) {
       scrapeSource.value = scrapeSourceOptions.value[0]?.value || ''
     }
+    if (!lyricsSourceOptions.value.some(option => option.value === lyricsSource.value)) {
+      lyricsSource.value = lyricsSourceOptions.value[0]?.value || ''
+    }
   } catch (_) {
     scrapeSourceOptions.value = []
+    lyricsSourceOptions.value = []
   }
 }
 
-onMounted(loadScrapeSourceOptions)
+onMounted(loadSourceOptions)
 
 function onCoverLoad() {
   coverBroken.value = false
+}
+
+async function openLyricsModal() {
+  const session = ++lyricsModalSession
+  const song = player.current
+  if (!song?.id) return
+  lyricsTargetSong.value = { ...song }
+  lyricsKeyword.value = `${song.title || ''} ${song.artist || ''}`.trim()
+  lyricsQuery.value = null
+  lyricsCurrent.value = {}
+  lyricsStatusError.value = null
+  lyricsCandidates.value = []
+  lyricsSelectedCandidate.value = null
+  lyricsPreviewCandidate.value = null
+  lyricsModalVisible.value = true
+  await searchLyrics(session)
+}
+
+async function searchLyrics(session = lyricsModalSession) {
+  const targetSongId = lyricsTargetSong.value?.id
+  if (!targetSongId || lyricsLoading.value) return
+  lyricsLoading.value = true
+  lyricsStatusError.value = null
+  lyricsHint.value = lyricsMode.value === 'auto' ? '正在精确匹配，未命中时自动宽松搜索' : '正在检索指定歌词源'
+  try {
+    const source = lyricsMode.value === 'auto' ? 'auto' : lyricsSource.value
+    const res = await searchLyricsCandidates(targetSongId, { source, keyword: lyricsKeyword.value.trim(), limit: 20 })
+    const data = res.data || res || {}
+    if (session !== lyricsModalSession || lyricsTargetSong.value?.id !== targetSongId) return
+    lyricsQuery.value = data.query || null
+    lyricsCurrent.value = data.current || {}
+    lyricsCandidates.value = data.candidates || []
+    lyricsSelectedCandidate.value = null
+    lyricsPreviewCandidate.value = null
+    if (!lyricsCandidates.value.length) {
+      const sourceErrors = data.errors || []
+      const errors = sourceErrors.map(item => `${lyricsSourceLabel(item.source)}：${item.message}`).join('；')
+      const rateLimit = sourceErrors.find(item => item.code === 'rate_limited')
+      lyricsStatusError.value = {
+        type: rateLimit ? 'warning' : (errors ? 'error' : 'info'),
+        message: rateLimit ? `触发来源限流，等待 ${rateLimit.retry_after || 0} 秒后可重试` : (errors || '没有检索到歌词候选'),
+      }
+    }
+  } catch (err) {
+    const detail = err.response?.data?.detail
+    lyricsStatusError.value = { type: detail?.code === 'rate_limited' ? 'warning' : 'error', message: detail?.message || detail || err.message || '歌词检索失败' }
+  } finally {
+    lyricsLoading.value = false
+    lyricsHint.value = ''
+  }
+}
+
+async function selectLyricsCandidate(row) {
+  const targetSongId = lyricsTargetSong.value?.id
+  if (!targetSongId || !row || lyricsLoading.value) return
+  const session = lyricsModalSession
+  lyricsSelectedCandidate.value = row
+  lyricsLoading.value = true
+  lyricsStatusError.value = null
+  lyricsHint.value = '正在加载歌词详情'
+  try {
+    const res = await fetchLyricsCandidateDetails(targetSongId, row)
+    if (session !== lyricsModalSession || lyricsTargetSong.value?.id !== targetSongId) return
+    lyricsPreviewCandidate.value = res.data || res || row
+  } catch (err) {
+    message.error(err.response?.data?.detail || err.message || '歌词详情加载失败')
+  } finally {
+    lyricsLoading.value = false
+    lyricsHint.value = ''
+  }
+}
+
+async function clearTargetLyrics(targetSongId) {
+  if (!targetSongId || lyricsLoading.value) return
+  lyricsLoading.value = true
+  lyricsHint.value = '正在清空歌词'
+  try {
+    await clearLyrics(targetSongId, { clear_file_tags: true })
+    lyricsCurrent.value = {}
+    lyricsPreviewCandidate.value = null
+    if (player.current?.id === targetSongId) await player.loadLyrics(targetSongId)
+    message.success('歌词已清空')
+  } catch (err) {
+    const detail = err.response?.data?.detail
+    message.error(detail?.message || detail || err.message || '清空歌词失败')
+  } finally {
+    lyricsLoading.value = false
+    lyricsHint.value = ''
+  }
+}
+
+function confirmClearLyrics() {
+  const target = lyricsTargetSong.value ? { ...lyricsTargetSong.value } : null
+  if (!target?.id) return
+  dialog.warning({
+    title: '清空歌词',
+    content: `确定清空「${lyricsTargetLabel.value}」的侧车歌词和内嵌歌词吗？此操作不可恢复。`,
+    positiveText: '确认清空',
+    negativeText: '取消',
+    onPositiveClick: () => clearTargetLyrics(target.id),
+  })
+}
+
+async function applyLyrics() {
+  const targetSongId = lyricsTargetSong.value?.id
+  const candidate = lyricsPreviewCandidate.value
+  if (!targetSongId || !candidate || lyricsLoading.value) return
+  const hasContent = candidate.instrumental || candidate.synced_lyrics || candidate.plain_lyrics
+  if (!hasContent) {
+    message.warning('空歌词不会覆盖当前歌词')
+    return
+  }
+  lyricsLoading.value = true
+  lyricsHint.value = lyricsWriteFileTags.value ? '正在写入歌词侧车和音频标签' : '正在写入歌词侧车'
+  try {
+    await applyLyricsCandidate(targetSongId, candidate, { write_file_tags: lyricsWriteFileTags.value })
+    if (player.current?.id === targetSongId) await player.loadLyrics(targetSongId)
+    message.success(candidate.instrumental ? '已标记为纯音乐' : '歌词已保存')
+    lyricsModalVisible.value = false
+  } catch (err) {
+    message.error(err.response?.data?.detail || err.message || '歌词写入失败')
+  } finally {
+    lyricsLoading.value = false
+    lyricsHint.value = ''
+  }
 }
 
 async function openTagModal() {
@@ -478,15 +892,18 @@ async function openTagModal() {
 }
 
 function openScrapeModal() {
-  if (!player.current?.id) return
+  const song = player.current
+  if (!song?.id) return
+  scrapeTargetSong.value = { ...song }
   scrapeModalVisible.value = true
   scrapeCandidates.value = []
   scrapeQuery.value = null
-  scrapeKeyword.value = `${player.current.title || player.current.song_name || ''} ${player.current.artist || player.current.singers || ''}`.trim()
+  scrapeKeyword.value = `${song.title || song.song_name || ''} ${song.artist || song.singers || ''}`.trim()
 }
 
 async function searchScrapeCandidates() {
-  if (!player.current?.id || scraping.value) return
+  const targetSongId = scrapeTargetSong.value?.id
+  if (!targetSongId || scraping.value) return
   if (!scrapeKeyword.value.trim()) {
     message.warning('请输入检索关键词')
     return
@@ -495,9 +912,10 @@ async function searchScrapeCandidates() {
   scrapeHint.value = '检索中'
   try {
     const source = scrapeMode.value === 'auto' ? 'auto' : scrapeSource.value
-    const res = await fetchScrapeCandidates(player.current.id, { source, keyword: scrapeKeyword.value.trim(), limit: 12 })
+    const res = await fetchScrapeCandidates(targetSongId, { source, keyword: scrapeKeyword.value.trim(), limit: 12 })
     const data = res.data || res || {}
     scrapeQuery.value = data.query || null
+    scrapeCurrentValues.value = data.current || {}
     scrapeCandidates.value = data.candidates || []
     if (!scrapeCandidates.value.length) message.warning('没有检索到候选')
   } catch (err) {
@@ -508,22 +926,67 @@ async function searchScrapeCandidates() {
   }
 }
 
-async function applyCandidate(row) {
-  if (!player.current?.id || !row) return
+async function openApplyCandidate(row) {
+  const targetSongId = scrapeTargetSong.value?.id
+  if (!targetSongId || !row || scraping.value) return
+  scraping.value = true
+  scrapeHint.value = '加载详情'
+  try {
+    const res = await fetchScrapeCandidateDetails(targetSongId, row)
+    const data = res.data || res || {}
+    scrapeCurrentValues.value = data.current || scrapeCurrentValues.value || {}
+    scrapeApplyCandidate.value = data.candidate || row
+    scrapeApplyFields.value = SCRAPE_FIELD_DEFINITIONS
+      .filter((field) => {
+        const newValue = candidateFieldValue(scrapeApplyCandidate.value, field.key)
+        const currentValue = scrapeCurrentValues.value?.[field.key]
+        return normalizedCompareValue(newValue) !== ''
+          && normalizedCompareValue(newValue) !== normalizedCompareValue(currentValue)
+      })
+      .map((field) => field.key)
+    scrapeApplyModalVisible.value = true
+  } catch (err) {
+    message.error(err.response?.data?.detail || err.message || '加载候选详情失败')
+  } finally {
+    scraping.value = false
+    scrapeHint.value = ''
+  }
+}
+
+async function applyCandidate() {
+  const row = scrapeApplyCandidate.value
+  const targetSongId = scrapeTargetSong.value?.id
+  if (!targetSongId || !row) return
+  if (!scrapeApplyFields.value.length) {
+    message.warning('请至少选择一项要应用的更改')
+    return
+  }
   scraping.value = true
   scrapeHint.value = '写入中'
   try {
-    const res = await applyScrapeCandidate(player.current.id, row, { write_file_tags: true })
+    const res = await applyScrapeCandidate(targetSongId, row, {
+      selected_fields: scrapeApplyFields.value,
+      write_file_tags: true,
+    })
     const data = res.data || res || {}
-    if (data.song) player.current = { ...player.current, ...data.song }
-    await player.loadLyrics(player.current.id)
-    try {
-      const { coverUrl } = await import('@/api/music')
-      const { useAuthStore } = await import('@/stores/auth')
-      player.cover = coverUrl(player.current.id, useAuthStore().token || '') + `&_t=${Date.now()}`
-    } catch (_) {}
-    message.success(data.cover_result?.ok === false ? `已采用，但封面失败：${data.cover_result.error || '未知错误'}` : '已采用并写入')
+    if (player.current?.id === targetSongId) {
+      if (data.song) player.current = { ...player.current, ...data.song }
+      if (scrapeApplyFields.value.includes('cover')) {
+        try {
+          const { coverUrl } = await import('@/api/music')
+          const { useAuthStore } = await import('@/stores/auth')
+          player.cover = data.song?.cover_path
+            ? coverUrl(targetSongId, useAuthStore().token || '') + `&_t=${Date.now()}`
+            : ''
+        } catch (_) {}
+      }
+    }
+    message.success(data.cover_result?.ok === false && !data.cover_result?.skipped && !data.cover_result?.cleared ? `已采用，但封面失败：${data.cover_result.error || '未知错误'}` : '已采用并写入')
+    scrapeApplyModalVisible.value = false
+    scrapeApplyCandidate.value = null
+    scrapeApplyFields.value = []
     scrapeModalVisible.value = false
+    scrapeTargetSong.value = null
   } catch (err) {
     message.error(err.response?.data?.detail || err.message || '写入失败')
   } finally {
@@ -1107,5 +1570,31 @@ async function toggleFavorite() {
 .tag-val { color: var(--fg); font-size: 12px; word-break: break-all; white-space: pre-wrap; }
 :deep(.mini-apply-btn) { border: 1px solid rgba(24,160,88,.45); color: rgb(24,160,88); background: transparent; border-radius: 6px; padding: 2px 8px; cursor: pointer; }
 :deep(.mini-apply-btn:hover) { background: rgba(24,160,88,.12); }
+.lyrics-workbench { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(420px, .95fr); gap: 14px; min-height: 360px; }
+.lyrics-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-width: 0; }
+.lyrics-compare-pane { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.lyrics-fetched-at { font-size: 12px; }
+.lyrics-candidates { min-width: 0; }
+.lyrics-preview { min-width: 0; border: 1px solid rgba(128,128,128,.22); border-radius: 10px; padding: 12px; background: rgba(127,127,127,.06); }
+.lyrics-preview-header { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+.lyrics-preview-text { height: 380px; margin: 0; overflow: auto; white-space: pre-wrap; word-break: break-word; font: inherit; font-size: 13px; line-height: 1.8; color: var(--fg); }
+:deep(.lyrics-row-selected td) { background: rgba(24,160,88,.14) !important; }
+:deep(.lyrics-candidates .n-data-table-tr) { cursor: pointer; }
+.scrape-compare-list { display: grid; gap: 10px; max-height: 62vh; overflow: auto; padding-right: 4px; }
+.scrape-compare-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) minmax(0, 1fr) 48px; gap: 12px; align-items: center; padding: 12px; border: 1px solid rgba(128,128,128,.22); border-radius: 10px; }
+.scrape-field-heading { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.scrape-value-block { min-width: 0; }
+.scrape-value-label { display: block; margin-bottom: 4px; color: var(--fg-3); font-size: 11px; }
+.scrape-value-text { max-height: 90px; overflow: auto; color: var(--fg); font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+.scrape-value-text.empty { color: var(--fg-4); font-style: italic; }
+@media (max-width: 720px) {
+  .lyrics-workbench { grid-template-columns: 1fr; }
+  .lyrics-compare { grid-template-columns: 1fr; }
+  .lyrics-preview-text { height: 280px; }
+  .lyrics-actions { position: sticky; bottom: 0; z-index: 3; padding: 10px 0; background: var(--bg); }
+  .scrape-compare-row { grid-template-columns: minmax(0, 1fr) 48px; }
+  .scrape-field-heading, .scrape-value-block { grid-column: 1; }
+  .scrape-compare-row :deep(.n-switch) { grid-column: 2; grid-row: 1; }
+}
 
 </style>
