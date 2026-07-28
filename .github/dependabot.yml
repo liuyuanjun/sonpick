@@ -1,0 +1,17 @@
+# 跟踪 musicdl 上游版本：作者发布新 PyPI 版本时自动开 PR（diff 只有一行版本号）。
+# 其余 Python 依赖均为 >= 范围约束，不会被 Dependabot 打扰。
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Shanghai
+    allow:
+      - dependency-name: musicdl
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: "deps"
+      include: scope

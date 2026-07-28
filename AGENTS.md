@@ -26,7 +26,7 @@
 
 **非目标**：多用户、公网商用、版权绕过。仅供个人学习与备份。
 
-当前版本（以代码为准）：`0.14.0`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
+当前版本（以代码为准）：`0.14.1`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
 
 ### 1.1 歌词与元信息边界
 
@@ -60,7 +60,7 @@
 |----|------|
 | 后端 | FastAPI + SQLAlchemy 2.0 + SQLite |
 | 前端 | Vue 3 + Vite + Naive UI + Pinia + Axios |
-| 下载 | 内嵌 `musicdl/`（editable install） |
+| 下载 | `musicdl`（PyPI 精确钉版，Dependabot 周检跟踪上游并自动开 PR） |
 | 转码 | 系统 `ffmpeg` |
 | 部署 | Docker / docker-compose；多阶段 Dockerfile 镜像内构建前端；GHCR / Docker Hub / 阿里云 ACR 三发 |
 
@@ -86,7 +86,6 @@ music/
 │   ├── src/stores/           # Pinia
 │   ├── src/api/client.js     # Axios 封装
 │   └── dist/                 # 构建产物（Docker 默认 COPY 这里）
-├── musicdl/                  # 下载引擎源码
 ├── .github/workflows/release.yml # tag 触发：版本校验 + 多架构镜像构建 + 三仓库推送
 ├── scripts/deploy-nas.sh     # NAS 一键部署（远端 pull 镜像 → up -d → 健康检查）
 ├── Dockerfile                # 多阶段：Node 构建前端 → Python 运行时
@@ -249,7 +248,6 @@ API 必须继续暴露 `X-App-Version`。
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-pip install -e ./musicdl
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 # 前端（开发）
@@ -257,6 +255,8 @@ cd web && yarn && yarn dev
 ```
 
 环境变量见 `.env`：`SECRET_KEY`、`STORAGE_PATH`、`DATABASE_PATH`、`DATA_DIR`。
+
+升级下载引擎：改 `requirements.txt` 中 `musicdl==x.y.z` 的版本号即可（Dependabot 每周检查 PyPI 并自动开 PR）；不要重新把 musicdl 源码 vendor 进仓库。
 
 自检：
 

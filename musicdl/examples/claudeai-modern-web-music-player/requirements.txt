@@ -1,3 +1,0 @@
-flask>=3.0
-musicdl>=2.12
-requests>=2.31

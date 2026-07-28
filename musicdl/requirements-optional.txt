@@ -1,4 +1,0 @@
-faster-whisper>=1.2.1,<2
-pyfreeproxy>=0.4.0,<1
-Pillow>=12.2.0,<13
-ctranslate2>=4.7.1,<5

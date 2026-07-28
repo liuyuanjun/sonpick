@@ -22,14 +22,9 @@ RUN set -eux; \
       ffmpeg gcc libffi-dev libssl-dev libchromaprint-tools \
     && rm -rf /var/lib/apt/lists/*
 
-COPY musicdl/requirements.txt /tmp/musicdl-requirements.txt
-RUN pip install --no-cache-dir --index-url "$PIP_INDEX_URL" -r /tmp/musicdl-requirements.txt
-
+# 全部 Python 依赖（含精确钉版的 musicdl）统一由 requirements.txt 安装
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir --index-url "$PIP_INDEX_URL" -r /tmp/requirements.txt
-
-COPY musicdl/ ./musicdl/
-RUN pip install --no-cache-dir --index-url "$PIP_INDEX_URL" -e ./musicdl
 
 COPY app/ ./app/
 COPY --from=web-builder /build/dist ./web/dist

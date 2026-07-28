@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.14.1
+
+### 变更
+- 下载引擎 musicdl 改为 PyPI 精确钉版依赖（`musicdl==2.13.4`，较仓库内嵌的 2.13.1 含 3 个上游修复版本），不再把第三方源码 vendor 进主仓库。
+- 新增 Dependabot 配置：每周检查 PyPI 上的 musicdl 新版本并自动开 PR，升级 diff 只有一行版本号。
+- 删除 `musicdl_service.py` 中为规避目录遮蔽而存在的 `sys.path` hack；Dockerfile 移除 musicdl 源码拷贝与 editable install，依赖统一由 `requirements.txt` 安装。
+
 ## 0.14.0
 
 ### 新增

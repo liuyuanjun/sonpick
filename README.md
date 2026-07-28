@@ -1,6 +1,6 @@
 # 拾音 Sonpick
 
-> 当前版本：`0.14.0`
+> 当前版本：`0.14.1`
 
 部署在 NAS 上、供个人使用的音乐下载与管理 Web 应用。它将搜索下载、本地曲库、WebDAV 曲库、播放和文件操作收在一个单用户界面中。
 
@@ -32,7 +32,7 @@ Sonpick 仅用于个人学习与已获授权内容的备份管理，不面向多
 |---|---|
 | 后端 | FastAPI、SQLAlchemy 2.0、SQLite |
 | 前端 | Vue 3、Vite、Naive UI、Pinia |
-| 下载 | 内嵌 `musicdl/`（editable install） |
+| 下载 | `musicdl`（PyPI 精确钉版，Dependabot 跟踪上游升级） |
 | 媒体处理 | 系统 `ffmpeg` |
 | 部署 | Docker Compose；生产镜像不包含 Node |
 
@@ -117,8 +117,6 @@ docker build -t sonpick:local .
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-pip install -r musicdl/requirements.txt
-pip install -e ./musicdl
 
 # 可选：在项目根目录创建 .env，填入本地开发配置
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -176,7 +174,6 @@ WebDAV 上传按音频文件逐个处理冲突策略：`rename`、`overwrite` �
 music/
 ├── app/                      # FastAPI 路由、模型和服务
 ├── web/                      # Vue 源码；web/dist 为生产构建产物
-├── musicdl/                  # 内嵌下载引擎
 ├── .github/workflows/        # 发版 workflow：tag 触发镜像构建与三仓库推送
 ├── scripts/
 │   └── deploy-nas.sh         # 项目维护者的 NAS 一键部署脚本

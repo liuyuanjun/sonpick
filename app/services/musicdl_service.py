@@ -1,7 +1,5 @@
 import logging
-import os
 import re
-import sys
 import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout, as_completed
@@ -9,13 +7,6 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from sqlalchemy.orm import Session
-
-# 移除当前目录下的 musicdl/ 源码路径，避免与已安装的 musicdl 包冲突
-_script_dir = Path(__file__).resolve().parent.parent.parent
-for _p in list(sys.path):
-    rp = os.path.realpath(_p)
-    if rp in (os.path.realpath(os.getcwd()), os.path.realpath(str(_script_dir))):
-        sys.path.remove(_p)
 
 from musicdl import musicdl
 
