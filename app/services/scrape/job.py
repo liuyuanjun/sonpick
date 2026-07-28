@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Song
 from app.services.library_layout import is_generic_dir_name
-from app.services.media_meta_service import is_local_file, read_audio_duration, resolve_song_meta, write_audio_tags
+from app.services.media_meta_service import is_local_file, read_audio_duration, resolve_song_meta
 from app.services.operation_log_service import write_log
 from app.services.song_file_resolver import NoPlayableSongFileError, SongFileResolver
 from app.services.scrape import enrich_song_via_pipeline
@@ -186,21 +186,22 @@ def run_scrape_job(
                 song.album = None
                 changes["album"] = None
 
-            # write embedded metadata tags for the selected local SongFile
-            if write_file_tags and local_file:
-                cover_file = local_file.cover_path or song.cover_path
-                cover_file = cover_file if cover_file and Path(str(cover_file)).is_file() else None
-                tag_written = write_audio_tags(
-                    local_file.local_path,
-                    title=song.title,
-                    artist=song.artist,
-                    album=song.album,
-                    cover_path=cover_file,
-                )
-                if tag_written:
-                    changes["file_tags"] = tag_written
-
             if changes:
+                from app.services.song_metadata_apply_service import apply_metadata_to_song_files
+
+                selected_fields = {"title", "artist", "album", "year", "genre"}
+                cover_source = song.cover_path if song.cover_path and Path(str(song.cover_path)).is_file() else None
+                if cover_source:
+                    selected_fields.add("cover")
+                file_result = apply_metadata_to_song_files(
+                    db,
+                    song,
+                    selected_fields=selected_fields,
+                    cover_url=None,
+                    cover_source_path=str(cover_source) if cover_source else None,
+                    write_file_tags=write_file_tags,
+                )
+                changes["file_result"] = file_result
                 song.scrape_status = "done" if (song.album and not is_generic_dir_name(str(song.album))) else "partial"
                 song.updated_at = datetime.now(timezone.utc)
                 db.add(song)

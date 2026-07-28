@@ -290,10 +290,25 @@
 
     <n-modal v-model:show="scrapeModalVisible" preset="card" title="刮削当前歌曲信息" style="width: 980px; max-width: 96vw">
       <n-space vertical size="medium">
+        <section class="song-files-section">
+          <div class="song-files-heading">
+            <strong>歌曲文件</strong>
+            <n-text depth="3">保存时会写入全部可用本地版本；WebDAV 版本仅展示。</n-text>
+          </div>
+          <div v-if="scrapeDisplayFiles.length" class="song-files-list">
+            <div v-for="file in scrapeDisplayFiles" :key="file.id" class="song-file-item">
+              <div class="song-file-summary">
+                <n-tag size="small" :type="file.writable ? 'success' : 'default'">{{ file.displayFormat }}</n-tag>
+                <strong>{{ file.displaySource }}</strong>
+                <span>{{ file.displaySize }}</span>
+                <n-tag size="small" :type="file.writable ? 'success' : 'warning'">{{ file.displayStatus }}</n-tag>
+              </div>
+              <div class="song-file-path" :title="file.displayPath">{{ file.displayPath }}</div>
+            </div>
+          </div>
+          <n-empty v-else size="small" description="暂无歌曲文件记录" />
+        </section>
         <n-form label-placement="top" size="small">
-          <n-form-item label="歌曲文件">
-            <n-input :value="scrapeSongPath" readonly />
-          </n-form-item>
           <n-form-item label="检索关键词">
             <n-input v-model:value="scrapeKeyword" placeholder="可手动修改歌名、歌手后再检索" clearable />
           </n-form-item>
@@ -319,6 +334,24 @@
         <n-alert v-if="lyricsQuery && !lyricsQuery.complete_signature" type="warning" :show-icon="false">
           当前歌曲缺少专辑或时长，无法进行 LRCLIB 精确匹配，将自动使用宽松搜索，请重点核对版本和时长。
         </n-alert>
+        <section class="song-files-section">
+          <div class="song-files-heading">
+            <strong>歌曲文件</strong>
+            <n-text depth="3">歌词会写入全部可用本地版本；WebDAV 版本仅展示。</n-text>
+          </div>
+          <div v-if="lyricsDisplayFiles.length" class="song-files-list">
+            <div v-for="file in lyricsDisplayFiles" :key="file.id" class="song-file-item">
+              <div class="song-file-summary">
+                <n-tag size="small" :type="file.writable ? 'success' : 'default'">{{ file.displayFormat }}</n-tag>
+                <strong>{{ file.displaySource }}</strong>
+                <span>{{ file.displaySize }}</span>
+                <n-tag size="small" :type="file.writable ? 'success' : 'warning'">{{ file.displayStatus }}</n-tag>
+              </div>
+              <div class="song-file-path" :title="file.displayPath">{{ file.displayPath }}</div>
+            </div>
+          </div>
+          <n-empty v-else size="small" description="暂无歌曲文件记录" />
+        </section>
         <n-form label-placement="top" size="small">
           <n-grid cols="1 m:2" responsive="screen" :x-gap="12">
             <n-gi><n-form-item label="目标歌曲"><n-input :value="lyricsTargetLabel" readonly /></n-form-item></n-gi>
@@ -497,7 +530,7 @@ import { useThemeStore } from '@/stores/theme'
 import { useIsMobile } from '@/composables/useIsMobile'
 import { formatTime } from '@/utils/lrc'
 import { ambientBackground, extractAccentFromImage } from '@/utils/color'
-import { normalizedScrapeValue, shouldSelectScrapeField } from '@/utils/scrapeApply'
+import { normalizeSongFiles, normalizedScrapeValue, shouldSelectScrapeField } from '@/utils/scrapeApply'
 import LyricsView from '@/components/player/LyricsView.vue'
 
 const player = usePlayerStore()
@@ -520,6 +553,7 @@ const scrapeKeyword = ref('')
 const scrapeCandidates = ref([])
 const scrapeQuery = ref(null)
 const scrapeCurrentValues = ref({})
+const scrapeSongFiles = ref([])
 const scrapeApplyModalVisible = ref(false)
 const scrapeApplyCandidate = ref(null)
 const scrapeApplyFields = ref([])
@@ -536,6 +570,7 @@ const lyricsKeyword = ref('')
 const lyricsSourceOptions = ref([])
 const lyricsQuery = ref(null)
 const lyricsCurrent = ref({})
+const lyricsSongFiles = ref([])
 const lyricsStatusError = ref(null)
 const lyricsCandidates = ref([])
 const lyricsSelectedCandidate = ref(null)
@@ -631,6 +666,9 @@ function scrapeValuePreview(value, field) {
   if (field.multiline && text.length > 180) return `${text.slice(0, 180)}…`
   return text
 }
+
+const scrapeDisplayFiles = computed(() => normalizeSongFiles(scrapeSongFiles.value))
+const lyricsDisplayFiles = computed(() => normalizeSongFiles(lyricsSongFiles.value))
 
 const lyricsTargetLabel = computed(() => {
   const song = lyricsTargetSong.value || {}
@@ -730,11 +768,6 @@ const tagRows = computed(() => {
   ]
 })
 
-const scrapeSongPath = computed(() => {
-  const song = scrapeTargetSong.value || {}
-  return `${song.artist || ''} - ${song.title || song.name || ''}`.replace(/^\s*-\s*|\s*-\s*$/g, '')
-})
-
 const scrapeQueryText = computed(() => {
   const q = scrapeQuery.value
   if (!q) return ''
@@ -831,6 +864,7 @@ async function openLyricsModal() {
   lyricsKeyword.value = `${song.title || ''} ${song.artist || ''}`.trim()
   lyricsQuery.value = null
   lyricsCurrent.value = {}
+  lyricsSongFiles.value = song.versions || []
   lyricsStatusError.value = null
   lyricsCandidates.value = []
   lyricsSelectedCandidate.value = null
@@ -852,6 +886,7 @@ async function searchLyrics(session = lyricsModalSession) {
     if (session !== lyricsModalSession || lyricsTargetSong.value?.id !== targetSongId) return
     lyricsQuery.value = data.query || null
     lyricsCurrent.value = data.current || {}
+    lyricsSongFiles.value = data.song_files || []
     lyricsCandidates.value = data.candidates || []
     lyricsSelectedCandidate.value = null
     lyricsPreviewCandidate.value = null
@@ -884,7 +919,9 @@ async function selectLyricsCandidate(row) {
   try {
     const res = await fetchLyricsCandidateDetails(targetSongId, row)
     if (session !== lyricsModalSession || lyricsTargetSong.value?.id !== targetSongId) return
-    lyricsPreviewCandidate.value = res.data || res || row
+    const data = res.data || res || {}
+    lyricsPreviewCandidate.value = data.candidate || row
+    lyricsSongFiles.value = data.song_files || lyricsSongFiles.value
   } catch (err) {
     message.error(err.response?.data?.detail || err.message || '歌词详情加载失败')
   } finally {
@@ -898,11 +935,15 @@ async function clearTargetLyrics(targetSongId) {
   lyricsLoading.value = true
   lyricsHint.value = '正在清空歌词'
   try {
-    await clearLyrics(targetSongId, { clear_file_tags: true })
+    const res = await clearLyrics(targetSongId, { clear_file_tags: true })
+    const data = res.data || res || {}
     lyricsCurrent.value = {}
     lyricsPreviewCandidate.value = null
     if (player.current?.id === targetSongId) await player.loadLyrics(targetSongId)
-    message.success('歌词已清空')
+    const written = (data.versions || []).filter(item => item.status === 'written').length
+    const failed = (data.versions || []).filter(item => item.status === 'failed').length
+    if (failed) message.warning(`已清空 ${written} 个本地版本，${failed} 个版本失败`)
+    else message.success(`已清空 ${written} 个本地版本的歌词`)
   } catch (err) {
     const detail = err.response?.data?.detail
     message.error(detail?.message || detail || err.message || '清空歌词失败')
@@ -936,9 +977,13 @@ async function applyLyrics() {
   lyricsLoading.value = true
   lyricsHint.value = lyricsWriteFileTags.value ? '正在写入歌词侧车和音频标签' : '正在写入歌词侧车'
   try {
-    await applyLyricsCandidate(targetSongId, candidate, { write_file_tags: lyricsWriteFileTags.value })
+    const res = await applyLyricsCandidate(targetSongId, candidate, { write_file_tags: lyricsWriteFileTags.value })
+    const data = res.data || res || {}
     if (player.current?.id === targetSongId) await player.loadLyrics(targetSongId)
-    message.success(candidate.instrumental ? '已标记为纯音乐' : '歌词已保存')
+    const written = (data.versions || []).filter(item => item.status === 'written').length
+    const failed = (data.versions || []).filter(item => item.status === 'failed').length
+    if (failed) message.warning(`歌词已写入 ${written} 个本地版本，${failed} 个版本失败`)
+    else message.success(candidate.instrumental ? `已在 ${written} 个本地版本标记为纯音乐` : `歌词已保存到 ${written} 个本地版本`)
     lyricsModalVisible.value = false
   } catch (err) {
     message.error(err.response?.data?.detail || err.message || '歌词写入失败')
@@ -968,6 +1013,7 @@ function openScrapeModal() {
   scrapeTargetSong.value = { ...song }
   scrapeModalVisible.value = true
   scrapeCandidates.value = []
+  scrapeSongFiles.value = normalizeSongFiles(song.versions || []).map((item) => ({ ...item }))
   scrapeQuery.value = null
   scrapeKeyword.value = `${song.title || song.song_name || ''} ${song.artist || song.singers || ''}`.trim()
 }
@@ -987,6 +1033,7 @@ async function searchScrapeCandidates() {
     const data = res.data || res || {}
     scrapeQuery.value = data.query || null
     scrapeCurrentValues.value = data.current || {}
+    scrapeSongFiles.value = data.song_files || []
     scrapeCandidates.value = data.candidates || []
     if (!scrapeCandidates.value.length) message.warning('没有检索到候选')
   } catch (err) {
@@ -1006,6 +1053,7 @@ async function openApplyCandidate(row) {
     const res = await fetchScrapeCandidateDetails(targetSongId, row)
     const data = res.data || res || {}
     scrapeCurrentValues.value = data.current || scrapeCurrentValues.value || {}
+    scrapeSongFiles.value = data.song_files || scrapeSongFiles.value
     scrapeApplyCandidate.value = data.candidate || row
     scrapeCoverInfo.value = { current: null, candidate: null }
     scrapeCurrentCoverUrl.value = scrapeCurrentValues.value?.cover_exists
@@ -1056,7 +1104,11 @@ async function applyCandidate() {
         } catch (_) {}
       }
     }
-    message.success(data.cover_result?.ok === false && !data.cover_result?.skipped && !data.cover_result?.cleared ? `已采用，但封面失败：${data.cover_result.error || '未知错误'}` : '已采用并写入')
+    if (data.file_result?.failed) {
+      message.warning(`已写入 ${data.file_result.written} 个本地版本，${data.file_result.failed} 个版本失败`)
+    } else {
+      message.success(`已采用并写入 ${data.file_result?.written ?? 0} 个本地版本`)
+    }
     scrapeApplyModalVisible.value = false
     scrapeApplyCandidate.value = null
     scrapeApplyFields.value = []
@@ -1667,11 +1719,21 @@ async function toggleFavorite() {
 .scrape-cover-preview img { display: block; object-fit: cover; }
 .scrape-cover-placeholder { display: grid; place-items: center; color: var(--fg-4); }
 .scrape-cover-preview span { line-height: 1.5; word-break: break-word; }
+.song-files-section { display: grid; gap: 8px; padding: 12px; border: 1px solid rgba(128,128,128,.22); border-radius: 10px; }
+.song-files-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.song-files-list { display: grid; gap: 8px; max-height: 220px; overflow-y: auto; }
+.song-file-item { display: grid; gap: 6px; padding: 9px 10px; border-radius: 8px; background: rgba(128,128,128,.08); }
+.song-file-summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; font-size: 12px; }
+.song-file-summary span { color: var(--fg-3); }
+.song-file-path { overflow: hidden; color: var(--fg-3); font-size: 12px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 720px) {
   .lyrics-workbench { grid-template-columns: 1fr; }
   .lyrics-compare { grid-template-columns: 1fr; }
   .lyrics-preview-text { height: 280px; }
   .lyrics-actions { position: sticky; bottom: 0; z-index: 3; padding: 10px 0; background: var(--bg); }
+  .song-files-heading { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .song-file-path { white-space: normal; word-break: break-all; }
+  .song-files-list { max-height: 260px; }
   .scrape-compare-row { grid-template-columns: minmax(0, 1fr) 48px; }
   .scrape-field-heading, .scrape-value-block { grid-column: 1; }
   .scrape-cover-preview img, .scrape-cover-placeholder { width: 80px; height: 80px; flex-basis: 80px; }

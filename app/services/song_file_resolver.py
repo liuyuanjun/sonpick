@@ -28,6 +28,46 @@ class SongFileResolver:
     def __init__(self, db: Session):
         self.db = db
 
+    def all_files(self, song: Song) -> list[SongFile]:
+        return (
+            self.db.query(SongFile)
+            .filter(SongFile.song_id == song.id)
+            .order_by(SongFile.id.asc())
+            .all()
+        )
+
+    def writable_local_files(self, song: Song) -> list[SongFile]:
+        return [
+            item for item in self.all_files(song)
+            if item.local_path and Path(item.local_path).is_file()
+        ]
+
+    def describe_files(self, song: Song) -> list[dict]:
+        files = self.all_files(song)
+        source_ids = {item.library_source_id for item in files if item.library_source_id is not None}
+        source_names = {
+            source.id: source.name
+            for source in self.db.query(MediaSource).filter(MediaSource.id.in_(source_ids)).all()
+        } if source_ids else {}
+        result = []
+        for item in files:
+            local_exists = bool(item.local_path and Path(item.local_path).is_file())
+            location = "local" if item.local_path else "webdav"
+            path = item.local_path or item.webdav_path or ""
+            result.append({
+                "id": item.id,
+                "format": item.format,
+                "location": location,
+                "path": path,
+                "source_id": item.library_source_id,
+                "source_name": source_names.get(item.library_source_id),
+                "file_size": item.file_size,
+                "availability_status": item.availability_status,
+                "writable": local_exists,
+                "write_status": "可写入本地文件" if local_exists else ("远端只读，未写入" if item.webdav_path else "本地文件不可用"),
+            })
+        return result
+
     def candidates(self, song: Song, lossless_preferred: bool = False) -> list[SongFile]:
         files = self.db.query(SongFile).filter(SongFile.song_id == song.id).all()
         priorities = {

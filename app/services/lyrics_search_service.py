@@ -155,26 +155,43 @@ class LyricsSearchService:
         }
 
     def clear(self, song: Song, *, write_file_tags: bool = True) -> dict[str, Any]:
-        song_file = self._song_file(song)
-        paths: set[Path] = set()
-        if song.lrc_path:
-            paths.add(Path(str(song.lrc_path)))
-        if song_file:
+        resolver = SongFileResolver(self.db)
+        all_files = resolver.all_files(song)
+        writable_files = resolver.writable_local_files(song)
+        writable_ids = {item.id for item in writable_files}
+        removed_paths: list[str] = []
+        results: list[dict[str, Any]] = []
+        aggregate_paths = {Path(str(song.lrc_path))} if song.lrc_path else set()
+
+        for song_file in all_files:
+            base = {
+                "song_file_id": song_file.id,
+                "path": song_file.local_path or song_file.webdav_path,
+                "format": song_file.format,
+            }
+            if song_file.id not in writable_ids:
+                results.append({**base, "status": "skipped", "reason": "远端只读，未写入" if song_file.webdav_path else "本地文件不可用"})
+                continue
+            paths = set(aggregate_paths)
             if song_file.lrc_path:
                 paths.add(Path(str(song_file.lrc_path)))
-            paths.add(Path(song_file.local_path).with_suffix(".lrc"))
-        removed_paths: list[str] = []
-        for path in paths:
+            audio_path = Path(song_file.local_path)
+            paths.update({audio_path.with_suffix(".lrc"), audio_path.with_suffix(".LRC"), audio_path.with_suffix(".txt"), audio_path.with_suffix(".TXT")})
             try:
-                if path.is_file():
-                    path.unlink()
-                    removed_paths.append(str(path))
-            except OSError as exc:
-                raise LyricsApplicationError(f"删除歌词侧车失败: {exc}", code="file_delete_failed") from exc
-        for row in self.db.query(SongFile).filter(SongFile.song_id == song.id).all():
-            row.lrc_path = None
-            row.updated_at = datetime.now(timezone.utc)
-            self.db.add(row)
+                for path in paths:
+                    if path.is_file():
+                        path.unlink()
+                        removed_paths.append(str(path))
+                tags = write_audio_tags(song_file.local_path, clear_fields={"lyrics"}) if write_file_tags else {}
+                if write_file_tags and not tags:
+                    raise RuntimeError("内嵌歌词清空未生效")
+                song_file.lrc_path = None
+                song_file.updated_at = datetime.now(timezone.utc)
+                self.db.add(song_file)
+                results.append({**base, "status": "written", "tags": tags})
+            except Exception as exc:
+                results.append({**base, "status": "failed", "error": str(exc)})
+
         song.lrc_path = None
         song.lyrics_provider = None
         song.lyrics_source_id = None
@@ -185,13 +202,15 @@ class LyricsSearchService:
         song.updated_at = datetime.now(timezone.utc)
         self.db.add(song)
         self.db.commit()
-        if write_file_tags and song_file:
-            write_audio_tags(song_file.local_path, clear_fields={"lyrics"})
+        failed = sum(item["status"] == "failed" for item in results)
+        written = sum(item["status"] == "written" for item in results)
         return {
-            "ok": True,
+            "ok": failed == 0,
+            "partial": failed > 0 and written > 0,
             "song_id": song.id,
-            "removed_paths": removed_paths,
-            "written_file_tags": bool(write_file_tags and song_file),
+            "removed_paths": sorted(set(removed_paths)),
+            "written_file_tags": written,
+            "versions": results,
             "lyrics_type": None,
             "source": None,
             "source_id": None,
@@ -211,20 +230,46 @@ class LyricsSearchService:
         lyrics = synced or plain
         if not lyrics and not instrumental:
             raise LyricsApplicationError("空歌词不能覆盖已有歌词", code="empty_lyrics")
-        song_file = self._song_file(song)
-        if not song_file:
+        resolver = SongFileResolver(self.db)
+        all_files = resolver.all_files(song)
+        writable_files = resolver.writable_local_files(song)
+        if not writable_files:
             raise LyricsApplicationError("当前歌曲没有可写入的本地文件", code="no_local_file")
-        destination = Path(song_file.local_path).with_suffix(".lrc")
-        if lyrics:
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_text(lyrics, encoding="utf-8")
-            song_file.lrc_path = str(destination)
-            song.lrc_path = str(destination)
-        else:
-            if destination.is_file():
-                destination.unlink()
-            song_file.lrc_path = None
-            song.lrc_path = None
+        writable_ids = {item.id for item in writable_files}
+        results: list[dict[str, Any]] = []
+        aggregate_lrc_path = None
+        for song_file in all_files:
+            base = {
+                "song_file_id": song_file.id,
+                "path": song_file.local_path or song_file.webdav_path,
+                "format": song_file.format,
+            }
+            if song_file.id not in writable_ids:
+                results.append({**base, "status": "skipped", "reason": "远端只读，未写入" if song_file.webdav_path else "本地文件不可用"})
+                continue
+            destination = Path(song_file.local_path).with_suffix(".lrc")
+            try:
+                if lyrics:
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    destination.write_text(lyrics, encoding="utf-8")
+                    song_file.lrc_path = str(destination)
+                    aggregate_lrc_path = aggregate_lrc_path or str(destination)
+                else:
+                    if destination.is_file():
+                        destination.unlink()
+                    song_file.lrc_path = None
+                tags = write_audio_tags(
+                    song_file.local_path,
+                    lyrics=lyrics or None,
+                    clear_fields={"lyrics"} if not lyrics else None,
+                ) if write_file_tags else {}
+                if write_file_tags and not tags:
+                    raise RuntimeError("内嵌歌词写入未生效")
+                self.db.add(song_file)
+                results.append({**base, "status": "written", "lrc_path": song_file.lrc_path, "tags": tags})
+            except Exception as exc:
+                results.append({**base, "status": "failed", "error": str(exc)})
+        song.lrc_path = aggregate_lrc_path
         song.lyrics_provider = str(candidate.get("source") or "manual")
         song.lyrics_source_id = str(candidate.get("source_id") or "") or None
         song.lyrics_type = "instrumental" if instrumental else ("synced" if synced else ("plain" if plain else "empty"))
@@ -232,21 +277,18 @@ class LyricsSearchService:
         song.lyrics_fetched_at = datetime.now(timezone.utc)
         song.lyrics_instrumental = instrumental
         song.updated_at = datetime.now(timezone.utc)
-        self.db.add(song_file)
         self.db.add(song)
         self.db.commit()
-        if write_file_tags:
-            write_audio_tags(
-                song_file.local_path,
-                lyrics=lyrics or None,
-                clear_fields={"lyrics"} if not lyrics else None,
-            )
+        failed = sum(item["status"] == "failed" for item in results)
+        written = sum(item["status"] == "written" for item in results)
         return {
-            "ok": True,
+            "ok": failed == 0,
+            "partial": failed > 0 and written > 0,
             "song_id": song.id,
             "lrc_path": song.lrc_path,
             "lyrics_type": song.lyrics_type,
             "source": song.lyrics_provider,
             "source_id": song.lyrics_source_id,
-            "written_file_tags": bool(write_file_tags),
+            "written_file_tags": written if write_file_tags else 0,
+            "versions": results,
         }

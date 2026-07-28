@@ -26,14 +26,13 @@ from app.schemas import (
     SongOut,
 )
 from app.services.lyrics_service import load_lyrics_for_song
-from app.services.scrape.cover_utils import download_cover_with_diagnostics, enrich_cover_fields, qq_song_detail_cover
+from app.services.scrape.cover_utils import enrich_cover_fields, qq_song_detail_cover
 from app.services.media_meta_service import (
     extract_embedded_cover_bytes,
     is_local_file,
     materialize_song_cover,
     read_audio_duration,
     read_audio_tags,
-    write_audio_tags,
 )
 
 router = APIRouter(tags=["library-extra"])
@@ -280,6 +279,7 @@ def search_lyrics_candidates(
         raise HTTPException(status_code=404, detail="歌曲不存在")
     try:
         result = LyricsSearchService(db).search(song, source=body.source, keyword=body.keyword or "", limit=body.limit)
+        result["song_files"] = SongFileResolver(db).describe_files(song)
         if body.source != "auto" and not result.get("candidates") and result.get("errors"):
             error = result["errors"][0]
             status_code = 429 if error.get("code") == "rate_limited" else 502
@@ -299,10 +299,14 @@ def get_lyrics_candidate_details(
 ):
     from app.services.lyrics_search_service import LyricsApplicationError, LyricsSearchService
 
-    if not db.get(Song, song_id):
+    song = db.get(Song, song_id)
+    if not song:
         raise HTTPException(status_code=404, detail="歌曲不存在")
     try:
-        return LyricsSearchService(db).details(body.source, body.source_id, fallback=body.candidate)
+        return {
+            "candidate": LyricsSearchService(db).details(body.source, body.source_id, fallback=body.candidate),
+            "song_files": SongFileResolver(db).describe_files(song),
+        }
     except LyricsApplicationError as exc:
         raise HTTPException(status_code=400, detail=exc.detail()) from exc
 
@@ -789,13 +793,9 @@ def _search_candidates(song: Song, *, source: str = "auto", keyword: str | None 
     return {
         "query": {"title": score_title, "artist": score_artist, "duration": duration, "keyword": keyword},
         "current": _candidate_current_values(song, db),
+        "song_files": SongFileResolver(db).describe_files(song),
         "candidates": candidates[:limit],
     }
-
-
-def normalized_candidate_value(candidate: dict, key: str) -> str:
-    value = candidate.get("cover_url") if key == "cover" else candidate.get(key)
-    return "" if value is None else str(value).strip()
 
 
 def _hydrate_candidate_details(candidate: dict) -> dict:
@@ -824,12 +824,6 @@ def _candidate_current_values(song: Song, db: Session) -> dict:
         "cover_exists": cover_exists,
         "cover_size": cover_size,
     }
-
-
-def _download_candidate_cover(db: Session, song: Song, cover_url: str | None) -> tuple[dict, SongFile | None]:
-    song_file = _local_song_file(db, song)
-    dest = Path(song_file.local_path).parent / "cover.jpg" if song_file else Path("/tmp/sonpick_covers") / f"song_{song.id}.jpg"
-    return download_cover_with_diagnostics(cover_url, dest, timeout=20), song_file
 
 
 @router.get("/songs/{song_id}/tags")
@@ -879,6 +873,7 @@ def scrape_candidate_details(
     return {
         "current": _candidate_current_values(song, db),
         "candidate": _hydrate_candidate_details(body.candidate),
+        "song_files": SongFileResolver(db).describe_files(song),
     }
 
 
@@ -907,54 +902,33 @@ def apply_scrape_candidate(
             setattr(song, key, (val or "") if key == "title" else (val or None))
             changes[key] = val or None
     cover_url = cand.get("cover_url") if "cover" in selected_fields else None
-    cover_lookup = None
     if "cover" in selected_fields:
-        if cover_url:
-            cover_result, cover_file = _download_candidate_cover(db, song, cover_url)
-        else:
-            cover_result, cover_file = {"ok": False, "cleared": True}, _local_song_file(db, song)
-    else:
-        cover_result, cover_file = {"ok": False, "skipped": True}, None
-    if cover_lookup:
-        cover_result["lookup"] = cover_lookup
-    cover_path = cover_result.get("path") if cover_result.get("ok") else None
-    if cover_path:
-        if cover_file:
-            cover_file.cover_path = cover_path
-        song.cover_path = cover_path
-        changes["cover_path"] = cover_path
-    elif "cover" in selected_fields and not cover_url:
-        if cover_file:
-            cover_file.cover_path = None
-        song.cover_path = None
-        changes["cover_path"] = None
+        changes["cover_path"] = cover_url or None
     song.meta_provider = cand.get("provider") or cand.get("source") or "manual"
     song.meta_confidence = int(min(100, max(0, float(cand.get("score") or 0) * 20))) if cand.get("score") is not None else song.meta_confidence
     song.scrape_status = "done"
     song.updated_at = datetime.now(timezone.utc)
     db.add(song)
-    db.commit()
-    db.refresh(song)
+    db.flush()
 
-    tag_written = {}
-    song_file = _local_song_file(db, song)
-    if body.write_file_tags and song_file:
-        tag_written = write_audio_tags(
-            song_file.local_path,
-            title=song.title if "title" in selected_fields else None,
-            artist=song.artist if "artist" in selected_fields else None,
-            album=song.album if "album" in selected_fields else None,
-            year=song.year if "year" in selected_fields else None,
-            genre=song.genre if "genre" in selected_fields else None,
-            cover_path=(cover_path or song_file.cover_path or song.cover_path) if "cover" in selected_fields else None,
-            clear_fields={
-                key
-                for key in selected_fields
-                if normalized_candidate_value(cand, key) == ""
-            },
-        )
+    from app.services.song_metadata_apply_service import apply_metadata_to_song_files
+
+    file_result = apply_metadata_to_song_files(
+        db,
+        song,
+        selected_fields=selected_fields,
+        cover_url=cover_url,
+        write_file_tags=body.write_file_tags,
+    )
+    db.refresh(song)
     fav = _favorite_ids(db, [song.id])
-    return {"ok": True, "changes": changes, "cover_result": cover_result, "file_tags": tag_written, "song": _song_out(song, fav).model_dump()}
+    return {
+        "ok": file_result["ok"],
+        "changes": changes,
+        "cover_result": {"ok": file_result["failed"] == 0, "paths": file_result["cover_paths"]},
+        "file_result": file_result,
+        "song": _song_out(song, fav).model_dump(),
+    }
 
 
 class SongsScrapeRequest(BaseModel):
