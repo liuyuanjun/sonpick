@@ -391,7 +391,7 @@
     <n-modal v-model:show="scrapeApplyModalVisible" preset="card" title="选择要应用的更改" style="width: 920px; max-width: 96vw">
       <n-space vertical size="medium">
         <n-alert type="info" :show-icon="false">
-          新值为空或与当前值一致时默认关闭；仍可手动开启。提交后只修改已开启的项目。
+          普通字段在新值非空且有变化时默认开启；封面仅在当前无封面且候选有封面时默认开启。提交后只修改已开启的项目。
         </n-alert>
         <div class="scrape-compare-list">
           <div v-for="field in scrapeApplyRows" :key="field.key" class="scrape-compare-row">
@@ -401,13 +401,39 @@
               <n-tag v-else-if="field.changed" size="small" type="success">有变化</n-tag>
               <n-tag v-else size="small">一致</n-tag>
             </div>
-            <div class="scrape-value-block">
+            <div class="scrape-value-block" :class="{ 'scrape-cover-block': field.key === 'cover' }">
               <span class="scrape-value-label">当前</span>
-              <div class="scrape-value-text">{{ scrapeValuePreview(field.currentValue, field) }}</div>
+              <template v-if="field.key === 'cover'">
+                <div class="scrape-cover-preview">
+                  <img
+                    v-if="scrapeCoverAvailable('current')"
+                    :src="scrapeCoverImageUrl('current')"
+                    alt="当前封面"
+                    @load="onScrapeCoverLoad('current', $event)"
+                    @error="onScrapeCoverError('current')"
+                  >
+                  <div v-else class="scrape-cover-placeholder">无封面</div>
+                  <span>{{ scrapeCoverMeta('current') }}</span>
+                </div>
+              </template>
+              <div v-else class="scrape-value-text">{{ scrapeValuePreview(field.currentValue, field) }}</div>
             </div>
-            <div class="scrape-value-block">
+            <div class="scrape-value-block" :class="{ 'scrape-cover-block': field.key === 'cover' }">
               <span class="scrape-value-label">新值</span>
-              <div class="scrape-value-text" :class="{ empty: field.empty }">{{ scrapeValuePreview(field.newValue, field) }}</div>
+              <template v-if="field.key === 'cover'">
+                <div class="scrape-cover-preview">
+                  <img
+                    v-if="scrapeCoverAvailable('candidate')"
+                    :src="scrapeCoverImageUrl('candidate')"
+                    alt="候选封面"
+                    @load="onScrapeCoverLoad('candidate', $event)"
+                    @error="onScrapeCoverError('candidate')"
+                  >
+                  <div v-else class="scrape-cover-placeholder">无封面</div>
+                  <span>{{ scrapeCoverMeta('candidate') }}</span>
+                </div>
+              </template>
+              <div v-else class="scrape-value-text" :class="{ empty: field.empty }">{{ scrapeValuePreview(field.newValue, field) }}</div>
             </div>
             <n-switch
               :value="scrapeFieldSelected(field.key)"
@@ -462,13 +488,16 @@ import {
   fetchScrapeCandidates,
   fetchSongTags,
   searchLyricsCandidates,
+  coverUrl,
 } from '@/api/music'
 import api from '@/api/client'
 import { usePlayerStore } from '@/stores/player'
+import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useIsMobile } from '@/composables/useIsMobile'
 import { formatTime } from '@/utils/lrc'
 import { ambientBackground, extractAccentFromImage } from '@/utils/color'
+import { normalizedScrapeValue, shouldSelectScrapeField } from '@/utils/scrapeApply'
 import LyricsView from '@/components/player/LyricsView.vue'
 
 const player = usePlayerStore()
@@ -494,6 +523,8 @@ const scrapeCurrentValues = ref({})
 const scrapeApplyModalVisible = ref(false)
 const scrapeApplyCandidate = ref(null)
 const scrapeApplyFields = ref([])
+const scrapeCurrentCoverUrl = ref('')
+const scrapeCoverInfo = ref({ current: null, candidate: null })
 const scrapeSourceOptions = ref([])
 const lyricsLoading = ref(false)
 const lyricsHint = ref('')
@@ -522,12 +553,52 @@ const SCRAPE_FIELD_DEFINITIONS = [
 ]
 
 function normalizedCompareValue(value) {
-  return value == null ? '' : String(value).trim()
+  return normalizedScrapeValue(value)
 }
 
 function candidateFieldValue(candidate, key) {
   if (key === 'cover') return candidate?.cover_url || ''
   return candidate?.[key] ?? ''
+}
+
+function formatFileSize(bytes) {
+  const value = Number(bytes)
+  if (!Number.isFinite(value) || value < 0) return '大小未知'
+  if (value < 1024) return `${value} B`
+  if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`
+  return `${(value / 1024 ** 2).toFixed(2)} MB`
+}
+
+function scrapeCoverImageUrl(kind) {
+  if (kind === 'candidate') return candidateFieldValue(scrapeApplyCandidate.value, 'cover')
+  return scrapeCurrentCoverUrl.value
+}
+
+function scrapeCoverMeta(kind) {
+  const info = scrapeCoverInfo.value[kind]
+  const dimensions = info?.width && info?.height ? `${info.width} × ${info.height}` : '尺寸未知'
+  if (kind === 'current') return `${dimensions} · ${formatFileSize(scrapeCurrentValues.value?.cover_size)}`
+  return dimensions
+}
+
+function onScrapeCoverLoad(kind, event) {
+  const image = event.target
+  scrapeCoverInfo.value = {
+    ...scrapeCoverInfo.value,
+    [kind]: { width: image.naturalWidth, height: image.naturalHeight, failed: false },
+  }
+}
+
+function onScrapeCoverError(kind) {
+  scrapeCoverInfo.value = {
+    ...scrapeCoverInfo.value,
+    [kind]: { failed: true },
+  }
+}
+
+function scrapeCoverAvailable(kind) {
+  if (scrapeCoverInfo.value[kind]?.failed) return false
+  return Boolean(scrapeCoverImageUrl(kind))
 }
 
 const scrapeApplyRows = computed(() => SCRAPE_FIELD_DEFINITIONS.map((field) => {
@@ -936,13 +1007,17 @@ async function openApplyCandidate(row) {
     const data = res.data || res || {}
     scrapeCurrentValues.value = data.current || scrapeCurrentValues.value || {}
     scrapeApplyCandidate.value = data.candidate || row
+    scrapeCoverInfo.value = { current: null, candidate: null }
+    scrapeCurrentCoverUrl.value = scrapeCurrentValues.value?.cover_exists
+      ? coverUrl(targetSongId, useAuthStore().token || '') + `&_t=${Date.now()}`
+      : ''
     scrapeApplyFields.value = SCRAPE_FIELD_DEFINITIONS
-      .filter((field) => {
-        const newValue = candidateFieldValue(scrapeApplyCandidate.value, field.key)
-        const currentValue = scrapeCurrentValues.value?.[field.key]
-        return normalizedCompareValue(newValue) !== ''
-          && normalizedCompareValue(newValue) !== normalizedCompareValue(currentValue)
-      })
+      .filter((field) => shouldSelectScrapeField({
+        key: field.key,
+        newValue: candidateFieldValue(scrapeApplyCandidate.value, field.key),
+        currentValue: scrapeCurrentValues.value?.[field.key],
+        currentCoverExists: Boolean(scrapeCurrentValues.value?.cover_exists),
+      }))
       .map((field) => field.key)
     scrapeApplyModalVisible.value = true
   } catch (err) {
@@ -1587,6 +1662,11 @@ async function toggleFavorite() {
 .scrape-value-label { display: block; margin-bottom: 4px; color: var(--fg-3); font-size: 11px; }
 .scrape-value-text { max-height: 90px; overflow: auto; color: var(--fg); font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
 .scrape-value-text.empty { color: var(--fg-4); font-style: italic; }
+.scrape-cover-preview { display: flex; align-items: center; gap: 10px; min-width: 0; color: var(--fg-3); font-size: 12px; }
+.scrape-cover-preview img, .scrape-cover-placeholder { width: 96px; height: 96px; flex: 0 0 96px; border-radius: 8px; border: 1px solid rgba(128,128,128,.24); background: rgba(128,128,128,.1); }
+.scrape-cover-preview img { display: block; object-fit: cover; }
+.scrape-cover-placeholder { display: grid; place-items: center; color: var(--fg-4); }
+.scrape-cover-preview span { line-height: 1.5; word-break: break-word; }
 @media (max-width: 720px) {
   .lyrics-workbench { grid-template-columns: 1fr; }
   .lyrics-compare { grid-template-columns: 1fr; }
@@ -1594,6 +1674,7 @@ async function toggleFavorite() {
   .lyrics-actions { position: sticky; bottom: 0; z-index: 3; padding: 10px 0; background: var(--bg); }
   .scrape-compare-row { grid-template-columns: minmax(0, 1fr) 48px; }
   .scrape-field-heading, .scrape-value-block { grid-column: 1; }
+  .scrape-cover-preview img, .scrape-cover-placeholder { width: 80px; height: 80px; flex-basis: 80px; }
   .scrape-compare-row :deep(.n-switch) { grid-column: 2; grid-row: 1; }
 }
 

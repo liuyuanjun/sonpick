@@ -805,13 +805,24 @@ def _hydrate_candidate_details(candidate: dict) -> dict:
 def _candidate_current_values(song: Song, db: Session) -> dict:
     song_file = _local_song_file(db, song)
     tags = read_audio_tags(song_file.local_path) if song_file else {}
+    cover_path = song.cover_path if is_local_file(song.cover_path) else materialize_song_cover(song, db=db)
+    cover_exists = bool(cover_path and is_local_file(cover_path))
+    cover_size = None
+    if cover_exists:
+        try:
+            cover_size = Path(cover_path).stat().st_size
+        except OSError:
+            cover_exists = False
+            cover_path = None
     return {
         "title": song.title or tags.get("title"),
         "artist": song.artist or tags.get("artist"),
         "album": song.album or tags.get("album"),
         "year": song.year or tags.get("year"),
         "genre": song.genre or tags.get("genre"),
-        "cover": song.cover_path,
+        "cover": cover_path,
+        "cover_exists": cover_exists,
+        "cover_size": cover_size,
     }
 
 

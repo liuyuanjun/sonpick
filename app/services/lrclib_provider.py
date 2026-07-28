@@ -12,7 +12,7 @@ from typing import Any
 from app.services.lyrics_provider import LyricsCandidate, LyricsQuery, score_lyrics_candidate
 
 _BASE_URL = "https://lrclib.net"
-_USER_AGENT = "Sonpick/0.13.0 (https://github.com/liuyuanjun/sonpick)"
+_USER_AGENT = "Sonpick/0.13.0-rc1 (https://github.com/liuyuanjun/sonpick)"
 
 
 class LrclibRateLimitError(RuntimeError):
