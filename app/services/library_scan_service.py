@@ -224,30 +224,6 @@ class LibraryScanService:
             _parse_json_list(getattr(self.cfg, "scan_exclude_globs", None), DEFAULT_SCAN_EXCLUDE)
         )
 
-    def _mp3_output_globs(self, roots: list[Path]) -> list[str]:
-        """Exclude the configured MP3 output directory when it lives inside a scan root."""
-        from app.services.convert_service import resolve_mp3_output_dir
-
-        settings = self.db.get(AppSettings, 1)
-        mp3_root = resolve_mp3_output_dir(
-            getattr(settings, "mp3_output_path", None) if settings else None,
-            settings.storage_path if settings else None,
-        )
-        try:
-            mp3_path = Path(mp3_root).expanduser().resolve()
-        except Exception:
-            return []
-        globs: list[str] = []
-        for root in roots:
-            try:
-                rel = mp3_path.relative_to(root.expanduser().resolve())
-            except Exception:
-                continue
-            rel_s = str(rel).replace("\\", "/").strip("/")
-            if rel_s:
-                globs.append(f"{rel_s}/**")
-        return globs
-
     def _find_logical_song(self, meta: dict[str, Optional[str]], duration: int | None) -> Song | None:
         title = (meta.get("title") or "").strip()
         if not title:
@@ -628,7 +604,7 @@ class LibraryScanService:
             return stats
 
         exts = self._audio_exts(source)
-        globs = self._exclude_globs(source) + self._mp3_output_globs(roots)
+        globs = self._exclude_globs(source)
         seen: set[str] = set()
 
         for root in roots:
