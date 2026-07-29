@@ -27,7 +27,7 @@ read_setup_version() { grep -m1 'version=' "$SETUP_PY" | cut -d'"' -f2; }
 read_pkg_version() { grep -m1 '"version":' "$PKG_JSON" | cut -d'"' -f4; }
 
 check_semver() {
-  [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$ ]] || die "版本号格式不合法: $1（应为 MAJOR.MINOR.PATCH 或 MAJOR.MINOR.PATCH-rcN）"
+  [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$ ]] || die "版本号格式不合法: ${1}（应为 MAJOR.MINOR.PATCH 或 MAJOR.MINOR.PATCH-rcN）"
 }
 
 set_version_files() {
@@ -42,7 +42,7 @@ verify_consistent() {
   local a b c
   a="$(read_main_version)"; b="$(read_setup_version)"; c="$(read_pkg_version)"
   [ "$a" = "$v" ] && [ "$b" = "$v" ] && [ "$c" = "$v" ] \
-    || die "版本不一致: main.py=$a setup_app.py=$b package.json=$c（期望 $v）"
+    || die "版本不一致: main.py=${a} setup_app.py=${b} package.json=${c}（期望 ${v}）"
   info "三处版本号一致: $v"
 }
 
@@ -136,7 +136,7 @@ cmd_set() {
     git push origin "$branch"
     info "已推送分支 $branch"
     if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
-      info "远端已有 $tag，跳过 tag 推送"
+      info "远端已有 ${tag}，跳过 tag 推送"
     else
       git push origin "$tag"
       info "已推送 tag $tag"
