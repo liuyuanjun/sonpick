@@ -27,7 +27,7 @@
       />
     </n-layout-sider>
 
-    <n-layout>
+    <n-layout style="position: relative; z-index: 2;">
       <n-layout-header bordered class="header">
         <div class="header-left">
           <n-text strong>{{ routeTitle }}</n-text>

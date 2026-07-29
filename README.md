@@ -1,6 +1,6 @@
 # 拾音 Sonpick
 
-> 当前版本：`0.14.1`
+> 最新版本：[![Latest Tag](https://img.shields.io/github/v/tag/liuyuanjun/sonpick?sort=semver)](https://github.com/liuyuanjun/sonpick/releases/latest)
 
 部署在 NAS 上、供个人使用的音乐下载与管理 Web 应用。它将搜索下载、本地曲库、WebDAV 曲库、播放和文件操作收在一个单用户界面中。
 

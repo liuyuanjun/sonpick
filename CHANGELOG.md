@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.0-rc2
+
+### 修复
+- 底部播放器在 Safari 下被左侧导航栏（aside）遮盖：给内层 `<n-layout>` 添加 `z-index: 2`，解决 Safari 对 sticky 元素层叠上下文计算与 Chrome 不一致的问题。
+
 ## 0.15.0-rc1
 
 ### 新增
