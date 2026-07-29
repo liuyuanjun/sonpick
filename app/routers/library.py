@@ -124,9 +124,14 @@ def list_songs(
     page_size: int = Query(100, ge=1, le=2000),
     source_id: int | None = Query(None),
     include_unavailable: bool = Query(False),
+    availability: str = Query(None),
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # availability: available（默认，至少一个有效版本）| all | unavailable（全部版本失效）
+    availability = (availability or ("all" if include_unavailable else "available")).lower()
+    if availability not in ("available", "all", "unavailable"):
+        raise HTTPException(status_code=422, detail="availability 必须是 available / all / unavailable")
     source = None
     source_type = None
     if source_id is not None:
@@ -134,8 +139,10 @@ def list_songs(
         source_type = source.type if source else None
 
     query = _active_song_query(db).order_by(Song.id.desc())
-    if not include_unavailable:
+    if availability == "available":
         query = query.filter(Song.id.in_(_playable_song_ids(db)))
+    elif availability == "unavailable":
+        query = query.filter(Song.id.notin_(_playable_song_ids(db)))
     if source_id is not None:
         # 单源视图：只展示在该源内实际可播放的歌曲
         if source_type == "local":
@@ -194,6 +201,58 @@ def list_songs(
         data["has_playable_file"] = primary is not None
         result.append(SongOut(**data))
     return SongPageOut(items=result, total=total, page=page, page_size=page_size)
+
+
+@router.post("/{song_id}/recheck", response_model=SongOut)
+def recheck_song(
+    song_id: int,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """逐个版本重新探测可用性：本地 stat、WebDAV 远程探测。
+
+    探测不可达（如 WebDAV 连接失败）时保留原状态并记录错误，不会误标失效。
+    """
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(status_code=404, detail="Song not found")
+
+    now = datetime.now(timezone.utc)
+    versions = db.query(SongFile).filter(SongFile.song_id == song.id).all()
+    for sf in versions:
+        if sf.local_path:
+            exists = Path(sf.local_path).is_file()
+            sf.availability_status = "available" if exists else "unavailable"
+            sf.last_error = None if exists else "本地文件不存在"
+            sf.last_checked_at = now
+            sf.updated_at = now
+            db.add(sf)
+        elif sf.webdav_path and sf.library_source_id is not None:
+            try:
+                from app.services.webdav_service import WebDAVService
+
+                exists = WebDAVService(db=db, source_id=sf.library_source_id).exists_path(sf.webdav_path)
+                sf.availability_status = "available" if exists else "unavailable"
+                sf.last_error = None if exists else "远端文件不存在"
+            except Exception as e:
+                # 连接失败：保留原状态，仅记录本次检查错误
+                sf.last_error = f"检查失败: {type(e).__name__}: {e}"[:500]
+            sf.last_checked_at = now
+            sf.updated_at = now
+            db.add(sf)
+
+    from app.services.song_file_resolver import refresh_song_aggregate_assets
+
+    refresh_song_aggregate_assets(db, song)
+    db.commit()
+    db.refresh(song)
+
+    data = song.to_dict()
+    data["is_favorite"] = song.id in _favorite_ids(db, [song.id])
+    data["versions"] = [item.to_dict() for item in versions]
+    data["available_formats"] = sorted({item.format for item in versions if item.format})
+    data["has_playable_file"] = ConvertService(db).select_playable_file(song, lossless_preferred=False) is not None
+    return SongOut(**data)
 
 
 @router.get("/{song_id}/stream")

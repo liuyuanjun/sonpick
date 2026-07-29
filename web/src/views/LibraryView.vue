@@ -7,6 +7,7 @@
             <n-dropdown trigger="click" :options="createOptions" @select="openCreate">
               <n-button type="primary" size="small">添加曲库</n-button>
             </n-dropdown>
+            <n-button size="small" @click="openCleanup">清理失效</n-button>
             <n-button size="small" :loading="sourcesLoading" @click="loadSources">刷新</n-button>
           </n-space>
         </template>
@@ -125,6 +126,15 @@
                 @keydown.enter="loadSongs({ resetPage: true })"
               />
               <n-space size="small" wrap class="library-toolbar-actions">
+                <n-radio-group
+                  v-model:value="songsAvailability"
+                  size="small"
+                  @update:value="loadSongs({ resetPage: true })"
+                >
+                  <n-radio-button value="available">可播放</n-radio-button>
+                  <n-radio-button value="all">全部</n-radio-button>
+                  <n-radio-button value="unavailable">仅失效</n-radio-button>
+                </n-radio-group>
                 <n-button @click="loadSongs" :loading="songsLoading">刷新</n-button>
                 <n-button v-if="songs.length" type="primary" secondary @click="openScrape(selectedSource)">刮削信息</n-button>
                 <n-button v-if="songs.length" secondary @click="openBatchLyrics(selectedSource)">获取歌词</n-button>
@@ -408,13 +418,55 @@
       </n-space>
     </template>
   </n-modal>
+
+  <n-modal v-model:show="showCleanup" preset="card" title="清理失效记录" class="library-modal" style="width: 640px; max-width: 96vw">
+    <n-spin :show="cleanupLoading">
+      <n-space v-if="cleanupPreview" vertical size="medium">
+        <n-alert type="info">
+          共 {{ cleanupPreview.dead_songs }} 首歌曲的全部版本已失效：
+          可恢复 {{ cleanupPreview.healable }} 首（文件实际还在，恢复为可用），
+          可清理 {{ cleanupPreview.cleanable }} 首（仅删除曲库记录，不动磁盘文件），
+          跳过 {{ cleanupPreview.blocked }} 首（存储不可达，防误删）。
+        </n-alert>
+        <template v-if="cleanupPreview.blocked_samples?.length">
+          <n-text strong>跳过（存储不可达）</n-text>
+          <n-space vertical size="small">
+            <n-text v-for="item in cleanupPreview.blocked_samples" :key="item.song_id" depth="3" style="font-size: 12px">
+              {{ item.artist || '未知艺术家' }} - {{ item.title }}：{{ item.reason }}
+            </n-text>
+          </n-space>
+        </template>
+        <template v-if="cleanupPreview.cleanable_samples?.length">
+          <n-text strong>将清理的记录（前 {{ cleanupPreview.cleanable_samples.length }} 条）</n-text>
+          <n-space vertical size="small">
+            <n-text v-for="item in cleanupPreview.cleanable_samples" :key="item.song_id" depth="3" style="font-size: 12px">
+              {{ item.artist || '未知艺术家' }} - {{ item.title }}
+            </n-text>
+          </n-space>
+        </template>
+        <n-empty v-if="!cleanupPreview.dead_songs" description="没有失效记录，曲库很健康" />
+      </n-space>
+    </n-spin>
+    <template #footer>
+      <n-space justify="end">
+        <n-button @click="showCleanup = false">取消</n-button>
+        <n-button @click="openCleanup" :loading="cleanupLoading">重新分析</n-button>
+        <n-button
+          type="primary"
+          :disabled="!cleanupPreview || (!cleanupPreview.cleanable && !cleanupPreview.healable)"
+          :loading="cleanupRunning"
+          @click="confirmCleanup"
+        >开始清理</n-button>
+      </n-space>
+    </template>
+  </n-modal>
 </template>
 
 <script setup>
 import BatchLyricsModal from '@/components/BatchLyricsModal.vue'
 import { computed, h, onMounted, reactive, ref, watch } from 'vue'
 import { NButton, NDropdown, NIcon, NSpace, NTag, NTooltip, useMessage } from 'naive-ui'
-import { ChevronDownOutline, FolderOpenOutline, MusicalNotesOutline, PlayOutline, TrashOutline, CloudUploadOutline, SwapHorizontalOutline } from '@vicons/ionicons5'
+import { ChevronDownOutline, FolderOpenOutline, MusicalNotesOutline, PlayOutline, RefreshOutline, TrashOutline, CloudUploadOutline, SwapHorizontalOutline } from '@vicons/ionicons5'
 import {
   applyReorganize,
   browseLocalSource,
@@ -428,7 +480,10 @@ import {
   fetchSources,
   listReorganizeDirs,
   listWebdav,
+  previewLibraryCleanup,
   previewReorganize,
+  recheckSong,
+  runLibraryCleanup,
   scanSource,
   scrapeSource,
   setDefaultUploadSource,
@@ -458,6 +513,11 @@ const songsTotal = ref(0)
 const songsPage = ref(1)
 const songsPageSize = 100
 const songsQuery = ref('')
+const songsAvailability = ref('available')
+const showCleanup = ref(false)
+const cleanupPreview = ref(null)
+const cleanupLoading = ref(false)
+const cleanupRunning = ref(false)
 let songsRequestId = 0
 let songsSearchTimer = null
 const webdavSources = ref([])
@@ -566,11 +626,12 @@ const songColumns = computed(() => {
           const format = String(item.format || '').toUpperCase()
           const available = item.availability_status !== 'unavailable'
           const path = item.local_path || item.webdav_path || '暂无路径'
+          const tip = !available && item.last_error ? `${path} · ${item.last_error}` : path
           return h('div', { class: 'song-cell-line', key: item.id }, [
             h(NTag, { size: 'small', type: available ? 'success' : 'default' }, { default: () => format }),
             h(NTooltip, null, {
               trigger: () => h('span', { class: 'song-cell-sub', style: 'margin-left: 6px;' }, available ? '可用' : '不可用'),
-              default: () => path,
+              default: () => tip,
             }),
           ])
         }))
@@ -592,6 +653,9 @@ const songColumns = computed(() => {
       const btns = []
       if (!mobile) {
         btns.push(iconBtn(PlayOutline, row.has_playable_file ? '播放' : '暂无可播放版本', { type: 'primary', disabled: !row.has_playable_file }, () => play(row)))
+      }
+      if (!row.has_playable_file) {
+        btns.push(iconBtn(RefreshOutline, '重新检查文件可用性', {}, () => onRecheck(row)))
       }
       if (!(row.available_formats || [row.format]).map((format) => String(format).toLowerCase()).includes('mp3')) {
         btns.push(iconBtn(SwapHorizontalOutline, '转为 MP3', {}, () => onConvert(row)))
@@ -750,6 +814,7 @@ function sourceActionOptions(source, { compact = false } = {}) {
   opts.push({ label: '整理', key: 'reorg' })
   opts.push({ label: '刮削信息', key: 'scrape' })
   opts.push({ label: '浏览文件', key: 'browse' })
+  if (!compact) opts.push({ label: '清理失效记录', key: 'cleanup' })
   if (source.type === 'webdav' && !source.is_default_upload) opts.push({ label: '设为默认上传', key: 'default' })
   if (source.deletable !== false && !source.is_builtin) opts.push({ label: '删除曲库', key: 'delete' })
   return opts
@@ -763,6 +828,7 @@ function onSourceAction(key, source) {
   else if (key === 'reorg') openReorg(source)
   else if (key === 'scrape') openScrape(source)
   else if (key === 'browse') openBrowseMode(source)
+  else if (key === 'cleanup') openCleanup()
   else if (key === 'default') onDefault(source)
   else if (key === 'delete') onDeleteSource(source)
 }
@@ -786,6 +852,7 @@ async function loadSongs({ resetPage = false } = {}) {
   try {
     const params = { q: songsQuery.value || undefined, page: songsPage.value, page_size: songsPageSize }
     if (selectedSourceId.value != null) params.source_id = selectedSourceId.value
+    params.availability = songsAvailability.value
     const res = await fetchSongs(params)
     if (requestId !== songsRequestId) return
     songs.value = res.data?.items || []
@@ -968,9 +1035,50 @@ async function confirmUpload(overwrite = false) {
   uploadConflictData.value = null
 }
 async function onDeleteSong(row) {
-  if (!window.confirm(`删除「${row.title}」？`)) return
-  try { await deleteSong(row.id, true); message.success('已删除'); await loadSources(); await loadSongs() }
+  const recordOnly = !row.has_playable_file
+  const tip = recordOnly
+    ? `「${row.title}」当前全部版本已失效，仅从曲库移除记录（不删除磁盘文件）？`
+    : `删除「${row.title}」及其文件？`
+  if (!window.confirm(tip)) return
+  try { await deleteSong(row.id, !recordOnly); message.success(recordOnly ? '已移除记录' : '已删除'); await loadSources(); await loadSongs() }
   catch (err) { message.error(formatApiError(err, '删除失败')) }
+}
+async function onRecheck(row) {
+  try {
+    const res = await recheckSong(row.id)
+    const updated = res.data || {}
+    const idx = songs.value.findIndex((s) => s.id === row.id)
+    if (idx >= 0) songs.value[idx] = updated
+    if (updated.has_playable_file) {
+      message.success(`「${row.title}」已恢复可用`)
+    } else {
+      message.warning(`「${row.title}」仍未找到可用文件`)
+    }
+  } catch (err) { message.error(formatApiError(err, '检查失败')) }
+}
+async function openCleanup() {
+  showCleanup.value = true
+  cleanupLoading.value = true
+  try {
+    const res = await previewLibraryCleanup()
+    cleanupPreview.value = res.data || null
+  } catch (err) { message.error(formatApiError(err, '分析失败')) }
+  finally { cleanupLoading.value = false }
+}
+async function confirmCleanup() {
+  cleanupRunning.value = true
+  try {
+    const res = await runLibraryCleanup()
+    const taskId = res.data?.task_id
+    showCleanup.value = false
+    if (taskId) {
+      const task = await waitTask(taskId)
+      if (task?.status === 'completed') message.success(task?.result?.message || '清理完成')
+      else throw new Error(task?.error_message || task?.result?.message || '清理任务未完成')
+    }
+    await loadSources(); await loadSongs()
+  } catch (err) { message.error(formatApiError(err, '清理失败')) }
+  finally { cleanupRunning.value = false }
 }
 async function onDeleteBrowseItem(row) {
   const path = row.path || row.name

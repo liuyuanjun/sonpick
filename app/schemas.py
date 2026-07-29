@@ -225,6 +225,25 @@ class SongPageOut(BaseModel):
     page_size: int
 
 
+class CleanupSongEntry(BaseModel):
+    song_id: int
+    title: Optional[str] = None
+    artist: Optional[str] = None
+    album: Optional[str] = None
+    version_count: int = 0
+    reason: Optional[str] = None
+
+
+class CleanupPreviewOut(BaseModel):
+    dead_songs: int
+    healable: int
+    cleanable: int
+    blocked: int
+    healable_samples: list[CleanupSongEntry] = Field(default_factory=list)
+    cleanable_samples: list[CleanupSongEntry] = Field(default_factory=list)
+    blocked_samples: list[CleanupSongEntry] = Field(default_factory=list)
+
+
 class ArtistOut(BaseModel):
     name: str
     song_count: int

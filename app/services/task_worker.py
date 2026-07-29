@@ -268,6 +268,28 @@ class TaskWorker:
                 self.emit(task_id, msg, 100)
                 return
 
+            if task.type == "cleanup":
+                from app.services.library_cleanup_service import LibraryCleanupService
+
+                def _cleanup_emit(msg: str, pct: Optional[int] = None, _tid=task_id):
+                    self.emit(_tid, msg, pct)
+
+                self.emit(task_id, "正在清理失效记录...", 5)
+                result = LibraryCleanupService(db).run(emit=_cleanup_emit)
+                msg = (
+                    f"清理完成: 恢复 {result.get('healed', 0)}, "
+                    f"清理 {result.get('deleted', 0)}, "
+                    f"跳过 {result.get('blocked', 0)}"
+                )
+                result["ok"] = True
+                result["message"] = msg
+                task.result_json = json.dumps(result, ensure_ascii=False)
+                task.status = "completed"
+                task.updated_at = datetime.now(timezone.utc)
+                db.commit()
+                self.emit(task_id, msg, 100)
+                return
+
             if task.type == "scrape":
                 from app.services.scrape.job import run_scrape_job
 

@@ -279,6 +279,18 @@ export function deleteSong(songId, deleteFiles = true) {
   return api.delete(`/songs/${songId}`, { params: { delete_files: deleteFiles } })
 }
 
+export function recheckSong(songId) {
+  return api.post(`/songs/${songId}/recheck`, null, { timeout: 60000 })
+}
+
+export function previewLibraryCleanup() {
+  return api.post('/library/cleanup/preview', null, { timeout: 120000 })
+}
+
+export function runLibraryCleanup() {
+  return api.post('/library/cleanup', null, { timeout: 30000 })
+}
+
 export function listWebdav(path = '', sourceId = null) {
   const params = { path }
   if (sourceId != null) params.source_id = sourceId

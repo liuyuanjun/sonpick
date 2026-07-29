@@ -371,6 +371,7 @@ class SongFile(Base):
             "source_priority": self.source_priority,
             "availability_status": self.availability_status,
             "last_checked_at": iso_utc(self.last_checked_at),
+            "last_error": self.last_error,
         }
 
 

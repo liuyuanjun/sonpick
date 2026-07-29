@@ -26,7 +26,7 @@
 
 **非目标**：多用户、公网商用、版权绕过。仅供个人学习与备份。
 
-当前版本（以代码为准）：`0.14.1`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
+当前版本（以代码为准）：`0.15.0-rc1`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
 
 ### 1.1 歌词与元信息边界
 
@@ -144,6 +144,7 @@ music/
 - **SongFile 是物理文件唯一真相源**：所有播放、上传、转码、删除、整理、刮削和标签写入必须通过 `SongFileResolver` 或明确 SongFile 查询选择版本；禁止重新引入 `Song.local_path` / `Song.webdav_path`。
 - `Song.cover_path` / `Song.lrc_path` 是聚合缓存；`SongFile.cover_path` / `SongFile.lrc_path` 是版本侧车资源。扫描和选中版本时可回填聚合缓存。
 - 扫描接口 `/api/library/scan` 和 `/api/sources/{source_id}/scan` 会创建 `type=scan` 的异步任务；前端经任务中心/单任务 SSE 接收终态。
+- 失效记录管理：`GET /api/songs?availability=available|all|unavailable` 筛选；`POST /api/songs/{id}/recheck` 单歌重检（本地 stat + WebDAV 探测，连接失败保留原状态）；`POST /api/library/cleanup/preview` 分析 + `POST /api/library/cleanup` 创建 `type=cleanup` 异步任务（`library_cleanup_service`：文件还在→恢复 available，确认失联→仅删 DB 记录，存储不可达→跳过防误删）。
 - `Task.created_at` 表示入队时间，`Task.started_at` 表示 worker 实际开始执行时间；排队等待与任务耗时必须分别使用这两个时间计算。
 
 ### 4.3.1 搜索曲库比对与下载重复决策
@@ -375,7 +376,7 @@ ssh qnap 'curl -sS http://127.0.0.1:8301/health'
 
 ### 任务系统细节
 
-- `Task.status`：`pending/running/completed/failed/cancelled`；类型：`scan/scrape/convert/search_download/batch_download`
+- `Task.status`：`pending/running/completed/failed/cancelled`；类型：`scan/scrape/lyrics/convert/search_download/batch_download/cleanup`
 - 执行模型：线程池内跑同步函数，`worker_thread_id` 记录线程 ident（旧任务为 NULL）
 - **watchdog**（60s 周期）：future 完成但状态仍 running、线程消亡、或**无 worker_thread_id 且任务时长超 4 小时**（历史遗留任务）→ 标记 `failed`
 - 前端 TaskCenter 抽屉打开时 10s 兜底轮询
