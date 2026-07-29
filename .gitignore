@@ -1,6 +1,9 @@
-# IDE
+# IDE / local agent tools
 .vscode/
 .idea/
+.claude/
+.codex/
+.willdeep/
 
 # runtime / secrets
 .env
@@ -34,4 +37,5 @@ tmp
 web/.npm-cache
 
 # musicdl test / intermediate outputs
+musicdl/
 musicdl_outputs/
