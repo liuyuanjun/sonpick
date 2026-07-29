@@ -99,11 +99,14 @@ cmd_set() {
   verify_consistent "$v"
 
   # 2. CHANGELOG（缺段落时插模板并给出提醒；不阻断流程）
-  ensure_changelog "$v" || true
+  local changelog_inserted=0
+  ensure_changelog "$v" || changelog_inserted=1
 
   # 3. commit（未提供 -m 则跳过；没有变化则自动跳过）
   if [ -n "$msg" ]; then
-    git add "$MAIN_PY" "$SETUP_PY" "$PKG_JSON" "$CHANGELOG" AGENTS.md ${includes[@]+"${includes[@]}"}
+    local add_paths=("$MAIN_PY" "$SETUP_PY" "$PKG_JSON" "$CHANGELOG")
+    [ -f AGENTS.md ] && add_paths+=(AGENTS.md)
+    git add "${add_paths[@]}" ${includes[@]+"${includes[@]}"}
     if git diff --cached --quiet; then
       info "无待提交变化，跳过 commit"
     else
@@ -117,8 +120,20 @@ cmd_set() {
   fi
 
   # 4. tag（已存在则跳过；存在但不在 HEAD 时提醒）
-  local tag="v$v"
-  if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+  #    仅在版本文件与 CHANGELOG 均已提交、且 CHANGELOG 非刚插入的模板时创建，
+  #    避免 tag 指向不含本次版本改动的旧 HEAD 或未写完的 CHANGELOG。
+  local tag="v$v" tag_ready=1
+  if [ "$changelog_inserted" = "1" ]; then
+    info "!! CHANGELOG 刚插入模板尚未补充，跳过打 tag（补充并提交后重跑同一命令续跑）"
+    tag_ready=0
+  elif ! git diff --quiet -- "$MAIN_PY" "$SETUP_PY" "$PKG_JSON" "$CHANGELOG" \
+    || ! git diff --cached --quiet -- "$MAIN_PY" "$SETUP_PY" "$PKG_JSON" "$CHANGELOG"; then
+    info "!! 版本文件/CHANGELOG 有未提交改动，跳过打 tag（提交后重跑同一命令续跑）"
+    tag_ready=0
+  fi
+  if [ "$tag_ready" = "0" ]; then
+    :
+  elif git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
     if [ "$(git rev-list -n1 "$tag")" != "$(git rev-parse HEAD)" ]; then
       info "!! tag $tag 已存在但不指向 HEAD（$(git rev-parse --short HEAD)），如需移动请先删除: git tag -d $tag"
     else
@@ -128,14 +143,22 @@ cmd_set() {
     git tag "$tag"
     info "已创建 tag $tag"
   fi
+  if [ -n "$(git status --porcelain)" ]; then
+    info "!! 工作区仍有未提交/未跟踪文件，tag 指向的提交可能不包含它们："
+    git status --short | sed 's/^/[version]   /'
+  fi
 
-  # 5. push（幂等：远端已有 tag 则跳过 tag 推送）
+  # 5. push（幂等：远端已有 tag 则跳过 tag 推送；tag 缺失或不指向 HEAD 时不推）
   if [ "$push" = "1" ]; then
     local branch
     branch="$(current_branch)"
     git push origin "$branch"
     info "已推送分支 $branch"
-    if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+    if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+      info "!! 本地 tag $tag 不存在，跳过 tag 推送（解决上述提醒后重跑同一命令）"
+    elif [ "$(git rev-list -n1 "$tag")" != "$(git rev-parse HEAD)" ]; then
+      info "!! tag $tag 不指向 HEAD，跳过 tag 推送；确需移动请先 git tag -d $tag 再重跑"
+    elif git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
       info "远端已有 ${tag}，跳过 tag 推送"
     else
       git push origin "$tag"
