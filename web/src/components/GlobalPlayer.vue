@@ -1,5 +1,6 @@
 <template>
-  <transition name="slide-up">
+  <teleport to="body">
+    <transition name="slide-up">
     <div v-if="player.showPlayer && player.current" class="global-player">
       <div class="gp-progress-line" aria-hidden="true">
         <div class="fill" :style="{ width: `${progress}%` }"></div>
@@ -111,6 +112,7 @@
       </div>
     </div>
   </transition>
+  </teleport>
 </template>
 
 <script setup>

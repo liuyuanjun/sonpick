@@ -27,7 +27,7 @@
       />
     </n-layout-sider>
 
-    <n-layout style="position: relative; z-index: 2;">
+    <n-layout>
       <n-layout-header bordered class="header">
         <div class="header-left">
           <n-text strong>{{ routeTitle }}</n-text>
@@ -74,10 +74,6 @@
         <router-view />
       </n-layout-content>
 
-      <n-layout-footer v-show="player.showPlayer && player.current" bordered class="footer">
-        <global-player />
-      </n-layout-footer>
-
       <nav v-if="isMobile" class="mobile-tabs">
         <div
           v-for="t in tabs"
@@ -92,6 +88,8 @@
       </nav>
     </n-layout>
   </n-layout>
+
+  <global-player />
 
   <n-modal v-model:show="showPasswordModal" preset="dialog" title="修改密码" positive-text="确认修改" negative-text="取消" :loading="changingPassword" @positive-click="handleChangePassword">
     <n-space vertical>
@@ -253,12 +251,6 @@ function logout() {
 }
 .content.player-content.has-mini-player {
   padding-bottom: 84px;
-}
-.footer {
-  position: sticky;
-  bottom: 0;
-  z-index: 20;
-  padding: 0;
 }
 .mobile-tabs {
   position: fixed;
