@@ -240,6 +240,21 @@ pnpm install && pnpm build
 API 必须继续暴露 `X-App-Version`。  
 用户要求 git 提交时：打 `v{版本号}` tag，并与代码一并推送（远程为 GitHub 时）。
 
+### 6.1 版本发布辅助脚本（`scripts/version.sh`）
+
+改版本、提交、打 tag、推送优先用脚本完成，幂等可重入，任何一步失败后**重跑同一命令即可续跑**（已完成的步骤自动跳过）：
+
+```bash
+scripts/version.sh current                 # 查看三处版本号、一致性、CHANGELOG 段落、tag/HEAD 状态
+scripts/version.sh set 0.15.0-rc2          # 只改三处版本号 + 校验 CHANGELOG（缺段落自动插模板并提醒补充）
+scripts/version.sh set 0.15.0-rc2 -m "fix(scan): 修复xxx"          # 改版本 + commit + 打 tag
+scripts/version.sh set 0.15.0-rc2 -m "fix(scan): 修复xxx" --push   # 以上全部 + 推送分支和 tag
+```
+
+- commit 信息没带 `(版本号)` 后缀时脚本自动补上；额外要一起提交的路径用 `--include <路径>` 追加。
+- tag 已存在但不指向 HEAD 时脚本只提醒不移动；确需移动先 `git tag -d v{版本号}` 再重跑。
+- 推送完成后确认 release workflow 通过（`gh run list --limit 3`）再部署 NAS。
+
 ---
 
 ## 7. 本地开发
