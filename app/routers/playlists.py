@@ -5,7 +5,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Favorite, MediaSource, Playlist, PlaylistItem, Song
+from app.models import Favorite, Playlist, PlaylistItem, Song
 from app.routers.auth import get_current_user
 from app.schemas import (
     PlaylistAddSongs,
@@ -14,17 +14,9 @@ from app.schemas import (
     PlaylistUpdate,
     SongOut,
 )
+from app.services.library_visibility import active_song_query
 
 router = APIRouter(prefix="/playlists", tags=["playlists"])
-
-
-def _active_source_ids(db: Session) -> list[int]:
-    return [r[0] for r in db.query(MediaSource.id).filter(MediaSource.enabled == True).all()]
-
-
-def _active_song_query(db: Session):
-    active_ids = _active_source_ids(db)
-    return db.query(Song).filter((Song.library_source_id.is_(None)) | (Song.library_source_id.in_(active_ids)))
 
 
 def _song_out(song: Song, favorite_ids: set[int] | None = None) -> SongOut:
@@ -136,7 +128,7 @@ def list_playlist_songs(
     song_ids = [i.song_id for i in items]
     if not song_ids:
         return []
-    songs = _active_song_query(db).filter(Song.id.in_(song_ids)).all()
+    songs = active_song_query(db).filter(Song.id.in_(song_ids)).all()
     song_map = {s.id: s for s in songs}
     fav_ids = {
         f.song_id

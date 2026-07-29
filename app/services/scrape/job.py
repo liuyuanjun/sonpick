@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Song
 from app.services.library_layout import is_generic_dir_name
+from app.services.library_visibility import has_version_in_source
 from app.services.media_meta_service import is_local_file, read_audio_duration, resolve_song_meta
 from app.services.operation_log_service import write_log
 from app.services.song_file_resolver import NoPlayableSongFileError, SongFileResolver
@@ -41,7 +42,8 @@ def run_scrape_job(
 
     q = db.query(Song)
     if source_id is not None:
-        q = q.filter(Song.library_source_id == source_id)
+        # 按版本归属筛选：拥有该来源任一版本的歌曲
+        q = q.filter(has_version_in_source(db, source_id))
     if song_ids:
         q = q.filter(Song.id.in_(song_ids))
     q = q.order_by(Song.id.asc())

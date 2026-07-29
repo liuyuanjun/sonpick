@@ -491,8 +491,6 @@ class WebDAVService:
             has_local = any(sf.local_path for sf in versions)
             has_remote = any(sf.webdav_path for sf in versions)
             song.status = "both" if has_local and has_remote else "local" if has_local else "remote"
-            if target_source_id:
-                song.library_source_id = target_source_id
             from datetime import datetime, timezone
             song.updated_at = datetime.now(timezone.utc)
             self.db.commit()

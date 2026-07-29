@@ -61,8 +61,6 @@ def apply_keep_both(db: Session, new_song: Song, matched_song_id: Optional[int])
         return new_song
     new_file = _resolve_new_local_file(db, new_song)
     new_file.song_id = matched.id
-    if matched.library_source_id is None and new_song.library_source_id is not None:
-        matched.library_source_id = new_song.library_source_id
     new_file.updated_at = _now()
     db.add(new_file)
     _adopt_sidecars(db, matched, new_song, new_file)

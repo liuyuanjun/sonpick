@@ -7,6 +7,7 @@ from typing import Any, Callable
 from sqlalchemy.orm import Session
 
 from app.models import Song
+from app.services.library_visibility import has_version_in_source
 from app.services.lrclib_provider import LrclibRateLimitError
 from app.services.lyrics_search_service import LyricsApplicationError, LyricsSearchService
 from app.services.operation_log_service import write_log
@@ -28,7 +29,8 @@ def run_lyrics_job(
     if song_ids:
         query = query.filter(Song.id.in_(sorted(set(song_ids))))
     if library_source_id is not None:
-        query = query.filter(Song.library_source_id == library_source_id)
+        # 按版本归属筛选：拥有该来源任一版本的歌曲
+        query = query.filter(has_version_in_source(db, library_source_id))
     songs = query.order_by(Song.id.asc()).all()
     stats = {
         "total": len(songs),

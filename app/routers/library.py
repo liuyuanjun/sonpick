@@ -12,6 +12,7 @@ from app.models import AppSettings, Favorite, MediaSource, Song, SongFile
 from app.routers.auth import get_current_user
 from app.schemas import SongOut, SongPageOut
 from app.services.convert_service import LOSSLESS_FORMATS, ConvertService
+from app.services.library_visibility import active_song_query
 from app.services.operation_log_service import write_log
 from app.services.song_file_resolver import NoPlayableSongFileError, SongFileResolver
 from app.services.webdav_service import WebDAVService
@@ -85,19 +86,6 @@ def _parse_range(range_header: str, file_size: int):
     return start, end
 
 
-def _active_source_ids(db: Session) -> list[int]:
-    return [r[0] for r in db.query(MediaSource.id).filter(MediaSource.enabled == True).all()]
-
-
-def _active_song_query(db: Session):
-    active_ids = _active_source_ids(db)
-    return db.query(Song).filter(
-        Song.id.in_(db.query(SongFile.song_id).filter(
-            (SongFile.library_source_id.is_(None)) | (SongFile.library_source_id.in_(active_ids))
-        ))
-    )
-
-
 def _playable_song_ids(db: Session):
     """至少有一个有效版本的 Song 子查询。
 
@@ -138,7 +126,7 @@ def list_songs(
         source = db.get(MediaSource, source_id)
         source_type = source.type if source else None
 
-    query = _active_song_query(db).order_by(Song.id.desc())
+    query = active_song_query(db).order_by(Song.id.desc())
     if availability == "available":
         query = query.filter(Song.id.in_(_playable_song_ids(db)))
     elif availability == "unavailable":

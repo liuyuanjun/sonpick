@@ -209,7 +209,6 @@ class Song(Base):
     lyrics_score = Column(Integer, nullable=True)
     lyrics_fetched_at = Column(DateTime, nullable=True)
     lyrics_instrumental = Column(Boolean, default=False)
-    library_source_id = Column(Integer, ForeignKey("media_sources.id", ondelete="SET NULL"), nullable=True)
     status = Column(String(16), default="local")  # local / uploaded / both / remote
     play_count = Column(Integer, default=0)
     meta_confidence = Column(Integer, default=0)  # 0-100
@@ -240,7 +239,6 @@ class Song(Base):
             "lyrics_score": self.lyrics_score,
             "lyrics_fetched_at": iso_utc(self.lyrics_fetched_at),
             "lyrics_instrumental": bool(self.lyrics_instrumental),
-            "library_source_id": self.library_source_id,
             "status": self.status,
             "play_count": self.play_count or 0,
             "created_at": iso_utc(self.created_at),

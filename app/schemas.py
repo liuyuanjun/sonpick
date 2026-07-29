@@ -207,7 +207,6 @@ class SongOut(BaseModel):
     lyrics_score: Optional[int] = None
     lyrics_fetched_at: Optional[str] = None
     lyrics_instrumental: bool = False
-    library_source_id: Optional[int] = None
     status: str
     play_count: int = 0
     is_favorite: bool = False

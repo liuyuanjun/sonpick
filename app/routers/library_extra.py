@@ -26,6 +26,11 @@ from app.schemas import (
     SongOut,
 )
 from app.services.lyrics_service import load_lyrics_for_song
+from app.services.library_visibility import (
+    active_song_filter,
+    active_song_query,
+    count_songs_in_source,
+)
 from app.services.scrape.cover_utils import enrich_cover_fields, qq_song_detail_cover
 from app.services.media_meta_service import (
     extract_embedded_cover_bytes,
@@ -36,15 +41,6 @@ from app.services.media_meta_service import (
 )
 
 router = APIRouter(tags=["library-extra"])
-
-
-def _active_source_ids(db: Session) -> list[int]:
-    return [r[0] for r in db.query(MediaSource.id).filter(MediaSource.enabled == True).all()]
-
-
-def _active_song_query(db: Session):
-    active_ids = _active_source_ids(db)
-    return db.query(Song).filter((Song.library_source_id.is_(None)) | (Song.library_source_id.in_(active_ids)))
 
 
 def _favorite_ids(db: Session, song_ids: list[int] | None = None) -> set[int]:
@@ -463,11 +459,10 @@ def list_favorites(
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    active_ids = _active_source_ids(db)
     rows = (
         db.query(Favorite, Song)
         .join(Song, Song.id == Favorite.song_id)
-        .filter((Song.library_source_id.is_(None)) | (Song.library_source_id.in_(active_ids)))
+        .filter(active_song_filter(db))
         .order_by(Favorite.created_at.desc())
         .all()
     )
@@ -479,7 +474,7 @@ def list_artists(
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    songs = _active_song_query(db).all()
+    songs = active_song_query(db).all()
     groups: dict[str, list[Song]] = defaultdict(list)
     for s in songs:
         name = (s.artist or "未知艺术家").strip() or "未知艺术家"
@@ -511,14 +506,14 @@ def list_artist_songs(
     name = artist_name.strip()
     if name == "未知艺术家":
         songs = (
-            _active_song_query(db)
+            active_song_query(db)
             .filter((Song.artist.is_(None)) | (Song.artist == "") | (Song.artist == "未知艺术家"))
             .order_by(Song.title.asc())
             .all()
         )
     else:
         songs = (
-            _active_song_query(db)
+            active_song_query(db)
             .filter(Song.artist == name)
             .order_by(Song.album.asc(), Song.title.asc())
             .all()
@@ -532,7 +527,7 @@ def list_albums(
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    songs = _active_song_query(db).all()
+    songs = active_song_query(db).all()
     groups: dict[tuple[str, str], list[Song]] = defaultdict(list)
     for s in songs:
         album = (s.album or "未知专辑").strip() or "未知专辑"
@@ -563,7 +558,7 @@ def list_album_songs(
     db: Session = Depends(get_db),
 ):
     album = name.strip() or "未知专辑"
-    q = _active_song_query(db)
+    q = active_song_query(db)
     if album == "未知专辑":
         q = q.filter((Song.album.is_(None)) | (Song.album == "") | (Song.album == "未知专辑"))
     else:
@@ -587,17 +582,16 @@ def list_history(
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    active_ids = set(_active_source_ids(db))
     rows = (
         db.query(PlayHistory)
         .join(Song, Song.id == PlayHistory.song_id)
-        .filter((Song.library_source_id.is_(None)) | (Song.library_source_id.in_(active_ids)))
+        .filter(active_song_filter(db))
         .order_by(PlayHistory.played_at.desc())
         .limit(limit)
         .all()
     )
     song_ids = [r.song_id for r in rows]
-    songs = _active_song_query(db).filter(Song.id.in_(song_ids)).all() if song_ids else []
+    songs = active_song_query(db).filter(Song.id.in_(song_ids)).all() if song_ids else []
     song_map = {s.id: s for s in songs}
     fav = _favorite_ids(db, song_ids)
     result = []
@@ -619,13 +613,13 @@ def library_stats(
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    songs = _active_song_query(db).all()
+    songs = active_song_query(db).all()
     artists = {(s.artist or "未知艺术家").strip() or "未知艺术家" for s in songs}
     albums = {
         ((s.album or "未知专辑").strip() or "未知专辑", (s.artist or "").strip())
         for s in songs
     }
-    fav_count = db.query(func.count(Favorite.id)).join(Song, Song.id == Favorite.song_id).filter((Song.library_source_id.is_(None)) | (Song.library_source_id.in_(_active_source_ids(db)))).scalar() or 0
+    fav_count = db.query(func.count(Favorite.id)).join(Song, Song.id == Favorite.song_id).filter(active_song_filter(db)).scalar() or 0
     pl_count = db.query(func.count(Playlist.id)).scalar() or 0
     total_duration = sum(int(s.duration or 0) for s in songs)
     total_size = sum(int(s.file_size or 0) for s in songs)
@@ -649,7 +643,7 @@ def library_stats(
             "id": src.id,
             "name": src.name,
             "type": src.type,
-            "song_count": db.query(Song).filter(Song.library_source_id == src.id).count(),
+            "song_count": count_songs_in_source(db, src.id),
             "connection_status": src.connection_status or "unknown",
             "last_scan_at": iso_utc(src.last_scan_at),
             "is_default_upload": bool(src.is_default_upload),

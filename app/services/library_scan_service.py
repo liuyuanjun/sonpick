@@ -23,6 +23,7 @@ from app.services.library_layout import (
     find_track_cover_file,
     is_generic_dir_name,
 )
+from app.services.library_visibility import count_songs_in_source
 from app.services.media_meta_service import enrich_local_audio, is_local_file, read_audio_tags, resolve_song_meta
 from app.services.operation_log_service import write_log
 from app.services.webdav_service import WebDAVService
@@ -281,7 +282,6 @@ class LibraryScanService:
                     file_size=size,
                     cover_path=cover,
                     lrc_path=lrc,
-                    library_source_id=source_id,
                     status="local",
                     created_at=_now(),
                     updated_at=_now(),
@@ -371,9 +371,6 @@ class LibraryScanService:
                     song_file.updated_at = _now()
                 changed = False
                 if self._refresh_song_aggregate_assets(song):
-                    changed = True
-                if not song.library_source_id and source_id:
-                    song.library_source_id = source_id
                     changed = True
                 # Prefer richer tags: fill empty fields, and replace generic/collection-folder names.
                 if meta["artist"]:
@@ -473,7 +470,6 @@ class LibraryScanService:
                     file_size=size,
                     cover_path=cover,
                     lrc_path=lrc,
-                    library_source_id=source_id,
                     status="remote",
                     created_at=_now(),
                     updated_at=_now(),
@@ -515,9 +511,6 @@ class LibraryScanService:
                     song_file.last_checked_at = _now()
                     song_file.updated_at = _now()
                 changed = False
-                if not song.library_source_id and source_id:
-                    song.library_source_id = source_id
-                    changed = True
                 if meta["artist"]:
                     if (not song.artist) or _is_generic_dir_name(song.artist):
                         if song.artist != meta["artist"]:
@@ -740,9 +733,7 @@ class LibraryScanService:
         source.last_scan_at = _now()
         source.last_scan_added = stats.get("added", 0) or 0
         source.last_scan_updated = stats.get("updated", 0) or 0
-        source.song_count = (
-            self.db.query(Song).filter(Song.library_source_id == source.id).count()
-        )
+        source.song_count = count_songs_in_source(self.db, source.id)
         self.db.commit()
 
     def _refresh_song_aggregate_assets(self, song: Song) -> bool:

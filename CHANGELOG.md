@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.15.0-rc4
+
+### 修复
+- 喜欢列表、艺术家、专辑、最近播放、歌单与统计的来源可见性过滤与歌曲列表口径不一致：这些列表按 `Song.library_source_id` 判断来源，而歌曲列表按 SongFile 版本判断。歌曲先由某来源扫入、后来合并了其他来源的版本后，停用原来源会导致歌曲在歌曲列表正常显示（可播放、可点红心）却从喜欢列表等视图消失。现统一为版本口径：歌曲拥有任一属于启用来源的版本即可见。
+- 批量歌词/刮削/整理任务按来源选歌、各来源歌曲数统计，同步改为「拥有该来源任一版本的歌曲」口径，与单源浏览视图一致。
+
+### 变更
+- `Song.library_source_id` 字段移除（含 SQLite 表重建迁移，幂等）：歌曲不再记录来源，来源归属统一由 `SongFile.library_source_id` 承载；新增共享模块 `library_visibility`（`active_song_query` / `has_version_in_source` / `count_songs_in_source`）作为唯一过滤口径，`SongOut` 不再返回 `library_source_id`。
+
 ## 0.15.0-rc3
 
 ### 修复

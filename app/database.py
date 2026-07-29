@@ -58,6 +58,7 @@ def init_db():
     _seed_media_sources(engine)
     _ensure_song_file_indexes(engine)
     _migrate_song_path_responsibility(engine)
+    _migrate_song_drop_library_source(engine)
 
 
 def _ensure_columns(engine: Engine):
@@ -112,7 +113,6 @@ def _ensure_columns(engine: Engine):
             "scrape_status": "VARCHAR(16) DEFAULT 'none'",
             "meta_locked": "BOOLEAN DEFAULT 0",
             "play_count": "INTEGER DEFAULT 0",
-            "library_source_id": "INTEGER",
         },
         "tasks": {
             "worker_thread_id": "INTEGER",
@@ -164,8 +164,10 @@ def _migrate_song_path_responsibility(engine: Engine):
     # 先关闭当前短连接的外键检查；重建完成后连接即关闭，设置不会影响其他连接。
     with engine.connect() as conn:
         conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        # 旧库可能尚无 library_source_id 列（取决于历经的版本），查询做自适应
+        lib_src_select = ", library_source_id" if "library_source_id" in columns else ""
         rows = conn.execute(text(
-            "SELECT id, format, duration, file_size, library_source_id, local_path, webdav_path, cover_path, lrc_path "
+            f"SELECT id, format, duration, file_size, local_path, webdav_path, cover_path, lrc_path{lib_src_select} "
             "FROM songs"
         )).mappings().all()
         created = 0
@@ -218,10 +220,11 @@ def _migrate_song_path_responsibility(engine: Engine):
                     enriched += 1
 
         # SQLite DROP COLUMN 对旧 SQLite 版本与外键约束不可靠，采用表重建。
+        # 同时顺手删除 library_source_id（来源归属统一由 SongFile 承载）。
         kept = [
             "id", "title", "artist", "album", "year", "genre", "source", "source_id", "format", "duration", "file_size",
             "cover_path", "lrc_path", "lyrics_provider", "lyrics_source_id", "lyrics_type", "lyrics_score",
-            "lyrics_fetched_at", "lyrics_instrumental", "library_source_id", "status", "play_count", "meta_confidence",
+            "lyrics_fetched_at", "lyrics_instrumental", "status", "play_count", "meta_confidence",
             "meta_provider", "scrape_status", "meta_locked", "created_at", "updated_at",
         ]
         definitions = [
@@ -232,7 +235,6 @@ def _migrate_song_path_responsibility(engine: Engine):
             "format VARCHAR(16)", "duration INTEGER", "file_size INTEGER", "cover_path VARCHAR(1024)",
             "lrc_path VARCHAR(1024)", "lyrics_provider VARCHAR(64)", "lyrics_source_id VARCHAR(128)",
             "lyrics_type VARCHAR(16)", "lyrics_score INTEGER", "lyrics_fetched_at DATETIME", "lyrics_instrumental BOOLEAN DEFAULT 0",
-            "library_source_id INTEGER REFERENCES media_sources(id) ON DELETE SET NULL",
             "status VARCHAR(16)", "play_count INTEGER", "meta_confidence INTEGER", "meta_provider VARCHAR(64)",
             "scrape_status VARCHAR(16)", "meta_locked BOOLEAN", "created_at DATETIME", "updated_at DATETIME",
         ]
@@ -243,9 +245,66 @@ def _migrate_song_path_responsibility(engine: Engine):
         ))
         conn.execute(text("DROP TABLE songs"))
         conn.execute(text("ALTER TABLE songs__path_migration RENAME TO songs"))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_songs_library_source_id ON songs (library_source_id)"))
         conn.commit()
         print(f"[migration] SongFile path responsibility: created={created}, enriched={enriched}", flush=True)
+
+
+def _migrate_song_drop_library_source(engine: Engine):
+    """一次性、幂等地从 songs 表删除 library_source_id 列。
+
+    歌曲与来源的归属统一由 SongFile.library_source_id 承载（见 library_visibility）。
+    已在路径责任迁移中重建过的新表不含该列，会自动跳过。
+    """
+    inspector = inspect(engine)
+    if "songs" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("songs")}
+    if "library_source_id" not in columns:
+        return
+
+    definitions = {
+        "id": "id INTEGER PRIMARY KEY AUTOINCREMENT",
+        "title": "title VARCHAR(255) NOT NULL",
+        "artist": "artist VARCHAR(255)",
+        "album": "album VARCHAR(255)",
+        "year": "year VARCHAR(16)",
+        "genre": "genre VARCHAR(255)",
+        "source": "source VARCHAR(64)",
+        "source_id": "source_id VARCHAR(128)",
+        "format": "format VARCHAR(16)",
+        "duration": "duration INTEGER",
+        "file_size": "file_size INTEGER",
+        "cover_path": "cover_path VARCHAR(1024)",
+        "lrc_path": "lrc_path VARCHAR(1024)",
+        "lyrics_provider": "lyrics_provider VARCHAR(64)",
+        "lyrics_source_id": "lyrics_source_id VARCHAR(128)",
+        "lyrics_type": "lyrics_type VARCHAR(16)",
+        "lyrics_score": "lyrics_score INTEGER",
+        "lyrics_fetched_at": "lyrics_fetched_at DATETIME",
+        "lyrics_instrumental": "lyrics_instrumental BOOLEAN DEFAULT 0",
+        "status": "status VARCHAR(16)",
+        "play_count": "play_count INTEGER",
+        "meta_confidence": "meta_confidence INTEGER",
+        "meta_provider": "meta_provider VARCHAR(64)",
+        "scrape_status": "scrape_status VARCHAR(16)",
+        "meta_locked": "meta_locked BOOLEAN",
+        "created_at": "created_at DATETIME",
+        "updated_at": "updated_at DATETIME",
+    }
+    kept = [name for name in definitions if name in columns]
+    with engine.connect() as conn:
+        conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        quoted = ", ".join(kept)
+        conn.execute(text(
+            f"CREATE TABLE songs__drop_libsrc ({', '.join(definitions[name] for name in kept)})"
+        ))
+        conn.execute(text(
+            f"INSERT INTO songs__drop_libsrc ({quoted}) SELECT {quoted} FROM songs"
+        ))
+        conn.execute(text("DROP TABLE songs"))
+        conn.execute(text("ALTER TABLE songs__drop_libsrc RENAME TO songs"))
+        conn.commit()
+        print("[migration] songs.library_source_id dropped; source ownership lives on song_files", flush=True)
 
 
 def _dump_json_list(items):
@@ -271,7 +330,6 @@ def _seed_media_sources(engine: Engine):
     with Session(engine) as db:
         count = db.query(MediaSource).count()
         if count > 0:
-            _backfill_song_sources(db)
             return
 
         s = _ensure_settings(db)
@@ -317,37 +375,6 @@ def _seed_media_sources(engine: Engine):
             db.flush()
 
         db.commit()
-        _backfill_song_sources(db, local_id=local.id, webdav_id=webdav_source.id if webdav_source else None)
-
-
-def _backfill_song_sources(db, local_id=None, webdav_id=None):
-    from app.models import MediaSource, Song, SongFile
-
-    if local_id is None:
-        local = db.query(MediaSource).filter(MediaSource.type == "local").order_by(MediaSource.id.asc()).first()
-        local_id = local.id if local else None
-    if webdav_id is None:
-        webdav = db.query(MediaSource).filter(MediaSource.type == "webdav").order_by(MediaSource.id.asc()).first()
-        webdav_id = webdav.id if webdav else None
-
-    songs = db.query(Song).filter(Song.library_source_id.is_(None)).all()
-    changed = False
-    for song in songs:
-        file = db.query(SongFile).filter(SongFile.song_id == song.id).order_by(SongFile.id.asc()).first()
-        if not file:
-            continue
-        if file.library_source_id:
-            song.library_source_id = file.library_source_id
-        elif file.local_path and local_id:
-            song.library_source_id = local_id
-        elif file.webdav_path and webdav_id:
-            song.library_source_id = webdav_id
-        else:
-            continue
-        changed = True
-    if changed:
-        db.commit()
-
 
 
 def get_db():

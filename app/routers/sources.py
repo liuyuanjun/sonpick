@@ -304,8 +304,7 @@ def delete_source(source_id: int, user: str = Depends(get_current_user), db: Ses
     if _is_builtin_local_source(source):
         raise HTTPException(status_code=400, detail="内置本地曲库不可删除")
 
-    # 解除歌曲关联
-    db.query(Song).filter(Song.library_source_id == source_id).update({"library_source_id": None})
+    # 歌曲与来源的关联由 SongFile 版本承载，删来源后版本行的外键自动置 NULL
 
     # 若删除的是默认上传源，清标记（查询已不存在，直接清除）
     if source.is_default_upload:

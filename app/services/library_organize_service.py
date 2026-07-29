@@ -16,6 +16,7 @@ from typing import Any, Optional
 from sqlalchemy.orm import Session
 
 from app.models import AppSettings, MediaSource, Song, SongFile
+from app.services.library_visibility import has_version_in_source
 from app.services.library_layout import (
     UNKNOWN_ALBUM,
     UNKNOWN_ARTIST,
@@ -1327,7 +1328,8 @@ class LibraryOrganizeService:
     ) -> dict[str, Any]:
         q = self.db.query(Song)
         if source_id is not None:
-            q = q.filter(Song.library_source_id == source_id)
+            # 按版本归属筛选：拥有该来源任一版本的歌曲
+            q = q.filter(has_version_in_source(self.db, source_id))
         if song_ids:
             q = q.filter(Song.id.in_(song_ids))
         q = q.order_by(Song.id.asc())
