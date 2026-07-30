@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.15.0-rc6
+
+### 修复
+- 刮削/采用元信息不再把「格式不支持内嵌标签」（如 WMA）当成整次失败：侧车与 L0 成功即可，版本状态区分 `written` / `unsupported` / `failed` / `skipped`。
+- 封面 L0 改为 `data/covers/by-hash/{sha256}` 内容寻址去重；刮削先写 L0 再写穿目录 `cover.jpg` 与可支持格式的内嵌图，列表/播放器展示只认 L0，WMA 刮削后也能显示封面。
+- 转码 MP3 后回填 `SongFile.cover_path` / `lrc_path`（从 L0 复制侧车）。
+- 歌词写入/清空对不支持内嵌的格式同样降级为 `unsupported`，不再误报失败。
+
+### 变更
+- 新增 `tag_write_capability` / `store_cover_bytes` / `materialize_cover_to_l0`；`apply_metadata_to_song_files` 返回 `unsupported`、`cover_path`（L0）。
+- 播放器切歌时有 song id 即请求封面 URL（无图由 `/cover` 404 + UI 占位处理）。
+- 设计说明见 `docs/metadata-l0-cover-refactor.md`。
+
 ## 0.15.0-rc5
 
 ### 变更
