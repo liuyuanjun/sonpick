@@ -30,11 +30,16 @@ def covers_root() -> Path:
     root.mkdir(parents=True, exist_ok=True)
     (root / "songs").mkdir(parents=True, exist_ok=True)
     (root / "cache").mkdir(parents=True, exist_ok=True)
+    (root / "by-hash").mkdir(parents=True, exist_ok=True)
     return root
 
 
 def _sha1_text(text: str) -> str:
     return hashlib.sha1(text.encode("utf-8", errors="ignore")).hexdigest()
+
+
+def _sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
 
 
 def song_cover_cache_path(song_id: int, ext: str = ".jpg") -> Path:
@@ -45,6 +50,13 @@ def song_cover_cache_path(song_id: int, ext: str = ".jpg") -> Path:
 def path_cover_cache_path(source_key: str, ext: str = ".jpg") -> Path:
     ext = ext if ext.startswith(".") else f".{ext}"
     return covers_root() / "cache" / f"{_sha1_text(source_key)}{ext}"
+
+
+def cover_by_hash_path(digest: str, ext: str = ".jpg") -> Path:
+    ext = ext if ext.startswith(".") else f".{ext}"
+    if ext.lower() == ".jpeg":
+        ext = ".jpg"
+    return covers_root() / "by-hash" / f"{digest}{ext.lower()}"
 
 
 def _guess_image_ext(data: bytes, fallback: str = ".jpg") -> str:
@@ -65,6 +77,62 @@ def write_cover_bytes(data: bytes, target: Path) -> Path:
         target = target.with_suffix(_guess_image_ext(data))
     target.write_bytes(data)
     return target
+
+
+def store_cover_bytes(data: bytes, *, ext: str | None = None) -> Path:
+    """L0 封面：按内容 hash 去重落盘到 data/covers/by-hash/。"""
+    if not data:
+        raise ValueError("empty cover bytes")
+    resolved_ext = ext if ext and ext.lower() in IMAGE_EXTS else _guess_image_ext(data)
+    if resolved_ext.lower() == ".jpeg":
+        resolved_ext = ".jpg"
+    digest = _sha256_bytes(data)
+    target = cover_by_hash_path(digest, resolved_ext)
+    if target.is_file() and target.stat().st_size > 0:
+        return target
+    return write_cover_bytes(data, target)
+
+
+def materialize_cover_to_l0(
+    source: str | Path | bytes | None = None,
+    *,
+    data: bytes | None = None,
+) -> Optional[str]:
+    """把本地文件或字节固化为 L0 by-hash 路径。"""
+    payload = data
+    if payload is None:
+        if isinstance(source, (bytes, bytearray)):
+            payload = bytes(source)
+        elif source:
+            path = Path(source)
+            if not path.is_file():
+                return None
+            try:
+                payload = path.read_bytes()
+            except OSError:
+                return None
+    if not payload:
+        return None
+    try:
+        return str(store_cover_bytes(payload))
+    except Exception:
+        return None
+
+
+# 明确支持内嵌文本/封面/歌词写入的格式（其余本轮视为 unsupported）
+_TAG_WRITE_FULL = {".mp3", ".flac", ".m4a", ".mp4", ".aac"}
+
+
+def tag_write_capability(path_or_suffix: str | Path | None) -> dict[str, bool]:
+    """返回该音频格式是否支持内嵌文本/封面/歌词写入。"""
+    if path_or_suffix is None:
+        return {"text": False, "cover": False, "lyrics": False}
+    raw = str(path_or_suffix).strip().lower()
+    if not raw:
+        return {"text": False, "cover": False, "lyrics": False}
+    suffix = raw if raw.startswith(".") and "/" not in raw and "\\" not in raw else Path(raw).suffix.lower()
+    supported = suffix in _TAG_WRITE_FULL
+    return {"text": supported, "cover": supported, "lyrics": supported}
 
 
 def is_local_file(path: Optional[str]) -> bool:
@@ -260,27 +328,21 @@ def extract_and_cache_embedded_cover(
     data = extract_embedded_cover_bytes(audio_path)
     if not data:
         return None
-    ext = _guess_image_ext(data)
-    if song_id is not None:
-        target = song_cover_cache_path(song_id, ext)
-    else:
-        key = source_key or str(Path(audio_path).resolve())
-        target = path_cover_cache_path(key, ext)
-    write_cover_bytes(data, target)
-    return str(target)
+    # L0：内容寻址；song_id/source_key 仅作兼容参数保留
+    _ = song_id, source_key
+    return materialize_cover_to_l0(data=data)
 
 
 def ensure_local_cover_from_sidecar(sidecar_path: str | Path, *, song_id: Optional[int] = None) -> Optional[str]:
     p = Path(sidecar_path)
     if not p.is_file():
         return None
-    if song_id is None:
-        return str(p)
-    ext = p.suffix.lower() if p.suffix.lower() in IMAGE_EXTS else ".jpg"
-    target = song_cover_cache_path(song_id, ext)
-    if not target.exists() or target.stat().st_size == 0:
-        shutil.copyfile(str(p), str(target))
-    return str(target)
+    l0 = materialize_cover_to_l0(p)
+    if l0:
+        return l0
+    # 无法读入 by-hash 时退回原路径（调用方可继续使用侧车）
+    _ = song_id
+    return str(p)
 
 
 

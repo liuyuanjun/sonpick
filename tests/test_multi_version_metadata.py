@@ -87,7 +87,9 @@ class MultiVersionMetadataTests(unittest.TestCase):
         self.assertEqual(write_tags.call_count, 2)
         self.assertEqual(result["written"], 2)
         self.assertEqual(result["skipped"], 1)
+        self.assertEqual(result["unsupported"], 0)
         self.assertEqual(result["versions"][2]["reason"], "远端只读，未写入")
+        self.assertTrue(result["ok"])
 
     def test_cover_sidecar_is_written_once_per_directory(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -103,24 +105,30 @@ class MultiVersionMetadataTests(unittest.TestCase):
             for item in files:
                 Path(item.local_path).write_bytes(b"audio")
             resolver = FakeResolver(files, files)
+            target_song = song()
 
-            def download(_url, target, timeout=20):
-                Path(target).write_bytes(b"cover")
-                return {"ok": True, "path": str(target)}
+            def fake_l0(*, cover_url=None, cover_source_path=None):
+                l0 = Path(directory) / "l0-cover.jpg"
+                l0.write_bytes(b"cover-l0")
+                return {"ok": True, "path": str(l0), "source": "url"}
 
             with (
                 patch("app.services.song_metadata_apply_service.SongFileResolver", return_value=resolver),
-                patch("app.services.song_metadata_apply_service.download_cover_with_diagnostics", side_effect=download) as downloader,
+                patch("app.services.song_metadata_apply_service._store_l0_cover", side_effect=fake_l0) as l0_store,
                 patch("app.services.song_metadata_apply_service.write_audio_tags", return_value={"cover": True}),
             ):
                 result = apply_metadata_to_song_files(
-                    FakeDb(), song(), selected_fields={"cover"}, cover_url="https://example.com/cover.jpg"
+                    FakeDb(), target_song, selected_fields={"cover"}, cover_url="https://example.com/cover.jpg"
                 )
 
-        self.assertEqual(downloader.call_count, 2)
-        self.assertEqual(result["written"], 3)
-        self.assertEqual(files[0].cover_path, files[1].cover_path)
-        self.assertNotEqual(files[0].cover_path, files[2].cover_path)
+            self.assertEqual(l0_store.call_count, 1)
+            self.assertEqual(result["written"], 3)
+            self.assertTrue(result["ok"])
+            self.assertTrue(target_song.cover_path)
+            self.assertEqual(files[0].cover_path, files[1].cover_path)
+            self.assertNotEqual(files[0].cover_path, files[2].cover_path)
+            self.assertTrue(Path(files[0].cover_path).is_file())
+            self.assertTrue(Path(files[2].cover_path).is_file())
 
     def test_partial_tag_failure_is_reported(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -137,6 +145,45 @@ class MultiVersionMetadataTests(unittest.TestCase):
         self.assertTrue(result["partial"])
         self.assertEqual(result["written"], 1)
         self.assertEqual(result["failed"], 1)
+        self.assertFalse(result["ok"])
+
+    def test_wma_unsupported_with_sidecar_still_ok(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data_dir = Path(directory) / "data"
+            data_dir.mkdir()
+            wma = Path(directory) / "track.wma"
+            wma.write_bytes(b"wma")
+            files = [song_file(1, local_path=str(wma), fmt="wma")]
+            resolver = FakeResolver(files, files)
+            target_song = song()
+
+            def fake_l0(*, cover_url=None, cover_source_path=None):
+                l0 = data_dir / "by-hash" / "abc.jpg"
+                l0.parent.mkdir(parents=True, exist_ok=True)
+                l0.write_bytes(b"cover-bytes")
+                return {"ok": True, "path": str(l0), "source": "url"}
+
+            with (
+                patch("app.services.song_metadata_apply_service.SongFileResolver", return_value=resolver),
+                patch("app.services.song_metadata_apply_service._store_l0_cover", side_effect=fake_l0),
+                patch("app.services.song_metadata_apply_service.write_audio_tags") as write_tags,
+            ):
+                result = apply_metadata_to_song_files(
+                    FakeDb(),
+                    target_song,
+                    selected_fields={"title", "cover"},
+                    cover_url="https://example.com/c.jpg",
+                )
+
+            write_tags.assert_not_called()
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["failed"], 0)
+            self.assertEqual(result["unsupported"], 1)
+            self.assertEqual(result["written"], 0)
+            self.assertEqual(result["versions"][0]["status"], "unsupported")
+            self.assertTrue(target_song.cover_path)
+            self.assertTrue(Path(directory, "cover.jpg").is_file())
+            self.assertTrue(files[0].cover_path)
 
 
 class MultiVersionLyricsTests(unittest.TestCase):
@@ -193,6 +240,49 @@ class MultiVersionLyricsTests(unittest.TestCase):
         with patch("app.services.lyrics_search_service.SongFileResolver", return_value=resolver):
             with self.assertRaisesRegex(RuntimeError, "没有可写入的本地文件"):
                 LyricsSearchService(FakeDb()).apply(song(), {"plain_lyrics": "歌词"})
+
+    def test_wma_lyrics_sidecar_ok_embed_unsupported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            wma = Path(directory) / "a.wma"
+            wma.write_bytes(b"x")
+            files = [song_file(1, local_path=str(wma), fmt="wma")]
+            resolver = FakeResolver(files, files)
+            with (
+                patch("app.services.lyrics_search_service.SongFileResolver", return_value=resolver),
+                patch("app.services.lyrics_search_service.write_audio_tags") as write_tags,
+            ):
+                result = LyricsSearchService(FakeDb()).apply(
+                    song(),
+                    {"source": "lrclib", "synced_lyrics": "[00:01]hi", "score": 90},
+                )
+            self.assertTrue(Path(files[0].lrc_path).is_file())
+        write_tags.assert_not_called()
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["unsupported"], 1)
+        self.assertEqual(result["versions"][0]["status"], "unsupported")
+
+
+class CoverL0HelpersTests(unittest.TestCase):
+    def test_store_cover_bytes_dedupes_by_hash(self):
+        from app.services import media_meta_service as mms
+
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(mms, "covers_root", return_value=Path(directory)):
+                Path(directory, "by-hash").mkdir(parents=True, exist_ok=True)
+                data = b"\xff\xd8\xff" + b"jpeg-payload"
+                first = mms.store_cover_bytes(data)
+                second = mms.store_cover_bytes(data)
+                self.assertEqual(first, second)
+                self.assertTrue(first.is_file())
+                self.assertIn("by-hash", str(first))
+
+    def test_tag_write_capability_matrix(self):
+        from app.services.media_meta_service import tag_write_capability
+
+        self.assertTrue(tag_write_capability(".mp3")["text"])
+        self.assertTrue(tag_write_capability("x.flac")["cover"])
+        self.assertFalse(tag_write_capability(".wma")["lyrics"])
+        self.assertFalse(tag_write_capability("track.wav")["text"])
 
 
 if __name__ == "__main__":

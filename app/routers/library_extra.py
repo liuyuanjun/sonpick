@@ -915,11 +915,22 @@ def apply_scrape_candidate(
         write_file_tags=body.write_file_tags,
     )
     db.refresh(song)
+    if "cover" in selected_fields:
+        changes["cover_path"] = song.cover_path
     fav = _favorite_ids(db, [song.id])
+    l0_cover_ok = bool(song.cover_path and is_local_file(song.cover_path)) if "cover" in selected_fields else True
+    if "cover" in selected_fields and cover_url is None and not song.cover_path:
+        # 明确清空封面也算 L0 成功
+        l0_cover_ok = True
     return {
         "ok": file_result["ok"],
         "changes": changes,
-        "cover_result": {"ok": file_result["failed"] == 0, "paths": file_result["cover_paths"]},
+        "cover_result": {
+            "ok": l0_cover_ok and file_result.get("failed", 0) == 0,
+            "path": song.cover_path,
+            "paths": file_result.get("cover_paths") or [],
+            "l0": file_result.get("l0_cover"),
+        },
         "file_result": file_result,
         "song": _song_out(song, fav).model_dump(),
     }

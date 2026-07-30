@@ -73,7 +73,8 @@ export const usePlayerStore = defineStore('player', () => {
     if (!song?.id) return
     current.value = song
     src.value = streamUrl(song.id, token(), losslessPreferred.value)
-    cover.value = song.cover_path ? coverUrl(song.id, token()) : ''
+    // 有 song id 即尝试拉封面；L0 无图时 /cover 404，由 UI onerror 占位
+    cover.value = song.id ? coverUrl(song.id, token()) : ''
     showPlayer.value = true
     playing.value = !!autoplay
     currentTime.value = 0

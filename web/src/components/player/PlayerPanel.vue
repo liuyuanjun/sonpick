@@ -942,7 +942,9 @@ async function clearTargetLyrics(targetSongId) {
     if (player.current?.id === targetSongId) await player.loadLyrics(targetSongId)
     const written = (data.versions || []).filter(item => item.status === 'written').length
     const failed = (data.versions || []).filter(item => item.status === 'failed').length
+    const unsupported = (data.versions || []).filter(item => item.status === 'unsupported').length
     if (failed) message.warning(`已清空 ${written} 个本地版本，${failed} 个版本失败`)
+    else if (unsupported) message.success(`已清空侧车歌词；${unsupported} 个版本不支持内嵌，已跳过标签`)
     else message.success(`已清空 ${written} 个本地版本的歌词`)
   } catch (err) {
     const detail = err.response?.data?.detail
@@ -982,8 +984,17 @@ async function applyLyrics() {
     if (player.current?.id === targetSongId) await player.loadLyrics(targetSongId)
     const written = (data.versions || []).filter(item => item.status === 'written').length
     const failed = (data.versions || []).filter(item => item.status === 'failed').length
+    const unsupported = (data.versions || []).filter(item => item.status === 'unsupported').length
     if (failed) message.warning(`歌词已写入 ${written} 个本地版本，${failed} 个版本失败`)
-    else message.success(candidate.instrumental ? `已在 ${written} 个本地版本标记为纯音乐` : `歌词已保存到 ${written} 个本地版本`)
+    else if (unsupported) {
+      message.success(
+        candidate.instrumental
+          ? `已标记纯音乐（侧车）；${unsupported} 个版本不支持内嵌`
+          : `歌词已保存到侧车；${unsupported} 个版本不支持内嵌标签`,
+      )
+    } else {
+      message.success(candidate.instrumental ? `已在 ${written} 个本地版本标记为纯音乐` : `歌词已保存到 ${written} 个本地版本`)
+    }
     lyricsModalVisible.value = false
   } catch (err) {
     message.error(err.response?.data?.detail || err.message || '歌词写入失败')
@@ -1104,10 +1115,16 @@ async function applyCandidate() {
         } catch (_) {}
       }
     }
-    if (data.file_result?.failed) {
-      message.warning(`已写入 ${data.file_result.written} 个本地版本，${data.file_result.failed} 个版本失败`)
+    const fr = data.file_result || {}
+    const failed = fr.failed || 0
+    const unsupported = fr.unsupported || 0
+    const written = fr.written || 0
+    if (failed) {
+      message.warning(`元信息已保存；已写入 ${written} 个版本，${failed} 个版本失败`)
+    } else if (unsupported) {
+      message.success(`元信息已保存；${written} 个版本已写标签，${unsupported} 个版本不支持内嵌（仅侧车/L0）`)
     } else {
-      message.success(`已采用并写入 ${data.file_result?.written ?? 0} 个本地版本`)
+      message.success(`已采用并写入 ${written} 个本地版本`)
     }
     scrapeApplyModalVisible.value = false
     scrapeApplyCandidate.value = null

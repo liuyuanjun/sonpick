@@ -119,6 +119,7 @@ class ConvertService:
         existing.file_size = output_path.stat().st_size
         existing.duration = song.duration or source.duration
         existing.library_source_id = source.library_source_id
+        self._backfill_mp3_sidecars(song, existing, output_path)
         try:
             self.db.commit()
         except IntegrityError as exc:
@@ -247,6 +248,29 @@ class ConvertService:
     def _copy_lyrics(song: Song, output_path: Path) -> None:
         if song.lrc_path and Path(song.lrc_path).is_file():
             shutil.copy2(song.lrc_path, output_path.with_suffix(".lrc"))
+
+    @staticmethod
+    def _backfill_mp3_sidecars(song: Song, mp3_file: SongFile, output_path: Path) -> None:
+        """转码后回填 SongFile 的封面/歌词侧车路径（L0 → 目录侧车）。"""
+        cover_dst = output_path.parent / "cover.jpg"
+        if song.cover_path and Path(song.cover_path).is_file():
+            try:
+                if not cover_dst.is_file() or cover_dst.resolve() != Path(song.cover_path).resolve():
+                    if cover_dst.resolve() != Path(song.cover_path).resolve():
+                        shutil.copy2(song.cover_path, cover_dst)
+                mp3_file.cover_path = str(cover_dst) if cover_dst.is_file() else song.cover_path
+            except OSError:
+                if Path(song.cover_path).is_file():
+                    mp3_file.cover_path = song.cover_path
+        lrc_dst = output_path.with_suffix(".lrc")
+        if lrc_dst.is_file():
+            mp3_file.lrc_path = str(lrc_dst)
+        elif song.lrc_path and Path(song.lrc_path).is_file():
+            try:
+                shutil.copy2(song.lrc_path, lrc_dst)
+                mp3_file.lrc_path = str(lrc_dst)
+            except OSError:
+                mp3_file.lrc_path = song.lrc_path
 
     @staticmethod
     def _verify_mp3(path: Path, song: Song, require_cover: bool) -> None:

@@ -12,7 +12,7 @@ from app.services.domestic_lyrics_provider import DomesticLyricsProvider
 from app.services.lrclib_provider import LrclibProvider
 from app.services.lyrics_provider import LyricsCandidate, LyricsQuery
 from app.services.lyrics_source_registry import select_lyrics_source_configs
-from app.services.media_meta_service import read_audio_duration, write_audio_tags
+from app.services.media_meta_service import read_audio_duration, tag_write_capability, write_audio_tags
 from app.services.lyrics_service import load_lyrics_for_song
 from app.services.song_file_resolver import NoPlayableSongFileError, SongFileResolver
 
@@ -182,13 +182,25 @@ class LyricsSearchService:
                     if path.is_file():
                         path.unlink()
                         removed_paths.append(str(path))
-                tags = write_audio_tags(song_file.local_path, clear_fields={"lyrics"}) if write_file_tags else {}
-                if write_file_tags and not tags:
-                    raise RuntimeError("内嵌歌词清空未生效")
+                cap = tag_write_capability(song_file.local_path or song_file.format)
+                tags = {}
+                if write_file_tags and cap.get("lyrics"):
+                    tags = write_audio_tags(song_file.local_path, clear_fields={"lyrics"})
+                    if not tags:
+                        raise RuntimeError("内嵌歌词清空未生效")
+                    results.append({**base, "status": "written", "tags": tags})
+                elif write_file_tags and not cap.get("lyrics"):
+                    results.append({
+                        **base,
+                        "status": "unsupported",
+                        "reason": "格式不支持内嵌歌词，已清侧车",
+                        "tags": tags,
+                    })
+                else:
+                    results.append({**base, "status": "written", "tags": tags})
                 song_file.lrc_path = None
                 song_file.updated_at = datetime.now(timezone.utc)
                 self.db.add(song_file)
-                results.append({**base, "status": "written", "tags": tags})
             except Exception as exc:
                 results.append({**base, "status": "failed", "error": str(exc)})
 
@@ -204,12 +216,14 @@ class LyricsSearchService:
         self.db.commit()
         failed = sum(item["status"] == "failed" for item in results)
         written = sum(item["status"] == "written" for item in results)
+        unsupported = sum(item["status"] == "unsupported" for item in results)
         return {
             "ok": failed == 0,
-            "partial": failed > 0 and written > 0,
+            "partial": failed > 0 and (written > 0 or unsupported > 0),
             "song_id": song.id,
             "removed_paths": sorted(set(removed_paths)),
             "written_file_tags": written,
+            "unsupported": unsupported,
             "versions": results,
             "lyrics_type": None,
             "source": None,
@@ -258,15 +272,30 @@ class LyricsSearchService:
                     if destination.is_file():
                         destination.unlink()
                     song_file.lrc_path = None
-                tags = write_audio_tags(
-                    song_file.local_path,
-                    lyrics=lyrics or None,
-                    clear_fields={"lyrics"} if not lyrics else None,
-                ) if write_file_tags else {}
-                if write_file_tags and not tags:
-                    raise RuntimeError("内嵌歌词写入未生效")
-                self.db.add(song_file)
-                results.append({**base, "status": "written", "lrc_path": song_file.lrc_path, "tags": tags})
+                cap = tag_write_capability(song_file.local_path or song_file.format)
+                tags = {}
+                if write_file_tags and cap.get("lyrics"):
+                    tags = write_audio_tags(
+                        song_file.local_path,
+                        lyrics=lyrics or None,
+                        clear_fields={"lyrics"} if not lyrics else None,
+                    )
+                    if not tags:
+                        raise RuntimeError("内嵌歌词写入未生效")
+                    self.db.add(song_file)
+                    results.append({**base, "status": "written", "lrc_path": song_file.lrc_path, "tags": tags})
+                elif write_file_tags and not cap.get("lyrics"):
+                    self.db.add(song_file)
+                    results.append({
+                        **base,
+                        "status": "unsupported",
+                        "reason": "格式不支持内嵌歌词，已写侧车" if lyrics else "格式不支持内嵌歌词，已清侧车",
+                        "lrc_path": song_file.lrc_path,
+                        "tags": tags,
+                    })
+                else:
+                    self.db.add(song_file)
+                    results.append({**base, "status": "written", "lrc_path": song_file.lrc_path, "tags": tags})
             except Exception as exc:
                 results.append({**base, "status": "failed", "error": str(exc)})
         song.lrc_path = aggregate_lrc_path
@@ -281,14 +310,16 @@ class LyricsSearchService:
         self.db.commit()
         failed = sum(item["status"] == "failed" for item in results)
         written = sum(item["status"] == "written" for item in results)
+        unsupported = sum(item["status"] == "unsupported" for item in results)
         return {
             "ok": failed == 0,
-            "partial": failed > 0 and written > 0,
+            "partial": failed > 0 and (written > 0 or unsupported > 0),
             "song_id": song.id,
             "lrc_path": song.lrc_path,
             "lyrics_type": song.lyrics_type,
             "source": song.lyrics_provider,
             "source_id": song.lyrics_source_id,
             "written_file_tags": written if write_file_tags else 0,
+            "unsupported": unsupported,
             "versions": results,
         }
