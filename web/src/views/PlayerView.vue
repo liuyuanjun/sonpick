@@ -29,16 +29,42 @@
             </n-button>
           </n-dropdown>
         </n-space>
-        <n-space v-else class="content-actions">
+        <n-space v-else class="content-actions" :size="6">
           <n-button v-if="section === 'playlists'" type="primary" @click="showCreatePlaylist = true">
             新建歌单
           </n-button>
-          <n-button secondary type="primary" @click="openScanModal">扫描曲库</n-button>
-          <n-button secondary :loading="scrapingVisible" :disabled="!visibleSongIds.length" @click="scrapeVisibleSongs">
+          <n-tooltip>
+            <template #trigger>
+              <n-button quaternary circle aria-label="扫描曲库" @click="openScanModal">
+                <n-icon size="18"><scan-outline /></n-icon>
+              </n-button>
+            </template>
+            扫描曲库
+          </n-tooltip>
+          <n-tooltip>
+            <template #trigger>
+              <n-button quaternary circle :loading="scrapingVisible" :disabled="!visibleSongIds.length" aria-label="刮削信息" @click="scrapeVisibleSongs">
+                <n-icon v-if="!scrapingVisible" size="18"><color-wand-outline /></n-icon>
+              </n-button>
+            </template>
             刮削信息
-          </n-button>
-          <n-button secondary :disabled="!visibleSongIds.length" @click="openBatchLyrics">获取歌词</n-button>
-          <n-button quaternary @click="refresh">刷新</n-button>
+          </n-tooltip>
+          <n-tooltip>
+            <template #trigger>
+              <n-button quaternary circle :disabled="!visibleSongIds.length" aria-label="获取歌词" @click="openBatchLyrics">
+                <n-icon size="18"><document-text-outline /></n-icon>
+              </n-button>
+            </template>
+            获取歌词
+          </n-tooltip>
+          <n-tooltip>
+            <template #trigger>
+              <n-button quaternary circle aria-label="刷新" @click="refresh">
+                <n-icon size="18"><refresh-outline /></n-icon>
+              </n-button>
+            </template>
+            刷新
+          </n-tooltip>
         </n-space>
       </div>
 
@@ -280,6 +306,10 @@ import {
   List,
   TimeOutline,
   EllipsisHorizontal,
+  ScanOutline,
+  ColorWandOutline,
+  DocumentTextOutline,
+  RefreshOutline,
 } from '@vicons/ionicons5'
 import { useAuthStore } from '@/stores/auth'
 import { usePlayerStore } from '@/stores/player'
@@ -591,8 +621,13 @@ async function playAllSongs() {
     })
     const items = res.data?.items || []
     if (!items.length) return
+    // Fisher-Yates 洗牌，随机播放全部
+    for (let i = items.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[items[i], items[j]] = [items[j], items[i]]
+    }
     player.playList(items, 0)
-    message.success(`已将 ${items.length} 首歌曲加入播放队列`)
+    message.success(`已随机加载 ${items.length} 首歌曲到播放队列`)
   } catch (err) {
     message.error(err.response?.data?.detail || '加载播放队列失败')
   } finally {
@@ -766,7 +801,7 @@ onUnmounted(() => {
   --player-scrollbar-track: rgba(255, 255, 255, 0.18);
   display: grid;
   align-items: stretch;
-  grid-template-columns: 168px minmax(260px, 0.9fr) minmax(420px, 1.25fr);
+  grid-template-columns: 168px minmax(260px, 600px) minmax(420px, 1fr);
   gap: 0;
   height: calc(100vh - 56px - 84px);
   min-height: calc(100vh - 56px - 84px);
@@ -794,7 +829,7 @@ onUnmounted(() => {
   --player-scrollbar-track: rgba(255, 255, 255, 0.06);
 }
 .player-page.queue-open {
-  grid-template-columns: 168px minmax(240px, 0.8fr) minmax(600px, 1.4fr);
+  grid-template-columns: 168px minmax(240px, 600px) minmax(600px, 1fr);
 }
 .player-page.no-mini {
   height: calc(100vh - 56px);
@@ -1040,17 +1075,17 @@ onUnmounted(() => {
 
 @media (max-width: 1280px) {
   .player-page {
-    grid-template-columns: 156px minmax(240px, 0.9fr) minmax(340px, 1.1fr);
+    grid-template-columns: 156px minmax(240px, 600px) minmax(340px, 1fr);
   }
   .player-page.queue-open {
-    grid-template-columns: 156px minmax(220px, 0.8fr) minmax(500px, 1.3fr);
+    grid-template-columns: 156px minmax(220px, 600px) minmax(500px, 1fr);
   }
 }
 
 @media (max-width: 1100px) {
   .player-page,
   .player-page.queue-open {
-    grid-template-columns: 64px minmax(480px, 1fr) minmax(300px, 1fr);
+    grid-template-columns: 64px minmax(480px, 600px) minmax(300px, 1fr);
   }
   .nav-item span {
     display: none;

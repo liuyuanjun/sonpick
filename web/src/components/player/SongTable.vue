@@ -7,9 +7,13 @@
           播放本页（{{ songs.length }} 首）
         </n-button>
         <n-button v-if="serverPaginated" secondary :disabled="!total" :loading="playingAll" @click="emit('play-all-results')">
-          {{ hasActiveFilter ? '播放当前结果' : '播放全部' }}（{{ total }} 首）
+          <template #icon><n-icon><shuffle-outline /></n-icon></template>
+          {{ hasActiveFilter ? '随机播放当前结果' : '随机播放全部' }}（{{ total }} 首）
         </n-button>
-        <n-button quaternary :disabled="!songs.length" @click="enqueueAll">加入队列</n-button>
+        <n-button quaternary :disabled="!songs.length" @click="enqueueAll">
+          <template #icon><n-icon><add /></n-icon></template>
+          加入队列
+        </n-button>
       </n-space>
       <n-input
         v-if="showSearch"
@@ -90,7 +94,7 @@
       </div>
     </div>
     <n-empty v-else description="暂无歌曲" style="padding: 36px 0" />
-    <div v-if="serverPaginated" class="pagination-bar" :class="`tier-${paginationTier}`">
+    <div v-if="serverPaginated" class="pagination-bar" :class="[`tier-${paginationTier}`, { 'with-total': showTotalText }]">
       <n-text depth="3" class="total-text">共 {{ total }} 首</n-text>
       <div v-if="paginationTier === 'simple'" class="simple-pager">
         <n-button quaternary circle size="small" :disabled="page <= 1" aria-label="上一页" @click="emit('page-change', page - 1)">
@@ -124,6 +128,7 @@ import {
   MusicalNotes,
   ChevronBack,
   ChevronForward,
+  ShuffleOutline,
 } from '@vicons/ionicons5'
 import { usePlayerStore } from '@/stores/player'
 import { addFavorite, removeFavorite, coverUrl } from '@/api/music'
@@ -161,8 +166,10 @@ const searchKeyword = computed({
 
 const hasActiveFilter = computed(() => Boolean(props.searchValue.trim()))
 
-// 分页渐进降级：按容器自身宽度分三档（桌面三栏布局下列宽与视口无关，不能用媒体查询）
-// full ≥560px：总数 + 9 页码；compact 360~560px：隐藏总数 + 7 页码 + 24px 按钮；simple <360px：‹ 页/总 ›
+// 分页渐进降级：按容器自身宽度分档（桌面三栏布局下列宽与视口无关，不能用媒体查询）
+// 容器 ≥550px（full）：总数 + 9 页码 28px —— 中间列限宽 600px 下，视口 ≥1408px 即触达
+// 容器 430~550px（compact）：隐藏总数 + 7 页码 24px
+// 容器 <430px（simple）：‹ 页/总 › 极简翻页 —— 约视口 <1200px 触达
 const rootEl = ref(null)
 const containerWidth = ref(1200)
 let resizeObserver = null
@@ -181,11 +188,12 @@ onBeforeUnmount(() => {
 
 const paginationTier = computed(() => {
   const w = containerWidth.value
-  if (w < 360) return 'simple'
-  if (w < 560) return 'compact'
+  if (w < 430) return 'simple'
+  if (w < 550) return 'compact'
   return 'full'
 })
-const pageSlot = computed(() => (paginationTier.value === 'compact' ? 7 : 9))
+const showTotalText = computed(() => paginationTier.value === 'full')
+const pageSlot = computed(() => (paginationTier.value === 'full' ? 9 : 7))
 const totalPages = computed(() => Math.max(1, Math.ceil(props.total / props.pageSize)))
 
 // 移动端没有双击概念，单击行即播放
@@ -300,18 +308,21 @@ function onCoverError(e) {
   --n-font-size: 12px;
 }
 
-/* 分页渐进降级（tier 由 ResizeObserver 按容器宽度计算，见 script） */
-.pagination-bar.tier-compact .total-text,
-.pagination-bar.tier-simple .total-text {
+/* 分页渐进降级（tier/with-total 由 ResizeObserver 按容器宽度计算，见 script） */
+.pagination-bar:not(.with-total) .total-text {
   display: none;
 }
 .pagination-bar.tier-compact :deep(.n-pagination) {
-  justify-content: center;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-end;
   /* Naive 主题变量以内联样式挂在组件根上，需 !important 覆盖 */
   --n-item-size: 24px !important;
   --n-item-padding: 0 2px !important;
   --n-item-margin: 0 0 0 4px !important;
+}
+.pagination-bar.tier-compact:not(.with-total) :deep(.n-pagination) {
+  justify-content: center;
 }
 .simple-pager {
   display: flex;
