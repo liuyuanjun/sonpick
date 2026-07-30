@@ -1441,7 +1441,7 @@ async function toggleFavorite() {
     width: min(94cqw, 88cqh, 380px);
   }
   .blend-stage .vinyl-frame {
-    width: min(78cqw, 80cqh, 420px);
+    width: min(110cqw, 110cqh, 580px);
   }
 }
 .vinyl {
