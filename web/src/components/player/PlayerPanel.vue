@@ -1119,8 +1119,25 @@ async function applyCandidate() {
     const failed = fr.failed || 0
     const unsupported = fr.unsupported || 0
     const written = fr.written || 0
+    const errorSummary = data.error_summary || fr.error_summary || ''
+    const versionErrors = (fr.versions || [])
+      .filter((item) => item.status === 'failed' || item.error || item.cover_error)
+      .map((item) => {
+        const label = item.format || item.path || `#${item.song_file_id || '?'}`
+        return `${label}: ${item.error || item.cover_error || item.reason || '失败'}`
+      })
+    const detail = errorSummary || versionErrors.slice(0, 3).join('；')
     if (failed) {
-      message.warning(`元信息已保存；已写入 ${written} 个版本，${failed} 个版本失败`)
+      message.warning(
+        detail
+          ? `元信息已保存；${written} 个版本成功，${failed} 个失败。${detail}`
+          : `元信息已保存；已写入 ${written} 个版本，${failed} 个版本失败`,
+        { duration: 8000, closable: true },
+      )
+      if (versionErrors.length) console.warn('[scrape apply] version errors', fr.versions, data)
+    } else if (!data.ok && detail) {
+      message.warning(`元信息部分保存：${detail}`, { duration: 8000, closable: true })
+      console.warn('[scrape apply] partial/l0 failure', data)
     } else if (unsupported) {
       message.success(`元信息已保存；${written} 个版本已写标签，${unsupported} 个版本不支持内嵌（仅侧车/L0）`)
     } else {

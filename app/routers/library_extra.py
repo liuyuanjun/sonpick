@@ -906,6 +906,16 @@ def apply_scrape_candidate(
     db.flush()
 
     from app.services.song_metadata_apply_service import apply_metadata_to_song_files
+    import logging
+
+    log = logging.getLogger("sonpick.meta")
+    log.info(
+        "scrape apply song_id=%s fields=%s cover_url=%s write_file_tags=%s",
+        song_id,
+        sorted(selected_fields),
+        bool(cover_url),
+        body.write_file_tags,
+    )
 
     file_result = apply_metadata_to_song_files(
         db,
@@ -922,16 +932,26 @@ def apply_scrape_candidate(
     if "cover" in selected_fields and cover_url is None and not song.cover_path:
         # 明确清空封面也算 L0 成功
         l0_cover_ok = True
+    if not file_result.get("ok") or file_result.get("failed") or file_result.get("errors"):
+        log.warning(
+            "scrape apply result song_id=%s ok=%s failed=%s unsupported=%s errors=%s",
+            song_id,
+            file_result.get("ok"),
+            file_result.get("failed"),
+            file_result.get("unsupported"),
+            file_result.get("error_summary") or file_result.get("errors"),
+        )
     return {
         "ok": file_result["ok"],
         "changes": changes,
         "cover_result": {
-            "ok": l0_cover_ok and file_result.get("failed", 0) == 0,
+            "ok": l0_cover_ok,
             "path": song.cover_path,
             "paths": file_result.get("cover_paths") or [],
             "l0": file_result.get("l0_cover"),
         },
         "file_result": file_result,
+        "error_summary": file_result.get("error_summary") or None,
         "song": _song_out(song, fav).model_dump(),
     }
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.15.0-rc7
+
+### 修复
+- 刮削采用时封面 L0/侧车失败不再把全部本地版本打成 `failed`，文本标签仍会写穿；封面失败单独体现在 `l0_cover` / `warnings` / `error_summary`。
+- `write_audio_tags` 失败不再静默返回空字典：写入 `_error` 并打日志，apply 结果与 toast 可展示具体原因（权限、文件不存在、mutagen 异常等）。
+- 刮削 apply 接口与 `sonpick.meta` 日志补充 song_id、字段、版本错误摘要，便于对照服务器日志排查。
+
+### 变更
+- 前端采用结果 toast 展示版本级错误摘要（可关闭、延长显示），并 `console.warn` 完整 `file_result`。
+
 ## 0.15.0-rc6
 
 ### 修复

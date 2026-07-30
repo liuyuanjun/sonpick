@@ -185,6 +185,71 @@ class MultiVersionMetadataTests(unittest.TestCase):
             self.assertTrue(Path(directory, "cover.jpg").is_file())
             self.assertTrue(files[0].cover_path)
 
+    def test_cover_l0_failure_does_not_block_text_tag_write(self):
+        """封面 L0 失败时，文本标签仍应写穿，不再整版本 failed。"""
+        with tempfile.TemporaryDirectory() as directory:
+            first = Path(directory) / "a.flac"
+            second = Path(directory) / "b.mp3"
+            first.write_bytes(b"a")
+            second.write_bytes(b"b")
+            files = [
+                song_file(1, local_path=str(first)),
+                song_file(2, local_path=str(second), fmt="mp3"),
+            ]
+            resolver = FakeResolver(files, files)
+            target_song = song()
+
+            with (
+                patch("app.services.song_metadata_apply_service.SongFileResolver", return_value=resolver),
+                patch(
+                    "app.services.song_metadata_apply_service._store_l0_cover",
+                    return_value={"ok": False, "path": None, "error": "封面下载失败: HTTP 403"},
+                ),
+                patch(
+                    "app.services.song_metadata_apply_service.write_audio_tags",
+                    return_value={"title": "标题", "artist": "艺术家"},
+                ) as write_tags,
+            ):
+                result = apply_metadata_to_song_files(
+                    FakeDb(),
+                    target_song,
+                    selected_fields={"title", "artist", "cover"},
+                    cover_url="https://example.com/blocked.jpg",
+                )
+
+            self.assertEqual(write_tags.call_count, 2)
+            self.assertEqual(result["written"], 2)
+            self.assertEqual(result["failed"], 0)
+            # L0 封面失败 → 整体 ok=false，但文本已写入
+            self.assertFalse(result["ok"])
+            self.assertTrue(result["partial"])
+            self.assertIn("L0 封面失败", result.get("error_summary") or "")
+            for version in result["versions"]:
+                self.assertEqual(version["status"], "written")
+                self.assertIn("侧车封面失败", (version.get("reason") or ""))
+
+    def test_write_audio_tags_error_key_is_surfaced(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "a.flac"
+            path.write_bytes(b"audio")
+            files = [song_file(1, local_path=str(path))]
+            resolver = FakeResolver(files, files)
+            with (
+                patch("app.services.song_metadata_apply_service.SongFileResolver", return_value=resolver),
+                patch(
+                    "app.services.song_metadata_apply_service.write_audio_tags",
+                    return_value={"_error": "PermissionError: Read-only file system"},
+                ),
+            ):
+                result = apply_metadata_to_song_files(
+                    FakeDb(), song(), selected_fields={"title"}, cover_url=None
+                )
+
+        self.assertEqual(result["failed"], 1)
+        self.assertFalse(result["ok"])
+        self.assertIn("PermissionError", result["versions"][0]["error"])
+        self.assertIn("PermissionError", result.get("error_summary") or "")
+
 
 class MultiVersionLyricsTests(unittest.TestCase):
     def test_apply_writes_sidecar_and_tags_for_all_local_files(self):

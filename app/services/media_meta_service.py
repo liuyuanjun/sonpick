@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import shutil
 import subprocess
 from pathlib import Path
@@ -8,6 +9,8 @@ from typing import Any, Optional
 
 import time
 from app.config import get_settings
+
+log = logging.getLogger("sonpick.meta")
 from app.services.library_layout import (
     find_album_cover_file,
     find_lrc_sidecar,
@@ -502,11 +505,16 @@ def write_audio_tags(
     cover_mime: str | None = None,
     clear_fields: set[str] | None = None,
 ) -> dict[str, Any]:
-    """Write or explicitly clear selected tags and artwork in a local audio file."""
+    """Write or explicitly clear selected tags and artwork in a local audio file.
+
+    成功时返回写入字段字典。失败时仍返回 dict，并带 `_error` 说明原因（便于 apply 上报）。
+    """
     clear_fields = set(clear_fields or ())
     p = Path(path) if not isinstance(path, Path) else path
     if not p.is_file():
-        return {}
+        err = f"音频文件不存在: {p}"
+        log.warning("write_audio_tags %s", err)
+        return {"_error": err}
     written: dict[str, Any] = {}
 
     pic_data = None
@@ -522,7 +530,10 @@ def write_audio_tags(
                     pic_mime = "image/png"
                 elif cp.suffix.lower() in {".webp"}:
                     pic_mime = "image/webp"
-        except Exception:
+            else:
+                log.warning("write_audio_tags cover missing path=%s", cover_path)
+        except Exception as exc:
+            log.warning("write_audio_tags read cover failed path=%s err=%s", cover_path, exc)
             pic_data = None
 
     year_s = str(year).strip() if year not in (None, "") else None
@@ -536,8 +547,10 @@ def write_audio_tags(
         from mutagen.id3 import ID3, ID3NoHeaderError, APIC, USLT, TIT2, TPE1, TALB, TDRC, TRCK, error as ID3Error
         from mutagen.flac import FLAC, Picture
         from mutagen.mp4 import MP4, MP4Cover
-    except Exception:
-        return {}
+    except Exception as exc:
+        err = f"mutagen 不可用: {type(exc).__name__}: {exc}"
+        log.exception("write_audio_tags import failed path=%s", p)
+        return {"_error": err}
 
     def _set_easy(audio_obj, mapping):
         for k, v in mapping.items():
@@ -564,7 +577,9 @@ def write_audio_tags(
             except ID3NoHeaderError:
                 audio = MutagenFile(str(p), easy=True)
                 if audio is None:
-                    return {}
+                    err = "无法打开 MP3 写入标签"
+                    log.warning("write_audio_tags %s path=%s", err, p)
+                    return {"_error": err}
                 try:
                     audio.add_tags()
                 except Exception:
@@ -725,7 +740,9 @@ def write_audio_tags(
         else:
             audio = MutagenFile(str(p), easy=True)
             if audio is None:
-                return {}
+                err = f"格式不支持或无法打开: {suffix or p.name}"
+                log.warning("write_audio_tags %s path=%s", err, p)
+                return {"_error": err, **written}
             try:
                 if audio.tags is None:
                     audio.add_tags()
@@ -750,7 +767,10 @@ def write_audio_tags(
                 except Exception:
                     pass
             audio.save()
-    except Exception:
+    except Exception as exc:
+        err = f"{type(exc).__name__}: {exc}"
+        log.exception("write_audio_tags failed path=%s suffix=%s", p, suffix)
+        written["_error"] = err
         return written
     return written
 
