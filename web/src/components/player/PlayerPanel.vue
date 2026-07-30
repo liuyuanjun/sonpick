@@ -905,7 +905,7 @@ async function searchLyrics(session = lyricsModalSession) {
   lyricsStatusError.value = null
   lyricsHint.value = lyricsMode.value === 'auto' ? '正在精确匹配，未命中时自动宽松搜索' : '正在检索指定歌词源'
   try {
-    const source = lyricsMode.value === 'auto' ? 'auto' : lyricsSource.value
+    const source = lyricsMode.value === 'auto' ? 'auto' : (lyricsSourceOptions.value.some(option => option.value === lyricsSource.value) ? lyricsSource.value : 'auto')
     const res = await searchLyricsCandidates(targetSongId, { source, keyword: lyricsKeyword.value.trim(), limit: 20 })
     const data = res.data || res || {}
     if (session !== lyricsModalSession || lyricsTargetSong.value?.id !== targetSongId) return

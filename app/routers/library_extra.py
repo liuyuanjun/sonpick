@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime, timezone
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -14,6 +15,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.services.library_organize_service import LibraryOrganizeService
 from app.models import AppSettings, Favorite, MediaSource, PlayHistory, Playlist, Song, SongFile, Task, iso_utc
+
+log = logging.getLogger("sonpick.library")
 from app.routers.auth import get_current_user
 from app.services.song_file_resolver import NoPlayableSongFileError, SongFileResolver
 from app.schemas import (
@@ -274,6 +277,7 @@ def search_lyrics_candidates(
     if not song:
         raise HTTPException(status_code=404, detail="歌曲不存在")
     try:
+        log.info("lyrics candidates search song_id=%s source=%r keyword=%r", song_id, body.source, body.keyword)
         result = LyricsSearchService(db).search(song, source=body.source, keyword=body.keyword or "", limit=body.limit)
         result["song_files"] = SongFileResolver(db).describe_files(song)
         if body.source != "auto" and not result.get("candidates") and result.get("errors"):

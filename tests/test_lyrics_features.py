@@ -3,9 +3,13 @@ import unittest
 import urllib.error
 from unittest.mock import patch
 
+from unittest.mock import MagicMock
+
 from app.services.lrclib_provider import LrclibProvider, LrclibRateLimitError
 from app.services.lyrics_provider import LyricsCandidate, LyricsQuery, score_lyrics_candidate
+from app.services.lyrics_search_service import LyricsSearchService
 from app.services.lyrics_source_registry import lyrics_source_configs
+from app.models import Song
 
 
 class FakeResponse:
@@ -77,6 +81,47 @@ class LyricsFeatureTests(unittest.TestCase):
             LrclibProvider().search(query)
             LrclibProvider().search(query)
         self.assertEqual(mocked.call_count, 1)
+
+    def test_search_service_filters_single_source(self):
+        song = Song(id=1, title="Song", artist="Artist", album="Album", duration=200)
+        db = MagicMock()
+        db.get.return_value = MagicMock(lyrics_sources_json=json.dumps([
+            {"id": "lrclib", "enabled": True},
+            {"id": "netease", "enabled": True},
+            {"id": "migu", "enabled": True},
+        ]))
+        service = LyricsSearchService(db)
+        service.query_for_song = lambda song, keyword="": LyricsQuery(
+            track_name=song.title, artist_name=song.artist, album_name=song.album, duration=song.duration, keyword=keyword
+        )
+
+        class FakeCand:
+            def __init__(self, source, query):
+                self.source = source
+                self.track_name = query.track_name
+                self.score = 100
+            def to_dict(self, include_lyrics=True):
+                return {"source": self.source, "track_name": self.track_name, "score": self.score}
+
+        called = []
+        def fake_provider(config):
+            class P:
+                @staticmethod
+                def search(query, limit=20):
+                    called.append(config["id"])
+                    return [FakeCand(config["id"], query)]
+            return P()
+        service.provider = fake_provider
+
+        for src in ["netease", "lrclib", "migu"]:
+            called.clear()
+            result = service.search(song, source=src, keyword="", limit=20)
+            self.assertEqual(called, [src], f"source={src} should only call {src}")
+            self.assertEqual([c["source"] for c in result["candidates"]], [src])
+
+        called.clear()
+        result = service.search(song, source="auto", keyword="", limit=20)
+        self.assertEqual(set(called), {"lrclib", "netease", "migu"})
 
 
 if __name__ == "__main__":

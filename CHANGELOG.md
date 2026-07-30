@@ -2,8 +2,12 @@
 
 ## 0.15.0-rc10
 
-### 变更
-- TODO: 补充本版要点
+### 修复
+- 修复歌词候选检索选择「指定歌词源」后，若前端 source 状态异常回退到 `auto`，结果仍包含其他源的问题：前端强制校验所选源在启用的歌词源列表中，非法/空值自动回退为 `auto`；API 层显式兜底避免 `undefined` 覆盖默认 auto。
+- 后端 `/songs/{id}/lyrics/candidates` 增加 source 参数日志，方便排查实际进入搜索的源。
+
+### 测试
+- 新增 `LyricsSearchService` 单源过滤单测：指定 `netease`/`lrclib`/`migu` 时仅调用并返回对应源，`auto` 时才返回全部源。
 
 ## 0.15.0-rc9
 

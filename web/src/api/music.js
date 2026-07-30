@@ -106,7 +106,9 @@ export function applyScrapeCandidate(songId, candidate, options = {}) {
 }
 
 export function searchLyricsCandidates(songId, payload = {}) {
-  return api.post(`/songs/${songId}/lyrics/candidates`, { source: 'auto', limit: 20, ...payload }, { timeout: 120000 })
+  // 显式兜底，避免 undefined/null 覆盖默认 auto 导致后端按 auto 处理
+  const source = payload.source || 'auto'
+  return api.post(`/songs/${songId}/lyrics/candidates`, { source, limit: 20, keyword: payload.keyword || '', ...payload }, { timeout: 120000 })
 }
 
 export function fetchLyricsCandidateDetails(songId, candidate) {
