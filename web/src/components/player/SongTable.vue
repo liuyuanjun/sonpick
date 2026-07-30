@@ -1,5 +1,5 @@
 <template>
-  <div class="song-table">
+  <div ref="rootEl" class="song-table">
     <div class="toolbar">
       <n-space>
         <n-button type="primary" :disabled="!songs.length" @click="playPage">
@@ -90,15 +90,31 @@
       </div>
     </div>
     <n-empty v-else description="暂无歌曲" style="padding: 36px 0" />
-    <div v-if="serverPaginated" class="pagination-bar">
-      <n-text depth="3">共 {{ total }} 首</n-text>
-      <n-pagination :page="page" :page-size="pageSize" :item-count="total" @update:page="emit('page-change', $event)" />
+    <div v-if="serverPaginated" class="pagination-bar" :class="`tier-${paginationTier}`">
+      <n-text depth="3" class="total-text">共 {{ total }} 首</n-text>
+      <div v-if="paginationTier === 'simple'" class="simple-pager">
+        <n-button quaternary circle size="small" :disabled="page <= 1" aria-label="上一页" @click="emit('page-change', page - 1)">
+          <n-icon :size="16"><chevron-back /></n-icon>
+        </n-button>
+        <span class="page-indicator">{{ page }} / {{ totalPages }}</span>
+        <n-button quaternary circle size="small" :disabled="page >= totalPages" aria-label="下一页" @click="emit('page-change', page + 1)">
+          <n-icon :size="16"><chevron-forward /></n-icon>
+        </n-button>
+      </div>
+      <n-pagination
+        v-else
+        :page="page"
+        :page-size="pageSize"
+        :item-count="total"
+        :page-slot="pageSlot"
+        @update:page="emit('page-change', $event)"
+      />
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import {
   Play,
@@ -106,6 +122,8 @@ import {
   HeartOutline,
   Add,
   MusicalNotes,
+  ChevronBack,
+  ChevronForward,
 } from '@vicons/ionicons5'
 import { usePlayerStore } from '@/stores/player'
 import { addFavorite, removeFavorite, coverUrl } from '@/api/music'
@@ -142,6 +160,33 @@ const searchKeyword = computed({
 })
 
 const hasActiveFilter = computed(() => Boolean(props.searchValue.trim()))
+
+// 分页渐进降级：按容器自身宽度分三档（桌面三栏布局下列宽与视口无关，不能用媒体查询）
+// full ≥560px：总数 + 9 页码；compact 360~560px：隐藏总数 + 7 页码 + 24px 按钮；simple <360px：‹ 页/总 ›
+const rootEl = ref(null)
+const containerWidth = ref(1200)
+let resizeObserver = null
+
+onMounted(() => {
+  if (typeof ResizeObserver === 'undefined' || !rootEl.value) return
+  resizeObserver = new ResizeObserver((entries) => {
+    containerWidth.value = entries[0]?.contentRect?.width || 1200
+  })
+  resizeObserver.observe(rootEl.value)
+})
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
+  resizeObserver = null
+})
+
+const paginationTier = computed(() => {
+  const w = containerWidth.value
+  if (w < 360) return 'simple'
+  if (w < 560) return 'compact'
+  return 'full'
+})
+const pageSlot = computed(() => (paginationTier.value === 'compact' ? 7 : 9))
+const totalPages = computed(() => Math.max(1, Math.ceil(props.total / props.pageSize)))
 
 // 移动端没有双击概念，单击行即播放
 function onRowTap(row) {
@@ -253,6 +298,34 @@ function onCoverError(e) {
   justify-content: flex-end;
   font-size: 12px;
   --n-font-size: 12px;
+}
+
+/* 分页渐进降级（tier 由 ResizeObserver 按容器宽度计算，见 script） */
+.pagination-bar.tier-compact .total-text,
+.pagination-bar.tier-simple .total-text {
+  display: none;
+}
+.pagination-bar.tier-compact :deep(.n-pagination) {
+  justify-content: center;
+  width: 100%;
+  /* Naive 主题变量以内联样式挂在组件根上，需 !important 覆盖 */
+  --n-item-size: 24px !important;
+  --n-item-padding: 0 2px !important;
+  --n-item-margin: 0 0 0 4px !important;
+}
+.simple-pager {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.page-indicator {
+  font-size: 12px;
+  color: var(--n-text-color-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  min-width: 44px;
+  text-align: center;
 }
 
 .song-list {
