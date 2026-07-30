@@ -466,7 +466,19 @@
                   <span>{{ scrapeCoverMeta('candidate') }}</span>
                 </div>
               </template>
-              <div v-else class="scrape-value-text" :class="{ empty: field.empty }">{{ scrapeValuePreview(field.newValue, field) }}</div>
+              <template v-else>
+                <n-input
+                  v-if="scrapeFieldSelected(field.key)"
+                  v-model:value="scrapeApplyOverrides[field.key]"
+                  :placeholder="scrapeValuePreview(field.rawNewValue, field)"
+                  size="small"
+                  type="textarea"
+                  :autosize="{ minRows: 1, maxRows: 4 }"
+                />
+                <div v-else class="scrape-value-text" :class="{ empty: field.empty }">
+                  {{ scrapeValuePreview(field.newValue, field) }}
+                </div>
+              </template>
             </div>
             <n-switch
               :value="scrapeFieldSelected(field.key)"
@@ -557,6 +569,7 @@ const scrapeSongFiles = ref([])
 const scrapeApplyModalVisible = ref(false)
 const scrapeApplyCandidate = ref(null)
 const scrapeApplyFields = ref([])
+const scrapeApplyOverrides = ref({})
 const scrapeCurrentCoverUrl = ref('')
 const scrapeCoverInfo = ref({ current: null, candidate: null })
 const scrapeSourceOptions = ref([])
@@ -636,13 +649,25 @@ function scrapeCoverAvailable(kind) {
   return Boolean(scrapeCoverImageUrl(kind))
 }
 
+function resetScrapeApplyOverrides(candidate) {
+  const overrides = {}
+  for (const field of SCRAPE_FIELD_DEFINITIONS) {
+    if (field.key === 'cover') continue
+    overrides[field.key] = candidateFieldValue(candidate, field.key)
+  }
+  scrapeApplyOverrides.value = overrides
+}
+
 const scrapeApplyRows = computed(() => SCRAPE_FIELD_DEFINITIONS.map((field) => {
   const currentValue = scrapeCurrentValues.value?.[field.key] ?? ''
-  const newValue = candidateFieldValue(scrapeApplyCandidate.value, field.key)
+  const rawNewValue = candidateFieldValue(scrapeApplyCandidate.value, field.key)
+  const overrideValue = scrapeApplyOverrides.value[field.key]
+  const newValue = field.key === 'cover' ? rawNewValue : (overrideValue !== undefined ? overrideValue : rawNewValue)
   return {
     ...field,
     currentValue,
     newValue,
+    rawNewValue,
     empty: normalizedCompareValue(newValue) === '',
     changed: normalizedCompareValue(currentValue) !== normalizedCompareValue(newValue),
   }
@@ -1066,6 +1091,7 @@ async function openApplyCandidate(row) {
     scrapeCurrentValues.value = data.current || scrapeCurrentValues.value || {}
     scrapeSongFiles.value = data.song_files || scrapeSongFiles.value
     scrapeApplyCandidate.value = data.candidate || row
+    resetScrapeApplyOverrides(scrapeApplyCandidate.value)
     scrapeCoverInfo.value = { current: null, candidate: null }
     scrapeCurrentCoverUrl.value = scrapeCurrentValues.value?.cover_exists
       ? coverUrl(targetSongId, useAuthStore().token || '') + `&_t=${Date.now()}`
@@ -1098,6 +1124,18 @@ async function applyCandidate() {
   scraping.value = true
   scrapeHint.value = '写入中'
   try {
+    // 用用户手动修改后的值替换候选
+    const candidateToApply = { ...row }
+    for (const field of SCRAPE_FIELD_DEFINITIONS) {
+      if (field.key === 'cover') continue
+      if (scrapeApplyFields.value.includes(field.key)) {
+        const override = scrapeApplyOverrides.value[field.key]
+        if (override !== undefined) {
+          candidateToApply[field.key] = override
+        }
+      }
+    }
+
     // 若封面已预览且候选来自 CAA/可能容器不通，把图片字节也提交，后端优先使用
     let coverImageBase64 = null
     let coverImageMime = null
@@ -1122,7 +1160,7 @@ async function applyCandidate() {
       }
     }
 
-    const res = await applyScrapeCandidate(targetSongId, row, {
+    const res = await applyScrapeCandidate(targetSongId, candidateToApply, {
       selected_fields: scrapeApplyFields.value,
       write_file_tags: true,
       cover_image_base64: coverImageBase64,
