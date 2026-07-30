@@ -403,7 +403,7 @@ ssh qnap 'curl -sS http://127.0.0.1:8301/health'
 
 - 元数据优先级：DB（刮削结果）→ 内嵌标签 → 文件名解析；**缺专辑默认跳过**（`skip_missing_album`），失败文件进 `_failed/` 并写 `.error.txt`
 - 目标 base 按文件决定（`_local_base_for_file`）：
-  1. 开「按格式归档」(`relocate_format_dirs`)：按扩展名分流到无损/MP3 存放目录
+  1. 开「按格式归档」(`relocate_format_dirs`)：按扩展名分流到无损/有损存放目录
   2. 内置曲库未开归档：文件留在其当前所在格式目录内整理（MP3 里的→MP3/歌手/专辑，LOSSLESS 里的同理）
   3. 其他：**整理到选择的目录**（`root/relative_dir/歌手/专辑/歌曲`）
 - 目标已存在同一首歌：**保留音质好的**（无损>有损，同类比文件大小）；源更差→删源（抢救 .lrc）、SongFile 指向保留文件；源更好→替换目标。preview 标注 `dedup_keep_existing`/`replace_lower_quality`，结果含 `deduped` 计数
