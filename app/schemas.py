@@ -52,7 +52,7 @@ class SettingsUpdate(BaseModel):
     webdav_username: Optional[str] = None
     webdav_password: Optional[str] = None
     prefer_format: Optional[str] = Field(default=None, pattern="^(flac|mp3|m4a|any)$")
-    mp3_output_path: Optional[str] = None
+    lossy_output_path: Optional[str] = None
     lossless_output_path: Optional[str] = None
     lossless_preferred: Optional[bool] = None
     auto_convert_when_lossless_not_preferred: Optional[bool] = None
@@ -78,7 +78,7 @@ class SettingsResponse(BaseModel):
     webdav_username: Optional[str]
     webdav_password: Optional[str]
     prefer_format: str
-    mp3_output_path: str
+    lossy_output_path: str
     lossless_output_path: str = ""
     lossless_preferred: bool = False
     auto_convert_when_lossless_not_preferred: bool = False

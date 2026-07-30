@@ -66,7 +66,7 @@ def _ensure_settings(db: Session) -> AppSettings:
             storage_path=cfg.storage_path,
             prefer_format="any",
             auto_convert_mp3=False,
-            mp3_output_path=str(Path(cfg.storage_path) / "MP3"),
+            lossy_output_path=str(Path(cfg.storage_path) / "LOSSY"),
             lossless_output_path=str(Path(cfg.storage_path) / "LOSSLESS"),
             lossless_preferred=False,
             auto_convert_when_lossless_not_preferred=False,
@@ -110,7 +110,7 @@ def _to_response(s: AppSettings) -> SettingsResponse:
         webdav_username=s.webdav_username,
         webdav_password=decrypt_text(s.webdav_password_enc) or "",
         prefer_format=s.prefer_format or "any",
-        mp3_output_path=getattr(s, "mp3_output_path", None) or str(Path(s.storage_path) / "MP3"),
+        lossy_output_path=getattr(s, "lossy_output_path", None) or str(Path(s.storage_path) / "LOSSY"),
         lossless_output_path=getattr(s, "lossless_output_path", None) or str(Path(s.storage_path) / "LOSSLESS"),
         lossless_preferred=bool(getattr(s, "lossless_preferred", False)),
         auto_convert_when_lossless_not_preferred=bool(getattr(s, "auto_convert_when_lossless_not_preferred", False)),
@@ -214,9 +214,9 @@ def update_settings(req: SettingsUpdate, user: str = Depends(get_current_user), 
             s.webdav_password_enc = encrypt_text(req.webdav_password)
     if req.prefer_format is not None:
         s.prefer_format = req.prefer_format
-    if req.mp3_output_path:
+    if req.lossy_output_path:
         # 空串/None 表示不修改；默认值由 _to_response 回退提供
-        s.mp3_output_path = req.mp3_output_path.strip()
+        s.lossy_output_path = req.lossy_output_path.strip()
     if req.lossless_output_path:
         s.lossless_output_path = req.lossless_output_path.strip()
     if req.lossless_preferred is not None:

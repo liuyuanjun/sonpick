@@ -55,6 +55,7 @@ def init_db():
 
     Base.metadata.create_all(bind=engine)
     _ensure_columns(engine)
+    _migrate_settings_lossy_output(engine)
     _seed_media_sources(engine)
     _ensure_song_file_indexes(engine)
     _migrate_song_path_responsibility(engine)
@@ -82,7 +83,7 @@ def _ensure_columns(engine: Engine):
             "scrape_sources_json": "TEXT DEFAULT '[]'",
             "lyrics_sources_json": "TEXT DEFAULT '[]'",
             "acoustid_api_key_enc": "VARCHAR(1024)",
-            "mp3_output_path": "VARCHAR(512)",
+            "lossy_output_path": "VARCHAR(512)",
             "lossless_output_path": "VARCHAR(512)",
             "lossless_preferred": "BOOLEAN DEFAULT 0",
             "auto_convert_when_lossless_not_preferred": "BOOLEAN DEFAULT 0",
@@ -136,6 +137,41 @@ def _ensure_columns(engine: Engine):
             conn.execute(text(
                 "UPDATE tasks SET started_at = created_at WHERE started_at IS NULL"
             ))
+
+
+def _migrate_settings_lossy_output(engine: Engine):
+    """settings.mp3_output_path → lossy_output_path：物化旧生效值后删除旧列。
+
+    旧值为空（一直在用默认目录）时按旧默认 <存储目录>/MP3 物化，保证已有部署的
+    落盘目录在升级后不变；新安装由 settings 播种逻辑默认 <存储目录>/LOSSY。
+    须在 _ensure_columns 之后运行（新列由它补齐）。
+    """
+    inspector = inspect(engine)
+    if "settings" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("settings")}
+    if "mp3_output_path" not in columns:
+        return
+
+    with engine.begin() as conn:
+        row = conn.execute(
+            text("SELECT storage_path, mp3_output_path, lossy_output_path FROM settings WHERE id = 1")
+        ).mappings().first()
+        if row and not (row.get("lossy_output_path") or "").strip():
+            value = (row.get("mp3_output_path") or "").strip()
+            if not value:
+                value = str(Path((row.get("storage_path") or "").strip()) / "MP3")
+            conn.execute(
+                text("UPDATE settings SET lossy_output_path = :value WHERE id = 1"),
+                {"value": value},
+            )
+        # SQLite ≥ 3.35 支持 DROP COLUMN；更老版本保留无害旧列，模型已不再读取
+        version = conn.execute(text("SELECT sqlite_version()")).scalar() or "0.0.0"
+        if tuple(int(p) for p in version.split(".")[:3]) >= (3, 35, 0):
+            conn.execute(text("ALTER TABLE settings DROP COLUMN mp3_output_path"))
+            print("[migration] settings.mp3_output_path → lossy_output_path（旧列已删除）", flush=True)
+        else:
+            print("[migration] settings.mp3_output_path → lossy_output_path（SQLite 过旧，保留旧列）", flush=True)
 
 
 def _ensure_song_file_indexes(engine: Engine):

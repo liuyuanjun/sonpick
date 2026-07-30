@@ -14,7 +14,7 @@ from app.models import AppSettings, Song, SongFile
 from app.services.convert_service import (
     LOSSLESS_FORMATS,
     resolve_lossless_output_dir,
-    resolve_mp3_output_dir,
+    resolve_lossy_output_dir,
 )
 from app.services.library_layout import (
     library_relative_dir,
@@ -387,7 +387,7 @@ class MusicDLService:
         return re.sub(r"[\\/:*?\"<>|]", "_", text).strip()
 
     def _format_base_dir(self, ext: str, output_dir: Path) -> Path:
-        """按音频格式决定落盘根目录：无损→无损存放目录，其余→MP3 存放目录。"""
+        """按音频格式决定落盘根目录：无损→无损存放目录，其余有损格式→有损存放目录。"""
         settings = self.db.get(AppSettings, 1)
         storage = str(output_dir)
         if (ext or "").lower().lstrip(".") in LOSSLESS_FORMATS:
@@ -395,8 +395,8 @@ class MusicDLService:
                 getattr(settings, "lossless_output_path", None) if settings else None,
                 settings.storage_path if settings else storage,
             ))
-        return Path(resolve_mp3_output_dir(
-            getattr(settings, "mp3_output_path", None) if settings else None,
+        return Path(resolve_lossy_output_dir(
+            getattr(settings, "lossy_output_path", None) if settings else None,
             settings.storage_path if settings else storage,
         ))
 

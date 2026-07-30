@@ -45,15 +45,15 @@
                   <n-radio-button value="any">任意</n-radio-button>
                 </n-radio-group>
               </n-form-item>
-              <n-form-item label="MP3 存放目录">
+              <n-form-item label="有损存放目录">
                 <n-space vertical style="width: 100%">
                   <n-input
-                    v-model:value="form.mp3_output_path"
-                    placeholder="默认：存储目录/MP3"
-                    :input-props="{ autocomplete: 'off', name: 'mp3_output_path' }"
+                    v-model:value="form.lossy_output_path"
+                    placeholder="默认：存储目录/LOSSY"
+                    :input-props="{ autocomplete: 'off', name: 'lossy_output_path' }"
                   />
-                  <n-text depth="3">MP3 等有损格式（含下载与转码产物）的存放目录；留空使用默认目录；相对路径（如 MP3 或 /MP3）基于本地存储路径解析；多段绝对路径（如 /mnt/nas/mp3）按原样使用。</n-text>
-                  <n-text depth="3" class="path-line">实际路径：<code>{{ resolvedMp3Path }}</code></n-text>
+                  <n-text depth="3">有损格式（MP3/AAC/M4A/OGG/WMA 等，含下载与转码产物，不限码率档位）的存放目录；无损格式（FLAC/APE/WAV/AIFF/ALAC）见下方「无损存放目录」。留空使用默认目录；相对路径（如 LOSSY 或 /LOSSY）基于本地存储路径解析；多段绝对路径（如 /mnt/nas/lossy）按原样使用。</n-text>
+                  <n-text depth="3" class="path-line">实际路径：<code>{{ resolvedLossyPath }}</code></n-text>
                 </n-space>
               </n-form-item>
               <n-form-item label="无损存放目录">
@@ -261,7 +261,7 @@ const regionOptions = [
 const form = reactive({
   storage_path: '',
   prefer_format: 'any',
-  mp3_output_path: '',
+  lossy_output_path: '',
   lossless_output_path: '',
   lossless_preferred: false,
   auto_convert_when_lossless_not_preferred: false,
@@ -277,7 +277,7 @@ const resolveDir = (raw, defaultName) => {
   if (value.startsWith('/') && value.slice(1).includes('/')) return value
   return join(value.replace(/^\/+/, ''))
 }
-const resolvedMp3Path = computed(() => resolveDir(form.mp3_output_path, 'MP3'))
+const resolvedLossyPath = computed(() => resolveDir(form.lossy_output_path, 'LOSSY'))
 const resolvedLosslessPath = computed(() => resolveDir(form.lossless_output_path, 'LOSSLESS'))
 
 const sourceColumns = [
@@ -374,7 +374,7 @@ async function load() {
     Object.assign(form, {
       storage_path: d.storage_path || '',
       prefer_format: d.prefer_format || 'any',
-      mp3_output_path: d.mp3_output_path || '',
+      lossy_output_path: d.lossy_output_path || '',
       lossless_output_path: d.lossless_output_path || '',
       lossless_preferred: !!d.lossless_preferred,
       auto_convert_when_lossless_not_preferred: !!d.auto_convert_when_lossless_not_preferred,
@@ -393,7 +393,7 @@ async function saveGeneral() {
   await save({
     storage_path: form.storage_path,
     prefer_format: form.prefer_format,
-    mp3_output_path: form.mp3_output_path.trim() || undefined,
+    lossy_output_path: form.lossy_output_path.trim() || undefined,
     lossless_output_path: form.lossless_output_path.trim() || undefined,
     lossless_preferred: form.lossless_preferred,
     auto_convert_when_lossless_not_preferred: form.auto_convert_when_lossless_not_preferred,

@@ -343,7 +343,7 @@
       <n-form-item label="按格式归档">
         <n-space align="center">
           <n-switch v-model:value="reorgForm.relocate_format_dirs" />
-          <n-text depth="3" style="font-size: 12px">开启后，整理时会把错放的无损文件（FLAC/APE/WAV 等）移入「无损存放目录」、MP3 等有损文件移入「MP3 存放目录」下对应的艺术家/专辑位置（目录在设置页配置，默认不开启）。内置曲库未开启时会分别在 MP3/无损存放目录内整理；目标已存在同一首歌时保留音质较好的文件。仅本地曲库生效。</n-text>
+          <n-text depth="3" style="font-size: 12px">开启后，整理时会把错放的无损文件（FLAC/APE/WAV 等）移入「无损存放目录」、MP3/AAC 等有损文件移入「有损存放目录」下对应的艺术家/专辑位置（目录在设置页配置，默认不开启）。内置曲库未开启时会分别在有损/无损存放目录内整理；目标已存在同一首歌时保留音质较好的文件。仅本地曲库生效。</n-text>
         </n-space>
       </n-form-item>
       <n-form-item label="允许网络补全">

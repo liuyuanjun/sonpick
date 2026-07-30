@@ -38,7 +38,7 @@ class AppSettings(Base):
     webdav_password_enc = Column(String(512), nullable=True)
     prefer_format = Column(String(16), default="any")
     auto_convert_mp3 = Column(Boolean, default=False)
-    mp3_output_path = Column(String(512), nullable=True)
+    lossy_output_path = Column(String(512), nullable=True)
     lossless_output_path = Column(String(512), nullable=True)
     lossless_preferred = Column(Boolean, default=False)
     auto_convert_when_lossless_not_preferred = Column(Boolean, default=False)

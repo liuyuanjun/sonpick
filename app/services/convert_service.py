@@ -34,9 +34,9 @@ def resolve_output_dir(raw: str | None, storage_path: str | None, default_name: 
     return str(Path(storage) / value.lstrip("/"))
 
 
-def resolve_mp3_output_dir(raw: str | None, storage_path: str | None) -> str:
-    """Resolve the MP3 output directory（默认 <存储目录>/MP3）。"""
-    return resolve_output_dir(raw, storage_path, "MP3")
+def resolve_lossy_output_dir(raw: str | None, storage_path: str | None) -> str:
+    """Resolve the lossy output directory（新安装默认 <存储目录>/LOSSY）。"""
+    return resolve_output_dir(raw, storage_path, "LOSSY")
 
 
 def resolve_lossless_output_dir(raw: str | None, storage_path: str | None) -> str:
@@ -224,8 +224,8 @@ class ConvertService:
 
     def _output_path(self, song: Song) -> Path:
         settings = self.db.get(AppSettings, 1)
-        root = Path(resolve_mp3_output_dir(
-            getattr(settings, "mp3_output_path", None) if settings else None,
+        root = Path(resolve_lossy_output_dir(
+            getattr(settings, "lossy_output_path", None) if settings else None,
             settings.storage_path if settings else None,
         ))
         return root / self._normalize(song.artist or "未知艺术家") / self._normalize(song.album or "未知专辑") / f"{self._normalize(song.title or '未知歌曲')}.mp3"

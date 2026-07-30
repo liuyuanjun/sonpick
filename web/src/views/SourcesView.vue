@@ -235,7 +235,7 @@
           <n-form-item v-if="reorgSource?.type === 'local'" label="按格式归档">
             <n-switch v-model:value="reorgForm.relocate_format_dirs" />
             <n-text depth="3" style="margin-left: 8px; font-size: 12px">
-              开启后把无损文件（FLAC/APE/WAV 等）移入「无损存放目录」、MP3 等有损文件移入「MP3 存放目录」（目录在设置页配置）。目标已存在同一首歌时保留音质较好的文件
+              开启后把无损文件（FLAC/APE/WAV 等）移入「无损存放目录」、MP3/AAC 等有损文件移入「有损存放目录」（目录在设置页配置）。目标已存在同一首歌时保留音质较好的文件
             </n-text>
           </n-form-item>
         </n-form>

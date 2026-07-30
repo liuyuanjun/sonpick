@@ -372,10 +372,10 @@ class LibraryOrganizeService:
         return source
 
     def _format_base_dirs(self) -> dict[str, Path]:
-        """无损/MP3 存放目录（绝对路径），用于按格式归档整理。"""
+        """无损/有损存放目录（绝对路径），用于按格式归档整理。"""
         from app.services.convert_service import (
             resolve_lossless_output_dir,
-            resolve_mp3_output_dir,
+            resolve_lossy_output_dir,
         )
 
         settings = self.db.get(AppSettings, 1)
@@ -385,8 +385,8 @@ class LibraryOrganizeService:
                 getattr(settings, "lossless_output_path", None) if settings else None,
                 storage,
             )).resolve(),
-            "mp3": Path(resolve_mp3_output_dir(
-                getattr(settings, "mp3_output_path", None) if settings else None,
+            "lossy": Path(resolve_lossy_output_dir(
+                getattr(settings, "lossy_output_path", None) if settings else None,
                 storage,
             )).resolve(),
         }
@@ -397,10 +397,10 @@ class LibraryOrganizeService:
             return root
         from app.services.convert_service import LOSSLESS_FORMATS
 
-        return fmt_dirs["lossless" if (ext or "").lower().lstrip(".") in LOSSLESS_FORMATS else "mp3"]
+        return fmt_dirs["lossless" if (ext or "").lower().lstrip(".") in LOSSLESS_FORMATS else "lossy"]
 
     def _builtin_format_dirs(self, source: MediaSource) -> dict[str, Path] | None:
-        """内置本地曲库（root 即存储目录）返回无损/MP3 存放目录，否则 None。"""
+        """内置本地曲库（root 即存储目录）返回无损/有损存放目录，否则 None。"""
         if source.type != "local":
             return None
         settings = self.db.get(AppSettings, 1)
@@ -423,7 +423,7 @@ class LibraryOrganizeService:
     ) -> Path:
         """决定单个文件的整理目标根。
 
-        开启按格式归档：按格式分流到无损/MP3 存放目录；
+        开启按格式归档：按格式分流到无损/有损存放目录；
         内置曲库未开归档：文件留在其当前所在的格式目录内整理；
         其余：整理到选择的目录。
         """
@@ -434,7 +434,7 @@ class LibraryOrganizeService:
                 resolved = path.resolve()
             except Exception:
                 resolved = path
-            for d in (builtin_dirs["lossless"], builtin_dirs["mp3"]):
+            for d in (builtin_dirs["lossless"], builtin_dirs["lossy"]):
                 try:
                     resolved.relative_to(d.resolve())
                     return d

@@ -411,7 +411,7 @@ class ReorganizeRequest(BaseModel):
     relative_dir: str = Field("", description="相对源根的子目录，空=整源")
     include_failed: bool = Field(False, description="是否包含 _failed 目录")
     allow_network: bool = Field(False, description="预览/整理时是否联网补专辑；默认关")
-    relocate_format_dirs: bool = Field(False, description="按格式归档：无损进无损存放目录、其余进 MP3 存放目录；默认关")
+    relocate_format_dirs: bool = Field(False, description="按格式归档：无损进无损存放目录、其余有损格式进有损存放目录；默认关")
 
 
 class ScrapeRequest(BaseModel):
