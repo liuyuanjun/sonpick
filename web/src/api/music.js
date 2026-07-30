@@ -100,6 +100,8 @@ export function applyScrapeCandidate(songId, candidate, options = {}) {
     candidate,
     selected_fields: options.selected_fields || [],
     write_file_tags: options.write_file_tags !== false,
+    cover_image_base64: options.cover_image_base64 || null,
+    cover_image_mime: options.cover_image_mime || null,
   }, { timeout: 120000 })
 }
 

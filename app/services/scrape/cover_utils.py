@@ -1,12 +1,57 @@
 """Cover URL extraction and download diagnostics for scrape candidates."""
 from __future__ import annotations
 
+import http.client
 import json
+import logging
 import mimetypes
+import socket
+import ssl
 import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger("sonpick.meta")
+
+
+class _IPv4HTTPSConnection(http.client.HTTPSConnection):
+    """Prefer IPv4: many NAS/Docker setups resolve AAAA but cannot route IPv6 (Errno 101)."""
+
+    def connect(self) -> None:
+        last_err: OSError | None = None
+        infos = socket.getaddrinfo(self.host, self.port, socket.AF_INET, socket.SOCK_STREAM)
+        if not infos:
+            # fall back to default dual-stack behavior
+            return super().connect()
+        for res in infos:
+            af, socktype, proto, _canon, sa = res
+            sock = None
+            try:
+                sock = socket.socket(af, socktype, proto)
+                if self.timeout is not socket._GLOBAL_DEFAULT_TIMEOUT:  # type: ignore[attr-defined]
+                    sock.settimeout(self.timeout)
+                sock.connect(sa)
+                if self._tunnel_host:
+                    self.sock = sock
+                    self._tunnel()
+                self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
+                return
+            except OSError as exc:
+                last_err = exc
+                if sock is not None:
+                    sock.close()
+        if last_err is not None:
+            raise last_err
+        raise OSError(f"no IPv4 route to {self.host}")
+
+
+class _IPv4HTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req):  # noqa: ANN001
+        return self.do_open(_IPv4HTTPSConnection, req)
+
+
+_IPV4_OPENER = urllib.request.build_opener(_IPv4HTTPSHandler())
 
 
 def _as_dict(obj: Any) -> dict:
@@ -126,6 +171,21 @@ def _image_mime_from_magic(data: bytes) -> str | None:
     return None
 
 
+def _humanize_download_error(exc: BaseException, url: str) -> str:
+    msg = f"{type(exc).__name__}: {exc}"
+    low = msg.lower()
+    if "network is unreachable" in low or "errno 101" in low:
+        return (
+            f"服务器无法访问封面地址（网络不可达，常见于容器 IPv6/出网限制）: {url}。"
+            "可改用网易/QQ 候选，或由浏览器提交已预览的封面图"
+        )
+    if "timed out" in low or "timeout" in low:
+        return f"下载封面超时: {url}"
+    if "name or service not known" in low or "nodename nor servname" in low:
+        return f"封面域名解析失败: {url}"
+    return msg
+
+
 def download_cover_with_diagnostics(url: str | None, dest: str | Path, *, timeout: float = 15.0) -> dict:
     if not url:
         return {"ok": False, "path": None, "error": "missing cover_url"}
@@ -141,14 +201,20 @@ def download_cover_with_diagnostics(url: str | None, dest: str | Path, *, timeou
         },
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        # Prefer IPv4 opener; fall back to default urlopen if needed.
+        try:
+            resp_cm = _IPV4_OPENER.open(req, timeout=timeout)
+        except Exception as ipv4_exc:
+            log.info("cover download IPv4 path failed url=%s err=%s; trying default", url_s, ipv4_exc)
+            resp_cm = urllib.request.urlopen(req, timeout=timeout)
+        with resp_cm as resp:
             status = getattr(resp, "status", 200)
             content_type = resp.headers.get("Content-Type", "")
             data = resp.read()
         if status >= 400:
-            return {"ok": False, "path": None, "error": f"HTTP {status}", "status": status, "content_type": content_type}
+            return {"ok": False, "path": None, "error": f"HTTP {status}", "status": status, "content_type": content_type, "url": url_s}
         if not data:
-            return {"ok": False, "path": None, "error": "empty response", "status": status, "content_type": content_type}
+            return {"ok": False, "path": None, "error": "empty response", "status": status, "content_type": content_type, "url": url_s}
         magic_mime = _image_mime_from_magic(data)
         if "image" not in (content_type or "").lower():
             guess = mimetypes.guess_type(url_s)[0] or ""
@@ -157,7 +223,9 @@ def download_cover_with_diagnostics(url: str | None, dest: str | Path, *, timeou
         path.write_bytes(data)
         return {"ok": True, "path": str(path), "error": None, "status": status, "content_type": content_type or magic_mime, "size": len(data), "url": url_s}
     except Exception as e:
-        return {"ok": False, "path": None, "error": f"{type(e).__name__}: {e}", "url": str(url)}
+        err = _humanize_download_error(e, url_s)
+        log.warning("cover download failed url=%s error=%s", url_s, err)
+        return {"ok": False, "path": None, "error": err, "url": url_s}
 
 
 def extract_qq_songmid(value: Any) -> str | None:

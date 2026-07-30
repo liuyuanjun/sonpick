@@ -1098,9 +1098,35 @@ async function applyCandidate() {
   scraping.value = true
   scrapeHint.value = '写入中'
   try {
+    // 若封面已预览且候选来自 CAA/可能容器不通，把图片字节也提交，后端优先使用
+    let coverImageBase64 = null
+    let coverImageMime = null
+    if (scrapeApplyFields.value.includes('cover') && scrapeCoverAvailable('candidate')) {
+      const url = scrapeCoverImageUrl('candidate')
+      if (url) {
+        try {
+          const fetched = await fetch(url)
+          if (fetched.ok) {
+            const blob = await fetched.blob()
+            coverImageMime = blob.type || null
+            coverImageBase64 = await new Promise((resolve, reject) => {
+              const reader = new FileReader()
+              reader.onloadend = () => resolve(reader.result)
+              reader.onerror = reject
+              reader.readAsDataURL(blob)
+            })
+          }
+        } catch (_) {
+          coverImageBase64 = null
+        }
+      }
+    }
+
     const res = await applyScrapeCandidate(targetSongId, row, {
       selected_fields: scrapeApplyFields.value,
       write_file_tags: true,
+      cover_image_base64: coverImageBase64,
+      cover_image_mime: coverImageMime,
     })
     const data = res.data || res || {}
     if (player.current?.id === targetSongId) {

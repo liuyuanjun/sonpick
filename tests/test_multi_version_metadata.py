@@ -107,7 +107,7 @@ class MultiVersionMetadataTests(unittest.TestCase):
             resolver = FakeResolver(files, files)
             target_song = song()
 
-            def fake_l0(*, cover_url=None, cover_source_path=None):
+            def fake_l0(*, cover_url=None, cover_source_path=None, cover_bytes=None, cover_mime=None):
                 l0 = Path(directory) / "l0-cover.jpg"
                 l0.write_bytes(b"cover-l0")
                 return {"ok": True, "path": str(l0), "source": "url"}
@@ -157,7 +157,7 @@ class MultiVersionMetadataTests(unittest.TestCase):
             resolver = FakeResolver(files, files)
             target_song = song()
 
-            def fake_l0(*, cover_url=None, cover_source_path=None):
+            def fake_l0(*, cover_url=None, cover_source_path=None, cover_bytes=None, cover_mime=None):
                 l0 = data_dir / "by-hash" / "abc.jpg"
                 l0.parent.mkdir(parents=True, exist_ok=True)
                 l0.write_bytes(b"cover-bytes")
@@ -223,7 +223,7 @@ class MultiVersionMetadataTests(unittest.TestCase):
             # L0 封面失败 → 整体 ok=false，但文本已写入
             self.assertFalse(result["ok"])
             self.assertTrue(result["partial"])
-            self.assertIn("L0 封面失败", result.get("error_summary") or "")
+            self.assertIn("封面未写入", result.get("error_summary") or "")
             for version in result["versions"]:
                 self.assertEqual(version["status"], "written")
                 self.assertIn("侧车封面失败", (version.get("reason") or ""))

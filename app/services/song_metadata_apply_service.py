@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.models import Song, SongFile
 from app.services.media_meta_service import (
     materialize_cover_to_l0,
+    store_cover_bytes,
     tag_write_capability,
     write_audio_tags,
 )
@@ -37,8 +38,30 @@ def _store_l0_cover(
     *,
     cover_url: str | None,
     cover_source_path: str | None,
+    cover_bytes: bytes | None = None,
+    cover_mime: str | None = None,
 ) -> dict[str, Any]:
-    """下载或复制封面到 L0 by-hash。无 URL/源路径时表示清空封面。"""
+    """下载/复制/接收浏览器字节，固化到 L0 by-hash。无来源时表示清空封面。"""
+    if cover_bytes:
+        try:
+            # 浏览器预览已成功时优先走这条，避开 NAS 出网限制
+            ext = None
+            mime = (cover_mime or "").lower()
+            if "png" in mime:
+                ext = ".png"
+            elif "webp" in mime:
+                ext = ".webp"
+            elif "gif" in mime:
+                ext = ".gif"
+            elif "jpeg" in mime or "jpg" in mime:
+                ext = ".jpg"
+            path = store_cover_bytes(cover_bytes, ext=ext)
+            log.info("L0 cover stored from client bytes path=%s size=%s", path, len(cover_bytes))
+            return {"ok": True, "path": str(path), "source": "client_bytes", "size": len(cover_bytes)}
+        except Exception as exc:
+            log.warning("L0 cover from client bytes failed err=%s", exc)
+            return {"ok": False, "path": None, "error": f"浏览器封面写入失败: {exc}"}
+
     if cover_url:
         tmp_dir = Path(tempfile.mkdtemp(prefix="sonpick-cover-"))
         try:
@@ -97,6 +120,8 @@ def apply_metadata_to_song_files(
     selected_fields: set[str],
     cover_url: str | None,
     cover_source_path: str | None = None,
+    cover_bytes: bytes | None = None,
+    cover_mime: str | None = None,
     write_file_tags: bool = True,
 ) -> dict[str, Any]:
     """把 Song L0 元信息写穿到各 SongFile。
@@ -128,7 +153,12 @@ def apply_metadata_to_song_files(
 
     l0_cover: dict[str, Any] | None = None
     if cover_selected:
-        l0_cover = _store_l0_cover(cover_url=cover_url, cover_source_path=cover_source_path)
+        l0_cover = _store_l0_cover(
+            cover_url=cover_url,
+            cover_source_path=cover_source_path,
+            cover_bytes=cover_bytes,
+            cover_mime=cover_mime,
+        )
         if l0_cover.get("ok"):
             song.cover_path = l0_cover.get("path")
         else:
@@ -290,25 +320,62 @@ def apply_metadata_to_song_files(
     l0_ok = (not cover_selected) or bool(l0_cover and l0_cover.get("ok"))
     ok = failed == 0 and l0_ok
 
-    errors = [
-        {
-            "song_file_id": item.get("song_file_id"),
-            "format": item.get("format"),
-            "path": item.get("path"),
-            "error": item.get("error") or item.get("cover_error") or item.get("reason"),
-            "status": item.get("status"),
-        }
-        for item in results
-        if item.get("status") in {"failed", "unsupported"} or item.get("warnings") or item.get("cover_error")
-    ]
+    errors: list[dict[str, Any]] = []
+    l0_error = None
     if not l0_ok and l0_cover:
-        errors.insert(0, {
+        l0_error = l0_cover.get("error") or "L0 封面失败"
+        errors.append({
             "song_file_id": None,
             "format": None,
             "path": None,
-            "error": f"L0 封面失败: {l0_cover.get('error')}",
+            "error": l0_error,
             "status": "l0_cover_failed",
         })
+
+    seen_msgs: set[str] = set()
+    if l0_error:
+        seen_msgs.add(str(l0_error).strip())
+
+    for item in results:
+        # unsupported 本身不是错误；仅 failed / 真正异常进入 errors
+        raw_err = item.get("error")
+        if item.get("status") == "failed" and raw_err:
+            msg = str(raw_err).strip()
+            # 侧车失败若与 L0 同源，不重复罗列每个版本
+            if l0_error and (msg == l0_error or l0_error in msg or msg in l0_error):
+                continue
+            if msg in seen_msgs:
+                continue
+            seen_msgs.add(msg)
+            errors.append({
+                "song_file_id": item.get("song_file_id"),
+                "format": item.get("format"),
+                "path": item.get("path"),
+                "error": msg,
+                "status": item.get("status"),
+            })
+        elif item.get("status") == "unsupported" and item.get("reason") and "侧车失败" in str(item.get("reason")):
+            # 仅在侧车失败且原因与 L0 不同时补充
+            reason = str(item.get("reason"))
+            if l0_error and l0_error in reason:
+                continue
+
+    summary_parts: list[str] = []
+    if l0_error:
+        summary_parts.append(f"封面未写入: {l0_error}")
+    for e in errors:
+        if e.get("status") == "l0_cover_failed":
+            continue
+        label = e.get("format") or "版本"
+        if e.get("error"):
+            summary_parts.append(f"{label}: {e['error']}")
+    # unsupported 计数提示（非错误）
+    if unsupported and not failed and l0_ok:
+        pass  # 纯 unsupported 由前端 success 文案处理
+    elif unsupported and (failed or not l0_ok):
+        summary_parts.append(f"{unsupported} 个版本不支持内嵌")
+
+    error_summary = "；".join(summary_parts)[:500] if summary_parts else ""
 
     log.info(
         "apply metadata done song_id=%s ok=%s written=%s failed=%s unsupported=%s skipped=%s l0_ok=%s errors=%s",
@@ -334,7 +401,5 @@ def apply_metadata_to_song_files(
         "cover_paths": [str(path) for path, item in cover_targets.items() if item.get("ok") and item.get("path")],
         "l0_cover": l0_cover,
         "errors": errors,
-        "error_summary": "；".join(
-            f"{e.get('format') or 'L0'}: {e.get('error')}" for e in errors if e.get("error")
-        )[:500],
+        "error_summary": error_summary or None,
     }

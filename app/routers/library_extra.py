@@ -683,6 +683,9 @@ class ApplyScrapeCandidateRequest(BaseModel):
     candidate: dict
     selected_fields: list[str] = Field(default_factory=lambda: ["title", "artist", "album", "year", "genre", "cover"])
     write_file_tags: bool = True
+    # 浏览器已预览成功的封面（base64，可带 dataURL 前缀）；NAS 出网失败时用此绕过服务器下载
+    cover_image_base64: str | None = None
+    cover_image_mime: str | None = None
 
 
 def _local_song_file(db: Session, song: Song) -> SongFile | None:
@@ -906,14 +909,39 @@ def apply_scrape_candidate(
     db.flush()
 
     from app.services.song_metadata_apply_service import apply_metadata_to_song_files
+    import base64
+    import binascii
     import logging
+    import re
 
     log = logging.getLogger("sonpick.meta")
+    cover_bytes = None
+    cover_mime = body.cover_image_mime
+    if "cover" in selected_fields and body.cover_image_base64:
+        raw_b64 = body.cover_image_base64.strip()
+        m = re.match(r"^data:([^;]+);base64,(.+)$", raw_b64, re.DOTALL)
+        if m:
+            cover_mime = cover_mime or m.group(1)
+            raw_b64 = m.group(2)
+        try:
+            cover_bytes = base64.b64decode(raw_b64, validate=False)
+            if not cover_bytes:
+                cover_bytes = None
+            elif len(cover_bytes) > 8 * 1024 * 1024:
+                log.warning("scrape apply cover_image too large song_id=%s size=%s", song_id, len(cover_bytes))
+                cover_bytes = None
+                cover_mime = None
+        except (binascii.Error, ValueError) as exc:
+            log.warning("scrape apply cover_image base64 decode failed song_id=%s err=%s", song_id, exc)
+            cover_bytes = None
+            cover_mime = None
+
     log.info(
-        "scrape apply song_id=%s fields=%s cover_url=%s write_file_tags=%s",
+        "scrape apply song_id=%s fields=%s cover_url=%s client_cover=%s write_file_tags=%s",
         song_id,
         sorted(selected_fields),
         bool(cover_url),
+        bool(cover_bytes),
         body.write_file_tags,
     )
 
@@ -921,7 +949,9 @@ def apply_scrape_candidate(
         db,
         song,
         selected_fields=selected_fields,
-        cover_url=cover_url,
+        cover_url=cover_url if not cover_bytes else None,
+        cover_bytes=cover_bytes,
+        cover_mime=cover_mime,
         write_file_tags=body.write_file_tags,
     )
     db.refresh(song)
