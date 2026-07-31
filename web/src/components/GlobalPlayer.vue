@@ -1,7 +1,7 @@
 <template>
   <teleport to="body">
     <transition name="slide-up">
-    <div v-if="player.showPlayer && player.current" class="global-player">
+    <div v-if="player.showPlayer && player.current" class="global-player" :class="{ dark: themeStore.isDark }">
       <div class="gp-progress-line" aria-hidden="true">
         <div class="fill" :style="{ width: `${progress}%` }"></div>
       </div>
@@ -124,10 +124,12 @@ import {
 } from '@vicons/ionicons5'
 import { NSlider, useMessage } from 'naive-ui'
 import { usePlayerStore } from '@/stores/player'
+import { useThemeStore } from '@/stores/theme'
 import { useIsMobile } from '@/composables/useIsMobile'
 import { formatTime } from '@/utils/lrc'
 
 const player = usePlayerStore()
+const themeStore = useThemeStore()
 const message = useMessage()
 const router = useRouter()
 const route = useRoute()
@@ -264,6 +266,12 @@ onUnmounted(() => window.removeEventListener('sonpick-seek', onExternalSeek))
 
 <style scoped>
 .global-player {
+  /* 本组件经 Teleport 挂载到 body，不在 n-config-provider 子树内，
+     --n-* 主题变量不可达，需按主题类显式定义配色 */
+  --gp-bg: rgba(255, 255, 255, 0.9);
+  --gp-border: rgb(239, 239, 245);
+  --gp-text: rgb(31, 34, 37);
+  --gp-text-3: rgb(118, 124, 130);
   position: fixed;
   bottom: 0;
   left: 0;
@@ -276,10 +284,18 @@ onUnmounted(() => window.removeEventListener('sonpick-seek', onExternalSeek))
   gap: 12px;
   padding: 0 16px;
   box-sizing: border-box;
-  background: color-mix(in srgb, var(--n-card-color) 90%, transparent);
-  border-top: 1px solid var(--n-border-color);
+  background: var(--gp-bg);
+  border-top: 1px solid var(--gp-border);
+  color: var(--gp-text);
   backdrop-filter: blur(14px);
   box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.06);
+}
+.global-player.dark {
+  --gp-bg: rgba(24, 24, 28, 0.9);
+  --gp-border: rgba(255, 255, 255, 0.09);
+  --gp-text: rgba(255, 255, 255, 0.9);
+  --gp-text-3: rgba(255, 255, 255, 0.52);
+  box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.4);
 }
 .gp-left {
   display: flex;
@@ -300,7 +316,7 @@ onUnmounted(() => window.removeEventListener('sonpick-seek', onExternalSeek))
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--n-text-color-3);
+  color: var(--gp-text-3);
 }
 .meta {
   min-width: 0;
@@ -318,7 +334,7 @@ onUnmounted(() => window.removeEventListener('sonpick-seek', onExternalSeek))
 }
 .artist {
   font-size: 12px;
-  color: var(--n-text-color-3);
+  color: var(--gp-text-3);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -344,7 +360,7 @@ onUnmounted(() => window.removeEventListener('sonpick-seek', onExternalSeek))
 }
 .progress-row span {
   font-size: 11px;
-  color: var(--n-text-color-3);
+  color: var(--gp-text-3);
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
