@@ -26,6 +26,7 @@ __pycache__/
 *.pyc
 *.egg-info/
 .venv-test/
+.pytest_cache/
 
 # local
 .DS_Store
