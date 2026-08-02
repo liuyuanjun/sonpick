@@ -37,9 +37,24 @@
         <div class="controls">
           <n-tooltip>
             <template #trigger>
-              <n-button quaternary circle size="small" :type="player.losslessPreferred ? 'primary' : 'default'" @click="player.toggleLosslessPreferred()">{{ player.losslessPreferred ? 'FLAC' : 'MP3' }}</n-button>
+              <n-button
+                quaternary
+                size="small"
+                class="format-toggle"
+                :class="{ active: player.losslessPreferred }"
+                :type="player.losslessPreferred ? 'primary' : 'default'"
+                @click="player.toggleLosslessPreferred()"
+              >
+                <template #icon>
+                  <n-icon :size="15">
+                    <diamond-outline v-if="player.losslessPreferred" />
+                    <flash-outline v-else />
+                  </n-icon>
+                </template>
+                {{ player.losslessPreferred ? '无损优先' : '速度优先' }}
+              </n-button>
             </template>
-            {{ player.losslessPreferred ? '无损优先：优先 FLAC' : 'MP3 优先：缺失时自动回退' }}
+            {{ player.losslessPreferred ? '无损优先：优先 FLAC' : '速度优先：优先 MP3，缺失时自动回退' }}
           </n-tooltip>
           <n-tooltip>
             <template #trigger>
@@ -121,6 +136,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   Play, Pause, Close, MusicalNotes, PlaySkipBack, PlaySkipForward,
   Shuffle, Repeat, Reload, List, ListOutline, VolumeMedium, VolumeMute, Expand,
+  DiamondOutline, FlashOutline,
 } from '@vicons/ionicons5'
 import { NSlider, useMessage } from 'naive-ui'
 import { usePlayerStore } from '@/stores/player'
@@ -350,6 +366,12 @@ onUnmounted(() => window.removeEventListener('sonpick-seek', onExternalSeek))
   display: flex;
   align-items: center;
   gap: 6px;
+}
+.format-toggle {
+  border-radius: 999px;
+  padding: 0 12px;
+  font-size: 12px;
+  letter-spacing: 0;
 }
 .progress-row {
   width: min(520px, 100%);

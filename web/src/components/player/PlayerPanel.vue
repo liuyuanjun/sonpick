@@ -224,9 +224,24 @@
     <div class="controls">
       <n-tooltip>
         <template #trigger>
-          <n-button quaternary circle class="ctrl" :type="player.losslessPreferred ? 'primary' : 'default'" @click="player.toggleLosslessPreferred()">{{ player.losslessPreferred ? 'FLAC' : 'MP3' }}</n-button>
+          <n-button
+            quaternary
+            size="small"
+            class="ctrl format-toggle"
+            :class="{ active: player.losslessPreferred }"
+            :type="player.losslessPreferred ? 'primary' : 'default'"
+            @click="player.toggleLosslessPreferred()"
+          >
+            <template #icon>
+              <n-icon :size="15">
+                <diamond-outline v-if="player.losslessPreferred" />
+                <flash-outline v-else />
+              </n-icon>
+            </template>
+            {{ player.losslessPreferred ? '无损优先' : '速度优先' }}
+          </n-button>
         </template>
-        {{ player.losslessPreferred ? '无损优先：优先 FLAC' : 'MP3 优先：缺失时自动回退' }}
+        {{ player.losslessPreferred ? '无损优先：优先 FLAC' : '速度优先：优先 MP3，缺失时自动回退' }}
       </n-tooltip>
       <n-tooltip>
         <template #trigger>
@@ -521,6 +536,8 @@ import {
   Pause,
   VolumeHigh,
   VolumeMute,
+  DiamondOutline,
+  FlashOutline,
 } from '@vicons/ionicons5'
 import {
   addFavorite,
@@ -1707,6 +1724,15 @@ async function toggleFavorite() {
 }
 .ctrl {
   color: var(--fg) !important;
+}
+.format-toggle {
+  border-radius: 999px;
+  padding: 0 12px;
+  font-size: 12px;
+  letter-spacing: 0;
+}
+.format-toggle.active {
+  color: var(--accent, #18a058) !important;
 }
 .play-btn {
   width: 58px;
