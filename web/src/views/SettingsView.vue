@@ -37,7 +37,7 @@
                   :input-props="{ autocomplete: 'off', name: 'storage_path' }"
                 />
               </n-form-item>
-              <n-form-item label="默认优先格式" class="format-item">
+              <n-form-item label="下载优先格式" class="format-item">
                 <n-radio-group v-model:value="form.prefer_format" class="format-group" size="small">
                   <n-radio-button value="flac">FLAC</n-radio-button>
                   <n-radio-button value="mp3">MP3</n-radio-button>
@@ -67,17 +67,23 @@
                   <n-text depth="3" class="path-line">实际路径：<code>{{ resolvedLosslessPath }}</code></n-text>
                 </n-space>
               </n-form-item>
-              <n-form-item label="无损优先播放">
+              <n-form-item label="默认优先播放">
                 <n-space class="switch-row" align="center" :wrap="true">
-                  <n-switch v-model:value="form.lossless_preferred" />
-                  <n-text depth="3">开启优先 FLAC；关闭优先 MP3，缺失时自动回退。</n-text>
+                  <n-radio-group v-model:value="form.lossless_preferred" class="format-group" size="small">
+                    <n-radio-button :value="true">无损</n-radio-button>
+                    <n-radio-button :value="false">速度</n-radio-button>
+                  </n-radio-group>
+                  <n-text depth="3">无损：优先播放 FLAC 等无损格式；速度：优先播放 MP3，缺失时自动回退。</n-text>
                 </n-space>
               </n-form-item>
-              <n-form-item label="无损优先关闭时自动转 MP3">
-                <n-switch
-                  v-model:value="form.auto_convert_when_lossless_not_preferred"
-                  :disabled="form.lossless_preferred"
-                />
+              <n-form-item label="速度优先时自动转 MP3">
+                <n-space class="switch-row" align="center" :wrap="true">
+                  <n-switch
+                    v-model:value="form.auto_convert_when_lossless_not_preferred"
+                    :disabled="form.lossless_preferred"
+                  />
+                  <n-text depth="3">仅「速度」默认播放模式下生效；缺失 MP3 时自动把无损转码为 MP3。</n-text>
+                </n-space>
               </n-form-item>
               <n-form-item label="下载后自动上传">
                 <n-space class="switch-row" align="center" :wrap="true">
