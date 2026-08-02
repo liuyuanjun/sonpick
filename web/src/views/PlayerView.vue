@@ -129,7 +129,7 @@
               <div class="media-title">{{ a.name }}</div>
               <div class="media-sub">{{ a.song_count }} 首 · {{ a.album_count }} 张专辑</div>
             </div>
-            <n-empty v-if="!artists.length" description="暂无艺术家，先扫描曲库" />
+            <n-empty v-if="!artists.length" class="card-grid-empty" description="暂无艺术家，先扫描曲库" />
           </div>
           <div v-else>
             <n-space align="center" style="margin-bottom: 12px">
@@ -159,7 +159,7 @@
               <div class="media-title">{{ a.name }}</div>
               <div class="media-sub">{{ a.artist }} · {{ a.song_count }} 首</div>
             </div>
-            <n-empty v-if="!albums.length" description="暂无专辑，先扫描曲库" />
+            <n-empty v-if="!albums.length" class="card-grid-empty" description="暂无专辑，先扫描曲库" />
           </div>
           <div v-else>
             <n-space align="center" style="margin-bottom: 12px">
@@ -193,7 +193,7 @@
                 <n-button size="tiny" quaternary type="error" @click="onDeletePlaylist(p)">删除</n-button>
               </div>
             </div>
-            <n-empty v-if="!playlists.length" class="playlist-empty" description="还没有歌单，点右上角新建" />
+            <n-empty v-if="!playlists.length" class="card-grid-empty" description="还没有歌单，点右上角新建" />
           </div>
           <div v-else>
             <n-space align="center" style="margin-bottom: 12px">
@@ -1010,7 +1010,7 @@ onUnmounted(() => {
   gap: 14px;
   padding-bottom: 12px;
 }
-.playlist-empty {
+.card-grid-empty {
   grid-column: 1 / -1;
   display: flex;
   align-items: center;

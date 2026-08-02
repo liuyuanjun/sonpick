@@ -93,7 +93,7 @@
         </div>
       </div>
     </div>
-    <n-empty v-else description="暂无歌曲" style="padding: 36px 0" />
+    <n-empty v-else description="暂无歌曲" class="song-table-empty" />
     <div v-if="serverPaginated" class="pagination-bar" :class="[`tier-${paginationTier}`, { 'with-total': showTotalText }]">
       <n-text depth="3" class="total-text">共 {{ total }} 首</n-text>
       <div v-if="paginationTier === 'simple'" class="simple-pager">
@@ -273,6 +273,11 @@ function onCoverError(e) {
   padding-bottom: 8px;
   min-width: 0;
   max-width: 100%;
+}
+.song-table-empty {
+  min-height: 240px;
+  justify-content: center;
+  padding: 36px 0;
 }
 .toolbar {
   display: flex;
