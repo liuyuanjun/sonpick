@@ -211,6 +211,7 @@ music/
 - 组件库：Naive UI；图标：`@vicons/ionicons5`
 - 新 Naive 组件要在 `web/src/main.js` **import 并注册**（未全量 unplugin 自动引入时尤其注意）
 - 全局播放器：Pinia `player` store；音频 URL 常带 `token` query
+- 系统媒体键/线控：`web/src/composables/useMediaSession.js`（Media Session API，挂载于 `GlobalPlayer.vue`）——单击播放/暂停、双击下一曲、三击上一曲由 OS 翻译成媒体命令，网页只收 action，无法感知按键次数
 - 主题：`theme` store；`App.vue` 使用 `n-config-provider` + dialog/message provider
 - 前端文案：当前仓库以中文硬编码为主；**若新增 React 代码**，全局规则要求走 i18n、禁止硬编码用户可见字符串。现有 Vue 页面保持项目既有风格，不强制一次性 i18n 化
 

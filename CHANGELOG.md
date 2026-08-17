@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.1-rc1
+
+### 新功能
+- 接入 Media Session API（新增 `web/src/composables/useMediaSession.js`，`GlobalPlayer.vue` 挂载）：系统媒体命令对接到播放器——macOS/iOS/Android 线控或蓝牙耳机单击中键播放/暂停、双击下一曲、三击上一曲（按键次数由系统翻译为媒体命令，网页只接收 action）；同时注册 seekto/seekforward/seekbackward，锁屏/控制中心显示歌名、艺术家、专辑与封面，并用 `setPositionState` 同步进度。不支持该 API 的浏览器自动降级为原有行为。
+
 ## 0.15.0-rc21
 
 ### 变更（架构改造 P4：外部调用治理，见 `docs/backend-architecture-proposal.md`）
