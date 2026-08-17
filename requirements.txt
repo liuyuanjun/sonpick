@@ -20,7 +20,7 @@ aiofiles>=23.0
 webdavclient3>=3.14
 
 # 下载引擎（PyPI 精确钉版；升级由 Dependabot 开 PR，或手动改版本号）
-musicdl==2.13.4
+musicdl==2.13.6
 
 # 音频元数据（时长/内嵌封面）
 mutagen>=1.47
