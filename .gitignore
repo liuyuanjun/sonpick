@@ -40,3 +40,4 @@ web/.npm-cache
 # musicdl test / intermediate outputs
 musicdl/
 musicdl_outputs/
+.workbuddy
