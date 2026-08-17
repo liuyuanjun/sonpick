@@ -7,6 +7,8 @@ import urllib.parse
 import urllib.request
 from typing import Any, Optional
 
+from app.services.host_limiter import get_limiter
+
 log = logging.getLogger("sonpick.scrape")
 
 _UA = (
@@ -22,9 +24,14 @@ _HEADERS = {
 
 def _http_json(url: str, *, timeout: float = 12.0) -> Any:
     req = urllib.request.Request(url, headers=_HEADERS, method="GET")
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        raw = resp.read()
-    return json.loads(raw.decode("utf-8", errors="replace"))
+
+    def _do() -> Any:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read()
+        return json.loads(raw.decode("utf-8", errors="replace"))
+
+    # per-host 限流（并发 2 + 最小间隔 0.3s），替代各调用方自制节流
+    return get_limiter("m.music.migu.cn", max_concurrent=2, min_interval=0.3).run(_do)
 
 
 def search_migu(keyword: str, *, limit: int = 8, timeout: float = 12.0) -> list[dict[str, Any]]:

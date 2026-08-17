@@ -9,6 +9,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
+from app.services.host_limiter import HostLimiter, get_limiter
 from app.services.lyrics_provider import LyricsCandidate, LyricsQuery, score_lyrics_candidate
 
 _BASE_URL = "https://lrclib.net"
@@ -23,25 +24,29 @@ class LrclibRateLimitError(RuntimeError):
 
 class LrclibProvider:
     name = "lrclib"
-    _lock = threading.Lock()
-    _last_request_at = 0.0
-    _blocked_until = 0.0
     _cache: dict[str, tuple[float, Any]] = {}
+    _cache_lock = threading.Lock()
 
     def __init__(self, *, timeout: int = 18, minimum_interval: float = 0.3):
         self.timeout = max(5, min(60, int(timeout)))
         self.minimum_interval = max(0.2, min(0.5, float(minimum_interval)))
 
+    @property
+    def _limiter(self) -> HostLimiter:
+        # per-host 限流（并发槽 + 最小间隔 + 429 冷却），替代原类级全局大锁
+        return get_limiter("lrclib.net", max_concurrent=2, min_interval=self.minimum_interval)
+
     @classmethod
     def _cached(cls, key: str) -> Any | None:
-        row = cls._cache.get(key)
-        if not row:
-            return None
-        expires, value = row
-        if expires <= time.monotonic():
-            cls._cache.pop(key, None)
-            return None
-        return value
+        with cls._cache_lock:
+            row = cls._cache.get(key)
+            if not row:
+                return None
+            expires, value = row
+            if expires <= time.monotonic():
+                cls._cache.pop(key, None)
+                return None
+            return value
 
     def _request(self, path: str, params: dict[str, Any] | None = None) -> Any:
         query = urllib.parse.urlencode({key: value for key, value in (params or {}).items() if value not in (None, "")})
@@ -49,17 +54,12 @@ class LrclibProvider:
         cached = self._cached(url)
         if cached is not None:
             return cached
-        with self._lock:
+
+        def _do_request() -> Any:
+            # 双重检查：等待限流期间其他线程可能已写入缓存
             cached = self._cached(url)
             if cached is not None:
                 return cached
-            cls = type(self)
-            now = time.monotonic()
-            if now < cls._blocked_until:
-                raise LrclibRateLimitError(max(1, int(cls._blocked_until - now)))
-            delay = self.minimum_interval - (now - cls._last_request_at)
-            if delay > 0:
-                time.sleep(delay)
             request = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": _USER_AGENT})
             try:
                 with urllib.request.urlopen(request, timeout=self.timeout) as response:
@@ -72,15 +72,19 @@ class LrclibProvider:
                         retry_after = max(1, min(60, int(exc.headers.get("Retry-After") or 5)))
                     except (TypeError, ValueError):
                         retry_after = 5
-                    cls._blocked_until = time.monotonic() + retry_after
+                    self._limiter.backoff(retry_after)
                     raise LrclibRateLimitError(retry_after) from exc
                 raise RuntimeError(f"LRCLIB 请求失败: HTTP {exc.code}") from exc
             except (urllib.error.URLError, TimeoutError, ValueError) as exc:
                 raise RuntimeError(f"LRCLIB 请求失败: {type(exc).__name__}: {exc}") from exc
-            finally:
-                cls._last_request_at = time.monotonic()
-            self._cache[url] = (time.monotonic() + 300, payload)
+            with self._cache_lock:
+                self._cache[url] = (time.monotonic() + 300, payload)
             return payload
+
+        def _fail_fast(cooldown_seconds: float) -> None:
+            raise LrclibRateLimitError(max(1, int(cooldown_seconds)))
+
+        return self._limiter.run(_do_request, on_blocked=_fail_fast)
 
     @staticmethod
     def _candidate(row: dict[str, Any]) -> LyricsCandidate:

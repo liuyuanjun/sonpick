@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.15.0-rc21
+
+### 变更（架构改造 P4：外部调用治理，见 `docs/backend-architecture-proposal.md`）
+- 新增 per-host 限流组件 `app/services/host_limiter.py`：并发槽 + 最小请求间隔（预约制，并发线程不扎堆）+ 429 冷却退避；冷却期默认等待，调用方可经 `on_blocked` 回调快速失败。
+- LRCLIB 原类级全局大锁（持锁 sleep + 最长 18s urlopen，全进程所有 LRCLIB 调用被一把锁串行）重构为 HostLimiter（`lrclib.net`，并发 2 + 间隔 0.3s + 429 冷却）；429 快速失败语义、5 分钟缓存与任务中心"限流等待"统计行为不变。
+- 网易云 / 咪咕公开 API 的 `_http_json` 统一挂接 HostLimiter（各 host 并发 2 + 间隔 0.3s），刮削与歌词链路共享同一 per-host 限流状态。
+- musicdl（QQ 等）为三方库、无法注入传输层限流，仍由 search/scrape lane 信号量与统一硬超时约束；后续若暴露传输层再挂接 HostLimiter。
+
+## 0.15.0-rc20
+
+### 变更（架构改造 P3：任务系统重构，见 `docs/backend-architecture-proposal.md`）
+- 任务调度从"每秒轮询 DB"改为内存队列即时调度：`enqueue()` 真实入队（线程安全，任意线程可调用），4 个 worker 协程消费；DB 只做持久化（原子 claim / 终态 / 恢复）。
+- 任务并发按 lane 限流：download=1 / convert=1 / scrape=2（含歌词）/ scan=1（含 cleanup）；worker 线程池 `sonpick-task` 由 2 升至 4，多 lane 可真正并行（如转码与刮削同时进行），下载上传仍保持串行以保护外部源与 SQLite。
+- 启动时自动恢复遗留 pending 任务；reconcile 协程每 30s 兜底捞回漏 enqueue 的 pending（去重集合 + 原子 claim 双保险，不会重复执行）。
+- 进度上报与持久化解耦：`emit()` 改为非阻塞事件入队（O(1)），flusher 协程每 0.5s 按任务合并后一次落库 + 广播（原实现每次 emit 开 2 个 session 同步 commit）；任务写终态前强制冲刷事件队列，保证 SSE/WS 终态快照含最新进度；loop 未运行时（测试/脚本）回退同步直写。
+
+### 修复
+- `get_engine()` 不再无条件 `SessionLocal.configure(bind=...)`（仅在未绑定时配置）：此前测试/脚本用 `configure` 绑定临时库后，worker 内首次 `get_engine()` 会把 SessionLocal 重新绑回默认库并误写真实数据（本次已在测试中捕获并清理 dev 库污染，存量测试任务行已删除）。
+
+## 0.15.0-rc19
+
+### 变更（架构改造 P1/P2，见 `docs/backend-architecture-proposal.md`）
+- 新增统一并发内核 `app/services/execution.py`：共享线程池（`sonpick-io` 命名线程）+ lane 信号量（search=4 / scrape=2 / download=2）+ `run_with_hard_timeout`（对不可中断调用的全项目唯一硬超时实现；超时线程弃置为僵尸并计入 `zombie_threads()` 指标，不占用共享池槽位）。
+- P1 收编裸线程：SSE 流式搜索改为提交受控执行内核（search lane，并发有上限），不再每请求起一个无上限裸线程；播放时自动转码改为创建 `type=convert` 任务走任务系统（进度/日志/取消语义与手动转码一致，按 pending/running 任务去重），删除游离裸线程与 `_converting_song_ids` 内存去重集合。
+- P2 替换全部叶子层自建线程池（共 6 处）：`musicdl_service` 搜索重试/多源并行/刮削 lookup、`smart_cn_provider` QQ 搜索/并行搜索、`musicdl_provider` 元信息查询。
+
+### 修复
+- 刮削链路的"超时"原本不生效：`smart_cn_provider`、`musicdl_provider`、`musicdl_service` 刮削 lookup 使用 `with ThreadPoolExecutor(...)`，超时后退出 `with` 时 `shutdown(wait=True)` 仍会等超时线程跑完，实际延迟毫无上界；改用 `run_with_hard_timeout` 后超时真实生效。
+
+## 0.15.0-rc18
+
+### 修复
+- 后端并发正确性修复（架构改造 P0 阶段，目标设计与路线图见 `docs/backend-architecture-proposal.md`，现状评审见 `docs/backend-concurrency-review.md`）：
+  - 任务认领改为原子 claim（`UPDATE tasks SET status='running' ... WHERE id=? AND status='pending'`，按 rowcount 判归属），多进程/多 worker 部署下同一任务不再可能重复执行；已取消任务天然认领失败；
+  - worker → 主事件循环的全部推送（进度广播 / 终态广播 / watchdog / 单任务 SSE）收口为 `_push_to_loop`：loop 失效时节流记日志并关闭协程，不再因异常传播误杀任务，也不再静默丢失；
+  - `process_loop` 与 `lifespan` 改用 `asyncio.get_running_loop()`；
+  - WebDAV 代理播放的 aiohttp 会话补连接超时（`connect=15` / `sock_connect=15`，total 保持无界），避免对端失联时流永久挂起；长流播放与暂停不受影响。
+- 修复存量坏测试 `test_playback_selection`：`FakeDb.query()` 不区分模型，查 `MediaSource` 时返回 `SongFile` 桩导致 `playback_priority` AttributeError（该列引入后测试未跟进）；现按模型分发桩数据，测试套件恢复全绿。
+
 ## 0.15.0-rc17
 
 ### 变更

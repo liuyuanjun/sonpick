@@ -1,5 +1,6 @@
 import asyncio
 import json
+import queue
 import threading
 import time
 import traceback
@@ -8,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, get_engine
@@ -80,56 +82,119 @@ class TaskEventHub:
     def publish_threadsafe(self, task_id: int, payload: dict, loop: Optional[asyncio.AbstractEventLoop]) -> None:
         if not loop:
             return
+        coro = self.publish(task_id, payload)
         try:
-            asyncio.run_coroutine_threadsafe(self.publish(task_id, payload), loop)
-        except Exception:
-            pass
+            asyncio.run_coroutine_threadsafe(coro, loop)
+        except Exception as e:
+            try:
+                coro.close()
+            except Exception:
+                pass
+            print(f"[task_event_hub push error] {type(e).__name__}: {e}", flush=True)
 
 
 task_event_hub = TaskEventHub()
 
 
+# ---------------------------------------------------------------- 调度配置
+# worker 协程数：上限意义大于并行意义，实际任务并发由 lane 信号量控制
+_WORKER_COROUTINES = 4
+# lane：按任务类型限流。下载/转码/扫描串行（对源、CPU、SQLite 友好），刮削可并行 2
+_TASK_LANES: dict[str, str] = {
+    "search_download": "download",
+    "batch_download": "download",
+    "convert": "convert",
+    "scrape": "scrape",
+    "lyrics": "scrape",
+    "scan": "scan",
+    "cleanup": "scan",
+}
+_LANE_LIMITS: dict[str, int] = {"download": 1, "convert": 1, "scrape": 2, "scan": 1, "default": 2}
+# reconcile 兜底周期：捞回"队列未就绪期间入 DB"或漏 enqueue 的 pending 任务
+_RECONCILE_INTERVAL_SECONDS = 30
+# emit 事件批量落库/广播周期
+_FLUSH_INTERVAL_SECONDS = 0.5
+
+
 class TaskWorker:
     def __init__(self):
-        self.executor = ThreadPoolExecutor(max_workers=2)
+        self.executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="sonpick-task")
         self._running = False
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self._running_futures: dict[int, Future] = {}
         self._future_lock = threading.Lock()
         self._watchdog_task: Optional[asyncio.Task] = None
+        self._loop_push_failures = 0
+        # 内存调度队列（process_loop 内在事件循环上创建）
+        self._queue: Optional[asyncio.Queue] = None
+        self._lane_sems: dict[str, asyncio.Semaphore] = {}
+        self._queued_ids: set[int] = set()
+        self._ids_lock = threading.Lock()
+        # emit 进度事件队列（线程安全），flusher 协程批量消费
+        self._event_queue: "queue.Queue[tuple[int, str, Optional[int]]]" = queue.Queue()
 
     def set_loop(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
 
-    async def process_loop(self):
-        self._running = True
-        # ensure engine bound in worker threads context
-        get_engine()
-        while self._running:
-            task_id = None
-            db = SessionLocal()
-            try:
-                task = (
-                    db.query(Task)
-                    .filter(Task.status == "pending")
-                    .order_by(Task.id.asc())
-                    .first()
-                )
-                if task:
-                    task_id = task.id
-            except Exception as e:
-                print(f"[process_loop error] {e}", flush=True)
-                traceback.print_exc()
-                task_id = None
-            finally:
-                try:
-                    db.close()
-                except Exception:
-                    pass
+    def _push_to_loop(self, coro) -> bool:
+        """把协程推回主事件循环。
 
-            if task_id is not None:
-                try:
-                    future = asyncio.get_event_loop().run_in_executor(
+        loop 失效（热重载、异常关闭）时不再让异常传播误杀任务，也不静默丢失：
+        节流记日志（前 5 次 + 每 100 次）并 close 协程，避免 "never awaited" 警告。
+        """
+        loop = self.loop
+        if loop is None:
+            coro.close()
+            return False
+        try:
+            asyncio.run_coroutine_threadsafe(coro, loop)
+            return True
+        except Exception as e:
+            try:
+                coro.close()
+            except Exception:
+                pass
+            self._loop_push_failures += 1
+            n = self._loop_push_failures
+            if n <= 5 or n % 100 == 0:
+                print(f"[loop push error] {type(e).__name__}: {e}（累计 {n} 次）", flush=True)
+            return False
+
+    async def process_loop(self):
+        """调度主循环：内存队列 + N 个 worker 协程 + flusher + reconcile 兜底。
+
+        DB 只做持久化（claim/终态/恢复），不再每秒轮询；enqueue 即时调度，
+        reconcile 每 30s 捞回漏网 pending（原子 claim 保证不会重复执行）。
+        """
+        self._running = True
+        get_engine()
+        self._queue = asyncio.Queue()
+        self._lane_sems = {name: asyncio.Semaphore(limit) for name, limit in _LANE_LIMITS.items()}
+        children = [
+            asyncio.create_task(self._worker_loop(i)) for i in range(_WORKER_COROUTINES)
+        ] + [
+            asyncio.create_task(self._flush_loop()),
+            asyncio.create_task(self._reconcile_loop()),
+        ]
+        self._recover_pending()
+        try:
+            await asyncio.gather(*children)
+        except asyncio.CancelledError:
+            for child in children:
+                child.cancel()
+            raise
+
+    async def _worker_loop(self, idx: int):
+        assert self._queue is not None
+        while self._running:
+            task_id = await self._queue.get()
+            try:
+                lane = self._lane_for(task_id)
+                sem = self._lane_sems.get(lane) or self._lane_sems["default"]
+                async with sem:
+                    if not self._running:
+                        continue
+                    future = asyncio.get_running_loop().run_in_executor(
                         self.executor, self._run_sync, task_id
                     )
                     with self._future_lock:
@@ -138,17 +203,156 @@ class TaskWorker:
                         lambda f, tid=task_id: self._remove_future(tid)
                     )
                     await future
-                except asyncio.CancelledError:
-                    raise
-                except Exception as e:
-                    print(f"[process_loop executor error] {e}", flush=True)
-                    traceback.print_exc()
-                    await asyncio.sleep(1)
-            else:
-                await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                print(f"[worker_loop {idx} error] {e}", flush=True)
+                traceback.print_exc()
+            finally:
+                with self._ids_lock:
+                    self._queued_ids.discard(task_id)
+
+    def _lane_for(self, task_id: int) -> str:
+        db = SessionLocal()
+        try:
+            row = db.query(Task.type).filter(Task.id == task_id).first()
+            return _TASK_LANES.get(row[0], "default") if row else "default"
+        except Exception:
+            return "default"
+        finally:
+            db.close()
+
+    def _pending_ids(self) -> list[int]:
+        db = SessionLocal()
+        try:
+            return [
+                r[0]
+                for r in db.query(Task.id)
+                .filter(Task.status == "pending")
+                .order_by(Task.id.asc())
+                .all()
+            ]
+        except Exception as e:
+            print(f"[pending scan error] {e}", flush=True)
+            return []
+        finally:
+            db.close()
+
+    def _recover_pending(self):
+        ids = self._pending_ids()
+        for tid in ids:
+            self.enqueue(tid)
+        if ids:
+            print(f"[task_worker] 启动恢复 {len(ids)} 个遗留 pending 任务", flush=True)
+
+    async def _reconcile_loop(self):
+        """兜底：捞回队列未就绪期间入 DB / 漏 enqueue 的 pending 任务。"""
+        while self._running:
+            await asyncio.sleep(_RECONCILE_INTERVAL_SECONDS)
+            try:
+                for tid in self._pending_ids():
+                    self.enqueue(tid)
+            except Exception as e:
+                print(f"[reconcile error] {e}", flush=True)
+                traceback.print_exc()
+
+    # ------------------------------------------------------------ emit 管线
+
+    async def _flush_loop(self):
+        while self._running:
+            await asyncio.sleep(_FLUSH_INTERVAL_SECONDS)
+            try:
+                self._flush_events()
+            except Exception as e:
+                print(f"[flusher error] {e}", flush=True)
+                traceback.print_exc()
+
+    def _flush_events(self):
+        """把累积的进度事件按任务合并后一次落库 + 广播（线程安全，可被 worker 线程同步调用）。"""
+        events = []
+        while True:
+            try:
+                events.append(self._event_queue.get_nowait())
+            except queue.Empty:
+                break
+        if not events:
+            return
+        # 按任务合并：日志按序拼接，percent/message 取最后一条
+        merged: dict[int, dict] = {}
+        order: list[int] = []
+        for task_id, message, percent in events:
+            slot = merged.get(task_id)
+            if slot is None:
+                slot = merged[task_id] = {"logs": [], "percent": None, "message": None}
+                order.append(task_id)
+            slot["logs"].append(message)
+            if percent is not None:
+                slot["percent"] = percent
+            slot["message"] = message
+
+        snapshots: dict[int, dict] = {}
+        db = SessionLocal()
+        try:
+            for task_id in order:
+                task = db.get(Task, task_id)
+                if not task:
+                    continue
+                progress = json.loads(task.progress_json or "{}")
+                logs = progress.get("logs", [])
+                now_iso = datetime.now(timezone.utc).isoformat()
+                logs.extend({"t": now_iso, "m": m} for m in merged[task_id]["logs"])
+                progress["logs"] = logs[-100:]
+                if merged[task_id]["percent"] is not None:
+                    progress["percent"] = merged[task_id]["percent"]
+                progress["message"] = merged[task_id]["message"]
+                task.progress_json = json.dumps(progress, ensure_ascii=False)
+                task.updated_at = datetime.now(timezone.utc)
+            db.commit()
+            for task_id in order:
+                task = db.get(Task, task_id)
+                if task:
+                    snapshots[task_id] = task.to_dict()
+        except Exception as e:
+            print(f"[flusher db error] {e}", flush=True)
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        finally:
+            try:
+                db.close()
+            except Exception:
+                pass
+
+        for task_id in order:
+            last = merged[task_id]
+            snapshot = snapshots.get(task_id)
+            self._push_to_loop(
+                ws_manager.broadcast({
+                    "type": "task_progress",
+                    "task_id": task_id,
+                    "message": last["message"],
+                    "percent": last["percent"],
+                    "status": (snapshot or {}).get("status"),
+                    "progress": (snapshot or {}).get("progress") or {"message": last["message"], "percent": last["percent"]},
+                })
+            )
+            if snapshot:
+                task_event_hub.publish_threadsafe(task_id, snapshot, self.loop)
 
     def emit(self, task_id: int, message: str, percent: Optional[int] = None):
-        """持久化进度并广播。percent 为 None 时保留原百分比（仅更新消息/日志）。"""
+        """进度事件入队（非阻塞 O(1)），flusher 协程批量落库 + 广播。
+
+        percent 为 None 时保留原百分比（仅更新消息/日志）。
+        loop 未运行（单测/脚本场景）时回退为同步直写。
+        """
+        if self.loop is None or not self._running:
+            self._emit_sync(task_id, message, percent)
+            return
+        self._event_queue.put((task_id, message, percent))
+
+    def _emit_sync(self, task_id: int, message: str, percent: Optional[int] = None):
+        """emit 的同步直写实现（每次 2 个 session），仅作回退路径使用。"""
         db = SessionLocal()
         try:
             task = db.get(Task, task_id)
@@ -189,35 +393,43 @@ class TaskWorker:
             except Exception:
                 pass
 
-        if self.loop:
-            asyncio.run_coroutine_threadsafe(
-                ws_manager.broadcast({
-                    "type": "task_progress",
-                    "task_id": task_id,
-                    "message": message,
-                    "percent": percent,
-                    "status": (snapshot or {}).get("status"),
-                    "progress": (snapshot or {}).get("progress") or {"message": message, "percent": percent},
-                }),
-                self.loop,
-            )
-            if snapshot:
-                task_event_hub.publish_threadsafe(task_id, snapshot, self.loop)
+        if self._push_to_loop(
+            ws_manager.broadcast({
+                "type": "task_progress",
+                "task_id": task_id,
+                "message": message,
+                "percent": percent,
+                "status": (snapshot or {}).get("status"),
+                "progress": (snapshot or {}).get("progress") or {"message": message, "percent": percent},
+            })
+        ) and snapshot:
+            task_event_hub.publish_threadsafe(task_id, snapshot, self.loop)
 
     def _run_sync(self, task_id: int):
         get_engine()
         db = SessionLocal()
         status = "failed"
         try:
-            task = db.get(Task, task_id)
-            if not task or task.status == "cancelled":
-                return
-            task.status = "running"
-            task.worker_thread_id = threading.current_thread().ident
+            # 原子 claim：仅当任务仍处 pending 才认领，按 rowcount 判归属。
+            # 多进程/多 worker 部署下同一任务不会被重复执行；已取消任务天然认领失败。
             started_at = datetime.now(timezone.utc)
-            task.started_at = started_at
-            task.updated_at = started_at
+            claimed = db.execute(
+                update(Task)
+                .where(Task.id == task_id, Task.status == "pending")
+                .values(
+                    status="running",
+                    worker_thread_id=threading.current_thread().ident,
+                    started_at=started_at,
+                    updated_at=started_at,
+                )
+                .execution_options(synchronize_session=False)
+            ).rowcount
             db.commit()
+            if not claimed:
+                return
+            task = db.get(Task, task_id)
+            if not task:
+                return
 
             payload = json.loads(task.payload_json or "{}")
             settings = db.get(AppSettings, 1)
@@ -578,6 +790,11 @@ class TaskWorker:
             self._mark_failed(task_id, e)
             status = "failed"
         finally:
+            # 终态快照前先冲刷进度事件队列，保证 SSE/WS 终态含最新进度
+            try:
+                self._flush_events()
+            except Exception as e:
+                print(f"[finally flush error] {e}", flush=True)
             db2 = SessionLocal()
             try:
                 task = db2.get(Task, task_id)
@@ -602,18 +819,13 @@ class TaskWorker:
                 db.close()
             except Exception:
                 pass
-            try:
-                if self.loop:
-                    asyncio.run_coroutine_threadsafe(
-                        ws_manager.broadcast({
-                            "type": "task_update",
-                            "task_id": task_id,
-                            "status": status,
-                        }),
-                        self.loop,
-                    )
-            except Exception as e:
-                print(f"[finally ws error] {e}", flush=True)
+            self._push_to_loop(
+                ws_manager.broadcast({
+                    "type": "task_update",
+                    "task_id": task_id,
+                    "status": status,
+                })
+            )
 
     def _mark_failed(self, task_id: int, exc: Exception):
         """用全新 Session 写入 failed 终态（调用方的 Session 可能已不可用）。"""
@@ -700,16 +912,14 @@ class TaskWorker:
                             db.commit()
 
                             # push final state
-                            if self.loop:
-                                asyncio.run_coroutine_threadsafe(
-                                    ws_manager.broadcast({
-                                        "type": "task_update",
-                                        "task_id": tid,
-                                        "status": "failed",
-                                    }),
-                                    self.loop,
-                                )
-                                task_event_hub.publish_threadsafe(tid, task.to_dict(), self.loop)
+                            self._push_to_loop(
+                                ws_manager.broadcast({
+                                    "type": "task_update",
+                                    "task_id": tid,
+                                    "status": "failed",
+                                })
+                            )
+                            task_event_hub.publish_threadsafe(tid, task.to_dict(), self.loop)
 
                             print(f"[watchdog] marked task {tid} as failed (stale/lost thread)", flush=True)
 
@@ -727,8 +937,23 @@ class TaskWorker:
         self._running = False
 
     def enqueue(self, task_id: int):
-        """For compatibility with routers that call worker.enqueue."""
-        pass
+        """把任务放入内存队列即时调度（可被任意线程调用）。
+
+        队列未就绪（启动前/关闭后）时不入队：pending 已持久化在 DB，
+        由 reconcile 兜底或下次启动恢复，原子 claim 保证不重复执行。
+        """
+        q, loop = self._queue, self.loop
+        if q is None or loop is None or not loop.is_running():
+            return
+        with self._ids_lock:
+            if task_id in self._queued_ids:
+                return
+            self._queued_ids.add(task_id)
+        try:
+            loop.call_soon_threadsafe(q.put_nowait, task_id)
+        except Exception:
+            with self._ids_lock:
+                self._queued_ids.discard(task_id)
 
 
 worker = TaskWorker()

@@ -729,7 +729,9 @@ class WebDAVService:
         if username:
             auth = aiohttp.BasicAuth(username, password)
 
-        session = aiohttp.ClientSession()
+        # 长流播放不设 total 超时（暂停/慢速网络下可能长时间无数据），
+        # 但连接建立必须有界，否则对端失联会永远挂住一个流。
+        session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=None, connect=15, sock_connect=15))
         resp = await session.get(url, headers=headers, auth=auth)
 
         async def generate():

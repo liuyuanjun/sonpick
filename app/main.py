@@ -14,7 +14,7 @@ from app.routers import auth, download, library, library_extra, library_scan, lo
 from app.services.task_worker import worker, ws_manager
 from app.security import decode_token
 
-APP_VERSION = "0.15.0-rc17"
+APP_VERSION = "0.15.0-rc21"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -43,7 +43,7 @@ def _warn_insecure_secret() -> None:
 async def lifespan(app: FastAPI):
     init_db()
     _warn_insecure_secret()
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     worker.set_loop(loop)
     process_task = asyncio.create_task(worker.process_loop())
     watchdog_task = asyncio.create_task(worker._watchdog())

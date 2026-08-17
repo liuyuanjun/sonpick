@@ -1,8 +1,10 @@
 """musicdl multi-source scrape provider (Netease → QQ → Migu by default)."""
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+from concurrent.futures import TimeoutError as FuturesTimeout
 from typing import Any, Optional
+
+from app.services.execution import run_with_hard_timeout
 
 from app.services.scrape.base import ScrapeQuery, ScrapeResult
 from app.services.scrape.query_normalize import clean_artist, clean_title, split_title_artist
@@ -48,9 +50,7 @@ class MusicDLProvider:
             ) or {}
 
         try:
-            with ThreadPoolExecutor(max_workers=1) as pool:
-                fut = pool.submit(_work)
-                data = fut.result(timeout=max(2.0, float(timeout)))
+            data = run_with_hard_timeout(_work, max(2.0, float(timeout)), label="musicdl 元信息查询")
         except FuturesTimeout:
             return None
         except Exception:

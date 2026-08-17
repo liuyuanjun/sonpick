@@ -1,5 +1,4 @@
 import json
-import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -7,8 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.database import SessionLocal, get_db
-from app.models import AppSettings, Favorite, MediaSource, Song, SongFile
+from app.database import get_db
+from app.models import AppSettings, Favorite, MediaSource, Song, SongFile, Task
 from app.routers.auth import get_current_user
 from app.schemas import SongOut, SongPageOut
 from app.services.convert_service import LOSSLESS_FORMATS, ConvertService
@@ -20,13 +19,12 @@ from app.services.webdav_service import WebDAVService
 router = APIRouter(prefix="/songs", tags=["library"])
 
 
-# 正在后台转码的 song_id，避免同一首歌并发重复转码
-_converting_song_ids: set[int] = set()
-_converting_lock = threading.Lock()
-
-
 def _maybe_auto_convert_mp3(db: Session, song: Song, lossless_preferred: bool) -> None:
-    """播放时若优先 MP3 但缺失，则在后台自动转码（本次播放仍回退无损）。"""
+    """播放时若优先 MP3 但缺失，则创建异步转码任务（本次播放仍回退无损）。
+
+    转码统一走任务系统（type=convert）：进度/日志/取消语义与手动转码一致，
+    不再使用游离的裸线程。同一首歌已有排队/执行中的转码任务时跳过。
+    """
     if lossless_preferred:
         return
     settings = db.get(AppSettings, 1)
@@ -37,45 +35,27 @@ def _maybe_auto_convert_mp3(db: Session, song: Song, lossless_preferred: bool) -
         return
     if not any((f.format or "").lower() in LOSSLESS_FORMATS and f.local_path and Path(f.local_path).exists() for f in files):
         return
-    with _converting_lock:
-        if song.id in _converting_song_ids:
-            return
-        _converting_song_ids.add(song.id)
-    threading.Thread(target=_convert_mp3_in_background, args=(song.id,), daemon=True).start()
-
-
-def _convert_mp3_in_background(song_id: int) -> None:
-    try:
-        with SessionLocal() as db:
-            song = db.get(Song, song_id)
-            if not song:
+    for existing in db.query(Task).filter(Task.type == "convert", Task.status.in_(["pending", "running"])).all():
+        try:
+            if int(json.loads(existing.payload_json or "{}").get("song_id") or 0) == song.id:
                 return
-            title = f"{song.artist or ''} - {song.title}".strip(" -")
-            try:
-                mp3_file = ConvertService(db).convert_song_to_mp3(song)
-                write_log(
-                    db,
-                    action="convert",
-                    target="local",
-                    status="success",
-                    title=title,
-                    message="播放时自动转码 MP3",
-                    local_path=str(mp3_file.local_path),
-                    song_id=song.id,
-                )
-            except Exception as exc:
-                write_log(
-                    db,
-                    action="convert",
-                    target="local",
-                    status="failed",
-                    title=title,
-                    message=str(exc),
-                    song_id=song.id,
-                )
-    finally:
-        with _converting_lock:
-            _converting_song_ids.discard(song_id)
+        except Exception:
+            continue
+    task = Task(
+        type="convert",
+        status="pending",
+        payload_json=json.dumps({"song_id": song.id}, ensure_ascii=False),
+        progress_json=json.dumps({"message": "等待执行（播放时自动转码）", "percent": 0}, ensure_ascii=False),
+        result_json="{}",
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    from app.services.task_worker import worker
+
+    worker.enqueue(task.id)
 
 
 def _parse_range(range_header: str, file_size: int):

@@ -2,7 +2,7 @@ import logging
 import re
 import shutil
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout, as_completed
+from concurrent.futures import TimeoutError as FuturesTimeout, as_completed
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -16,6 +16,7 @@ from app.services.convert_service import (
     resolve_lossless_output_dir,
     resolve_lossy_output_dir,
 )
+from app.services.execution import run_with_hard_timeout, submit as executor_submit
 from app.services.library_layout import (
     library_relative_dir,
     preferred_album_cover_path,
@@ -193,10 +194,14 @@ class MusicDLService:
                 status="start" if attempt == 0 else "retry",
                 message=f"正在请求 {label}…" if attempt == 0 else f"{label} 第 {attempt + 1} 次尝试…",
             )
-            pool = ThreadPoolExecutor(max_workers=1)
             try:
                 client = self._new_client(work_dir, [src], search_size_per_source)
-                results = pool.submit(client.search, keyword=keyword).result(timeout=SEARCH_TIMEOUT_SECONDS)
+                # musicdl 无法注入超时 → 走统一硬超时（超时线程弃置为僵尸，不占共享池）
+                results = run_with_hard_timeout(
+                    lambda: client.search(keyword=keyword),
+                    SEARCH_TIMEOUT_SECONDS,
+                    label=f"{label} 搜索",
+                )
                 items = self._flatten_single_source(results, src)
                 _safe_emit(
                     on_event,
@@ -211,8 +216,6 @@ class MusicDLService:
                 last_error = RuntimeError(f"搜索超时（>{SEARCH_TIMEOUT_SECONDS}s）")
             except Exception as exc:
                 last_error = exc
-            finally:
-                pool.shutdown(wait=False, cancel_futures=True)
             if attempt + 1 < SEARCH_RETRY_COUNT:
                 _safe_emit(
                     on_event,
@@ -252,30 +255,27 @@ class MusicDLService:
         if not sources:
             sources = list(DEFAULT_DOWNLOAD_SOURCES)
         per_source: dict[str, tuple[list, str | None]] = {}
-        pool = ThreadPoolExecutor(max_workers=min(len(sources), 4))
-        try:
-            futures = {
-                pool.submit(
-                    self._search_one_source,
-                    keyword,
-                    src,
-                    work_dir,
-                    search_size_per_source,
-                    on_event,
-                    cancelled,
-                ): src
-                for src in sources
-            }
-            for fut in as_completed(futures):
-                src = futures[fut]
-                try:
-                    per_source[src] = fut.result()
-                except SearchCancelled:
-                    raise
-                except Exception as exc:
-                    per_source[src] = ([], f"{SOURCE_LABELS.get(src, src)}: {exc}")
-        finally:
-            pool.shutdown(wait=False, cancel_futures=True)
+        futures = {
+            executor_submit(
+                self._search_one_source,
+                keyword,
+                src,
+                work_dir,
+                search_size_per_source,
+                on_event,
+                cancelled,
+                lane="search",
+            ): src
+            for src in sources
+        }
+        for fut in as_completed(futures):
+            src = futures[fut]
+            try:
+                per_source[src] = fut.result()
+            except SearchCancelled:
+                raise
+            except Exception as exc:
+                per_source[src] = ([], f"{SOURCE_LABELS.get(src, src)}: {exc}")
         items: list = []
         errors: list[str] = []
         for src in sources:
@@ -926,7 +926,6 @@ class MusicDLService:
         sources = list(music_sources or DEFAULT_SCRAPE_SOURCES)
         best_out: dict = {}
         best_score = -1
-        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout, as_completed
 
         for src in sources:
             def _search_one(source=src):
@@ -940,9 +939,11 @@ class MusicDLService:
 
             try:
                 log.info("开始搜索 source=%s keyword=%r timeout=%ss", src, keyword, timeout_per_source)
-                with ThreadPoolExecutor(max_workers=1) as pool:
-                    fut = pool.submit(_search_one)
-                    items = fut.result(timeout=max(1.0, float(timeout_per_source)))
+                # musicdl 无法注入超时 → 统一硬超时（旧实现的 with 池在超时后
+                # shutdown(wait=True) 仍会等僵尸线程，等于没有超时）
+                items = run_with_hard_timeout(
+                    _search_one, max(1.0, float(timeout_per_source)), label=f"刮削搜索[{src}]"
+                )
             except FuturesTimeout:
                 log.warning("搜索超时 source=%s keyword=%r timeout=%ss", src, keyword, timeout_per_source)
                 continue

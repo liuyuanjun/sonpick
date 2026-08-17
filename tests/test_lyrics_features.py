@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from unittest.mock import MagicMock
 
+from app.services.host_limiter import get_limiter
 from app.services.lrclib_provider import LrclibProvider, LrclibRateLimitError
 from app.services.lyrics_provider import LyricsCandidate, LyricsQuery, score_lyrics_candidate
 from app.services.lyrics_search_service import LyricsSearchService
@@ -28,8 +29,8 @@ class FakeResponse:
 
 def reset_lrclib():
     LrclibProvider._cache.clear()
-    LrclibProvider._last_request_at = 0
-    LrclibProvider._blocked_until = 0
+    # 限流/冷却状态已迁移到 per-host HostLimiter
+    get_limiter("lrclib.net").reset()
 
 
 class LyricsFeatureTests(unittest.TestCase):

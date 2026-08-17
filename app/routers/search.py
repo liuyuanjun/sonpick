@@ -13,6 +13,7 @@ from app.routers.auth import get_current_user
 from app.routers.tasks import _auth_user
 from app.schemas import LibraryMatchOut, SearchPageOut, SearchResultItem
 from app.services.library_match_service import match_search_results
+from app.services.execution import submit as executor_submit
 from app.services.musicdl_service import (
     DEFAULT_DOWNLOAD_SOURCES,
     SOURCE_LABELS,
@@ -159,7 +160,9 @@ def search_stream(
             events.put(done)
 
     def event_gen():
-        threading.Thread(target=run_search, daemon=True).start()
+        # 搜索提交到受控执行内核（search lane，并发上限见 execution.DEFAULT_LANE_LIMITS），
+        # 不再使用无上限的裸线程；取消语义不变（cancelled 在重试边界生效）。
+        executor_submit(run_search, lane="search")
         started = time.monotonic()
         pending: list[str] = []
         try:

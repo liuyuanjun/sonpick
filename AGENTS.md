@@ -6,8 +6,10 @@
 
 ## 0. 规范
 
+- 事实与逻辑才是第一重要，对不符合事实逻辑的用户需求要反驳，要提问，要纠正，绝对禁止迎合用户需求。
 - 我提出的要求可能是错的或者是外行的或者是不完整的，如果我的要求不是最佳实践，你应该及时提醒和询问，而不是迎合我的想法去修改。要避免产品设计走偏。
 - 如果我的指令不完整、不明确、不合理、与实际情况不一致，请随时告诉我询问我，而不是自己猜测或盲目执行。
+- 整体结构很重要！永远要有整体考虑，要避免为实现单一局部目的破坏整体，如无法避免要向用户提出警告。
 - 当需要外部信息时，比如三方文档、数据源、API 文档等，如果使用你的内置工具查询不到，先询问我查找粘贴给你，而不是直接猜测编造。
 - 要适当注意性能问题，尽量避免循环高频查询、一次载入大量数据、重复计算等。对于复杂的计算或数据处理，建议分批处理或使用缓存。
 - 要时刻注意整体架构，功能尽量模块化，考虑全面，封装完善，可复用，可扩展，减少耦合，尽量避免多次实现相同功能，比如本项目的多个下载源，多个刮削源这种情况，要模块化可插拔，避免耦合度高。功能设计要模块化，一次实现多处调用，尽可能避免重复实现。
@@ -28,7 +30,7 @@
 
 **非目标**：多用户、公网商用、版权绕过。仅供个人学习与备份。
 
-当前版本（以代码为准）：`0.15.0-rc9`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
+当前版本（以代码为准）：`0.15.0-rc21`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
 
 ### 1.1 歌词与元信息边界
 
@@ -171,7 +173,9 @@ music/
   - 上传为套件：音频 + 可选封面/歌词（同 stem）
   - 冲突策略按文件生效；写 `OperationLog`
 - `ConvertService(db)`：需要 Session；`convert_to_mp3(path, song_id=...)`
-- `TaskWorker`：后台线程池消费 `pending` 任务；进度写 `Task.progress_json` + WS 广播
+- `TaskWorker`：内存队列 + 4 worker 协程消费 `pending` 任务（lane 限流，见 §10.1）；进度经事件队列由 flusher 批量落库 + WS/SSE 广播
+- `execution.py`：统一并发内核——共享线程池 + lane 信号量 + `run_with_hard_timeout`；**禁止**在业务代码里再自建 `ThreadPoolExecutor` / 裸 `threading.Thread`
+- `host_limiter.py`：per-host 外部调用限流（并发槽 + 最小间隔 + 429 冷却）；新增外部 HTTP 调用必须挂接 `get_limiter(host)`
 - `write_log(...)`：文件类操作尽量落操作日志
 
 ### 4.5 安全
@@ -396,8 +400,10 @@ ssh qnap 'curl -sS http://127.0.0.1:8301/health'
 ### 任务系统细节
 
 - `Task.status`：`pending/running/completed/failed/cancelled`；类型：`scan/scrape/lyrics/convert/search_download/batch_download/cleanup`
-- 执行模型：线程池内跑同步函数，`worker_thread_id` 记录线程 ident（旧任务为 NULL）
-- **watchdog**（60s 周期）：future 完成但状态仍 running、线程消亡、或**无 worker_thread_id 且任务时长超 4 小时**（历史遗留任务）→ 标记 `failed`
+- 执行模型：内存队列即时调度（`enqueue` 入队，任意线程可调），4 个 worker 协程按 lane 信号量限流（download=1 / convert=1 / scrape=2 含歌词 / scan=1 含 cleanup），任务体在线程池（`sonpick-task`，max_workers=4）跑同步函数，`worker_thread_id` 记录线程 ident（旧任务为 NULL）；启动恢复遗留 pending，reconcile 每 30s 兜底
+- 进度管线：`emit()` 非阻塞入队，flusher 协程每 0.5s 按任务合并批量落库 + 广播；任务写终态前强制冲刷；loop 未运行时回退同步直写
+- **watchdog**（60s 周期）：running 任务超 30 分钟无更新（`updated_at`）且 future 已丢失/完成（进程重启后 orphaned 同此）→ 标记 `failed`；判定只看 future，不看线程 ident
+- 任务认领为原子 claim（`UPDATE ... WHERE status='pending'` 按 rowcount 判归属），多进程/多 worker 下不会重复执行
 - 前端 TaskCenter 抽屉打开时 10s 兜底轮询
 - 注意：**整理（reorganize）不走任务系统**，是同步 HTTP（前端 timeout 120s/600s）；扫描、下载、转码和刮削走 TaskWorker 异步任务
 

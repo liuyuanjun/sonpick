@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout, as_completed
+from concurrent.futures import TimeoutError as FuturesTimeout, as_completed
 from typing import Any, Optional
+
+from app.services.execution import run_with_hard_timeout, submit as executor_submit
 
 from app.services.scrape.base import ScrapeQuery, ScrapeResult
 from app.services.scrape.cover_utils import enrich_cover_fields
@@ -30,13 +32,11 @@ def _search_qq_via_musicdl(keyword: str, *, limit: int = 8, timeout: float = 20.
                 require_download_url=False,
             ) or []
 
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            fut = pool.submit(_work)
-            try:
-                items = fut.result(timeout=max(5.0, float(timeout)))
-            except FuturesTimeout:
-                log.warning("smart_cn QQ search timeout keyword=%r", keyword)
-                return []
+        try:
+            items = run_with_hard_timeout(_work, max(5.0, float(timeout)), label="smart_cn QQ 搜索")
+        except FuturesTimeout:
+            log.warning("smart_cn QQ search timeout keyword=%r", keyword)
+            return []
         out: list[dict[str, Any]] = []
         for it in items or []:
             title = getattr(it, "song_name", None) or getattr(it, "title", None)
@@ -101,30 +101,29 @@ class SmartCNProvider:
             )
 
         candidates: list[dict[str, Any]] = []
-        with ThreadPoolExecutor(max_workers=max(1, len(tasks))) as pool:
-            futs = {pool.submit(fn): name for name, fn in tasks.items()}
-            try:
-                for fut in as_completed(futs, timeout=max(12.0, float(timeout))):
-                    name = futs[fut]
-                    try:
-                        rows = fut.result() or []
-                    except Exception as e:
-                        log.warning("smart_cn source failed source=%s err=%s", name, e)
-                        rows = []
-                    log.info("smart_cn 搜索结果 source=%s keyword=%r count=%s", name, keyword, len(rows))
-                    for i, r in enumerate(rows[:8], 1):
-                        log.info(
-                            "  [%s/%s] title=%r artist=%r album=%r duration=%s",
-                            name,
-                            i,
-                            r.get("title"),
-                            r.get("artist"),
-                            r.get("album"),
-                            r.get("duration"),
-                        )
-                    candidates.extend([enrich_cover_fields(r) for r in rows])
-            except FuturesTimeout:
-                log.warning("smart_cn 并行搜索超时 keyword=%r partial=%s", keyword, len(candidates))
+        futs = {executor_submit(fn, lane="scrape"): name for name, fn in tasks.items()}
+        try:
+            for fut in as_completed(futs, timeout=max(12.0, float(timeout))):
+                name = futs[fut]
+                try:
+                    rows = fut.result() or []
+                except Exception as e:
+                    log.warning("smart_cn source failed source=%s err=%s", name, e)
+                    rows = []
+                log.info("smart_cn 搜索结果 source=%s keyword=%r count=%s", name, keyword, len(rows))
+                for i, r in enumerate(rows[:8], 1):
+                    log.info(
+                        "  [%s/%s] title=%r artist=%r album=%r duration=%s",
+                        name,
+                        i,
+                        r.get("title"),
+                        r.get("artist"),
+                        r.get("album"),
+                        r.get("duration"),
+                    )
+                candidates.extend([enrich_cover_fields(r) for r in rows])
+        except FuturesTimeout:
+            log.warning("smart_cn 并行搜索超时 keyword=%r partial=%s", keyword, len(candidates))
 
         best, detail = pick_best_candidate(
             candidates,

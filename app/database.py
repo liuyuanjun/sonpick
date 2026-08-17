@@ -42,7 +42,9 @@ def get_engine() -> Engine:
             cursor.execute("PRAGMA synchronous=NORMAL")
             cursor.close()
 
-        SessionLocal.configure(bind=_engine)
+        # 仅在未绑定时配置；测试会用 SessionLocal.configure 绑到临时库，不得覆盖
+        if SessionLocal.kw.get("bind") is None:
+            SessionLocal.configure(bind=_engine)
     return _engine
 
 
