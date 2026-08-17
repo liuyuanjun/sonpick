@@ -107,6 +107,9 @@ cmd_set() {
     local add_paths=("$MAIN_PY" "$SETUP_PY" "$PKG_JSON" "$CHANGELOG")
     [ -f AGENTS.md ] && add_paths+=(AGENTS.md)
     git add "${add_paths[@]}" ${includes[@]+"${includes[@]}"}
+    # 已跟踪文件的修改默认一并提交，避免只带版本号文件、漏掉功能代码；
+    # 未跟踪的新文件不自动加入（可能含临时产物），需 --include 显式指定
+    git add -u
     if git diff --cached --quiet; then
       info "无待提交变化，跳过 commit"
     else

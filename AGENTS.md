@@ -261,6 +261,7 @@ scripts/version.sh set 0.15.0-rc2 -m "fix(scan): 修复xxx" --push   # 以上全
 ```
 
 - commit 信息没带 `(版本号)` 后缀时脚本自动补上；额外要一起提交的路径用 `--include <路径>` 追加。
+- `-m` 提交时脚本会 `git add -u` 一并带上**所有已跟踪文件的修改**（避免只提交版本号文件、漏掉功能代码）；未跟踪的新文件**不会**自动加入，需 `--include <路径>` 显式指定。
 - tag 已存在但不指向 HEAD 时脚本只提醒不移动；确需移动先 `git tag -d v{版本号}` 再重跑。
 - 推送完成后确认 release workflow 通过（`gh run list --limit 3`）再部署 NAS。
 
