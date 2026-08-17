@@ -142,6 +142,7 @@ import { NSlider, useMessage } from 'naive-ui'
 import { usePlayerStore } from '@/stores/player'
 import { useThemeStore } from '@/stores/theme'
 import { useIsMobile } from '@/composables/useIsMobile'
+import { useMediaSession } from '@/composables/useMediaSession'
 import { formatTime } from '@/utils/lrc'
 
 const player = usePlayerStore()
@@ -152,6 +153,8 @@ const route = useRoute()
 const isMobile = useIsMobile()
 const audio = ref(null)
 const coverBroken = ref(false)
+// 系统媒体命令（线控/媒体键）对接：单击=播放/暂停、双击=下一曲、三击=上一曲
+const mediaSession = useMediaSession(player, audio)
 // 本地进度百分比：直接跟 audio 同步，避免仅依赖 store 时顶部细线不刷新
 const progressPct = ref(0)
 
@@ -180,6 +183,7 @@ function syncProgressFromAudio(el = audio.value) {
   }
   progressPct.value = Math.min(100, Math.max(0, (cur / total) * 100))
   player.setProgress(cur, total)
+  mediaSession.updatePositionState()
 }
 
 watch(() => player.cover, () => {
