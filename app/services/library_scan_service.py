@@ -372,7 +372,10 @@ class LibraryScanService:
                 changed = False
                 if self._refresh_song_aggregate_assets(song):
                     changed = True
-                # Prefer richer tags: fill empty fields, and replace generic/collection-folder names.
+                # 扫描只补充缺失的 Song 文本元数据，绝不覆盖用户已修正的值。
+                # 理由：刮削/手动修正后的 Song 文本字段是用户权威数据；文件名/目录派生值
+                # （如去掉序号后的 path_meta）不可反向覆盖已存在的真实标题，否则会"退回原值"。
+                # artist/album 仅在为空或为集合/通用目录名（非真实数据）时补充。
                 if meta["artist"]:
                     if (not song.artist) or _is_generic_dir_name(song.artist):
                         if song.artist != meta["artist"]:
@@ -389,7 +392,10 @@ class LibraryScanService:
                 elif song.album and _is_generic_dir_name(song.album):
                     song.album = None
                     changed = True
-                if meta["title"] and meta["title"] != song.title and (not song.title or song.title == path.stem):
+                # 仅当 title 缺失时补充；绝不用文件名派生值覆盖已存在的标题。
+                # 注意：path.stem 可能含序号（如 "03 Song"），而 meta["title"] 已去序号，
+                # 旧的 `song.title == path.stem` 判断会让"标题恰好等于文件名"的歌曲被覆盖，导致回退。
+                if meta["title"] and not song.title:
                     song.title = meta["title"]
                     changed = True
                 if duration and (not song.duration or song.duration <= 0):

@@ -307,8 +307,13 @@
       <n-space vertical size="medium">
         <section class="song-files-section">
           <div class="song-files-heading">
-            <strong>歌曲文件</strong>
-            <n-text depth="3">保存时会写入全部可用本地版本；WebDAV 版本仅展示。</n-text>
+            <div>
+              <strong>歌曲文件</strong>
+              <n-text depth="3">保存时会写入全部可用本地版本；WebDAV 版本仅展示。</n-text>
+            </div>
+            <n-button size="small" :disabled="!canOrganizeCurrent" :loading="organizeLoading" @click="openOrganize">
+              {{ canOrganizeCurrent ? '整理到标准路径' : '整理(需完整专辑/标题)' }}
+            </n-button>
           </div>
           <div v-if="scrapeDisplayFiles.length" class="song-files-list">
             <div v-for="file in scrapeDisplayFiles" :key="file.id" class="song-file-item">
@@ -339,6 +344,49 @@
         </n-space>
         <n-data-table :columns="candidateColumns" :data="scrapeCandidates" :loading="scraping" :pagination="false" size="small" max-height="420" />
       </n-space>
+    </n-modal>
+
+    <n-modal v-model:show="organizeVisible" preset="card" title="整理到标准路径" style="width: 760px; max-width: 96vw">
+      <n-spin :show="organizeLoading && !organizeResult">
+        <n-space vertical size="medium">
+          <n-alert v-if="organizePreview && organizePreview.blocked_count" type="warning" :show-icon="false">
+            有 {{ organizePreview.blocked_count }} 个文件的目标路径被其它歌曲占用，将跳过（不会覆盖他人文件）。
+          </n-alert>
+          <template v-if="organizePreview && !organizeResult">
+            <div v-for="(move, mi) in (organizePreview.moves || [])" :key="mi" class="organize-move">
+              <n-tag size="small" :type="move.blocked ? 'error' : (move.status === 'missing' || move.status === 'no_source' ? 'default' : (move.changed ? 'warning' : 'success'))">
+                {{ move.blocked ? '跳过(被占用)' : (move.status === 'missing' ? '文件缺失' : move.status === 'no_source' ? '无本地源' : (move.changed ? '移动' : '已就位')) }}
+              </n-tag>
+              <span class="organize-move-path">{{ move.from_path }}</span>
+              <span v-if="move.changed && !move.blocked"> → {{ move.to_path }}</span>
+              <span class="organize-move-meta">{{ move.format }} · {{ formatSongFileSize(move.file_size) }}<template v-if="move.bitrate"> · {{ move.bitrate }}kbps</template></span>
+            </div>
+            <n-divider v-if="(organizePreview.conflicts || []).length">路径冲突（请选择保留哪一个）</n-divider>
+            <div v-for="(conflict, ci) in (organizePreview.conflicts || [])" :key="'c' + ci" class="organize-conflict">
+              <n-radio-group v-model:value="organizeChoices[ci]" size="small">
+                <n-space vertical>
+                  <n-radio v-for="cand in conflict.candidates" :key="cand.song_file_id" :value="cand.song_file_id">
+                    保留：{{ cand.from_path }}（{{ cand.format }} · {{ formatSongFileSize(cand.file_size) }}<template v-if="cand.bitrate"> · {{ cand.bitrate }}kbps</template>）
+                  </n-radio>
+                </n-space>
+              </n-radio-group>
+            </div>
+            <n-space justify="end">
+              <n-button @click="organizeVisible = false">取消</n-button>
+              <n-button type="primary" :loading="organizeLoading" @click="applyOrganize">确认整理</n-button>
+            </n-space>
+          </template>
+          <template v-else-if="organizeResult">
+            <n-alert type="success" :show-icon="false">
+              移动 {{ organizeResult.moved }}，删除重复 {{ organizeResult.deleted }}，保留 {{ organizeResult.kept }}<template v-if="organizeResult.skipped">，跳过 {{ organizeResult.skipped }}</template>。
+            </n-alert>
+            <n-space justify="end">
+              <n-button type="primary" @click="organizeVisible = false">完成</n-button>
+            </n-space>
+          </template>
+          <n-empty v-else description="正在生成整理计划…" />
+        </n-space>
+      </n-spin>
     </n-modal>
 
     <n-modal v-model:show="lyricsModalVisible" preset="card" title="获取当前歌曲歌词" style="width: 1080px; max-width: 96vw">
@@ -551,6 +599,8 @@ import {
   fetchSongTags,
   searchLyricsCandidates,
   coverUrl,
+  previewOrganizeSong,
+  applyOrganizeSong,
 } from '@/api/music'
 import api from '@/api/client'
 import { usePlayerStore } from '@/stores/player'
@@ -561,6 +611,7 @@ import { formatTime } from '@/utils/lrc'
 import { ambientBackground, extractAccentFromImage } from '@/utils/color'
 import { normalizeSongFiles, normalizedScrapeValue, shouldSelectScrapeField } from '@/utils/scrapeApply'
 import LyricsView from '@/components/player/LyricsView.vue'
+import { fetchSongFiles } from '@/api/music'
 
 const player = usePlayerStore()
 const themeStore = useThemeStore()
@@ -590,6 +641,21 @@ const scrapeApplyOverrides = ref({})
 const scrapeCurrentCoverUrl = ref('')
 const scrapeCoverInfo = ref({ current: null, candidate: null })
 const scrapeSourceOptions = ref([])
+
+const organizeVisible = ref(false)
+const organizeLoading = ref(false)
+const organizePreview = ref(null)
+const organizeChoices = ref([])
+const organizeResult = ref(null)
+
+const canOrganizeCurrent = computed(() => {
+  const s = scrapeTargetSong.value
+  if (!s) return false
+  const titleOk = !!(s.title && String(s.title).trim() && !/unknown|未知/i.test(s.title))
+  const albumOk = !!(s.album && String(s.album).trim() && !/unknown|未知/i.test(s.album))
+  const hasLocal = (scrapeSongFiles.value || []).some((f) => f.location === 'local' || f.writable)
+  return titleOk && albumOk && hasLocal
+})
 const lyricsLoading = ref(false)
 const lyricsHint = ref('')
 const lyricsModalVisible = ref(false)
@@ -907,6 +973,13 @@ async function openLyricsModal() {
   lyricsQuery.value = null
   lyricsCurrent.value = {}
   lyricsSongFiles.value = song.versions || []
+  // 同步刮削弹窗：拉取后端权威文件列表，避免 versions 缺失时「暂无歌曲文件记录」。
+  fetchSongFiles(song.id)
+    .then((res) => {
+      const files = res?.data?.song_files || []
+      if (files.length) lyricsSongFiles.value = files
+    })
+    .catch(() => {})
   lyricsStatusError.value = null
   lyricsCandidates.value = []
   lyricsSelectedCandidate.value = null
@@ -1066,9 +1139,65 @@ function openScrapeModal() {
   scrapeTargetSong.value = { ...song }
   scrapeModalVisible.value = true
   scrapeCandidates.value = []
+  // 先用内存 versions 即时展示（若有）；再拉取后端权威文件列表（与播放共用 SongFileResolver），
+  // 避免歌曲来自未填充 versions 的上下文（如歌单）时显示「暂无歌曲文件记录」。
   scrapeSongFiles.value = normalizeSongFiles(song.versions || []).map((item) => ({ ...item }))
   scrapeQuery.value = null
   scrapeKeyword.value = `${song.title || song.song_name || ''} ${song.artist || song.singers || ''}`.trim()
+  fetchSongFiles(song.id)
+    .then((res) => {
+      const files = res?.data?.song_files || []
+      if (files.length) scrapeSongFiles.value = files
+    })
+    .catch(() => {})
+}
+
+async function openOrganize() {
+  const song = scrapeTargetSong.value
+  if (!song?.id) return
+  organizeVisible.value = true
+  organizeLoading.value = true
+  organizeResult.value = null
+  try {
+    const res = await previewOrganizeSong(song.id)
+    const data = res?.data || res || {}
+    organizePreview.value = data
+    // 默认保留码率更高（其次体积更大）的版本
+    organizeChoices.value = (data.conflicts || []).map((c) =>
+      c.candidates.reduce((best, x) => {
+        const sx = (x.bitrate || 0) * 1000000 + (x.file_size || 0)
+        const sb = (best.bitrate || 0) * 1000000 + (best.file_size || 0)
+        return sx >= sb ? x : best
+      }).song_file_id,
+    )
+  } catch (err) {
+    message.error(err.response?.data?.detail || err.message || '预览整理失败')
+  } finally {
+    organizeLoading.value = false
+  }
+}
+
+async function applyOrganize() {
+  const song = scrapeTargetSong.value
+  if (!song?.id) return
+  organizeLoading.value = true
+  try {
+    const res = await applyOrganizeSong(song.id, { choices: organizeChoices.value })
+    const data = res?.data || res || {}
+    organizeResult.value = data
+    message.success(`整理完成：移动 ${data.moved || 0}，删除重复 ${data.deleted || 0}，保留 ${data.kept || 0}`)
+    // 刷新文件列表
+    fetchSongFiles(song.id)
+      .then((r) => {
+        const files = r?.data?.song_files || []
+        if (files.length) scrapeSongFiles.value = files
+      })
+      .catch(() => {})
+  } catch (err) {
+    message.error(err.response?.data?.detail || err.message || '整理失败')
+  } finally {
+    organizeLoading.value = false
+  }
 }
 
 async function searchScrapeCandidates() {

@@ -9,6 +9,7 @@
 - 事实与逻辑才是第一重要，对不符合事实逻辑的用户需求要反驳，要提问，要纠正，绝对禁止迎合用户需求。
 - 我提出的要求可能是错的或者是外行的或者是不完整的，如果我的要求不是最佳实践，你应该及时提醒和询问，而不是迎合我的想法去修改。要避免产品设计走偏。
 - 如果我的指令不完整、不明确、不合理、与实际情况不一致，请随时告诉我询问我，而不是自己猜测或盲目执行。
+- 所有的改动都要先评估架构是否合理，是否有更优的方案，不用局限于只实现当前，发现了就直接提出建议或询问用户是否需要重构。早改比留历史包袱好。
 - 整体结构很重要！永远要有整体考虑，要避免为实现单一局部目的破坏整体，如无法避免要向用户提出警告。
 - 当需要外部信息时，比如三方文档、数据源、API 文档等，如果使用你的内置工具查询不到，先询问我查找粘贴给你，而不是直接猜测编造。
 - 要适当注意性能问题，尽量避免循环高频查询、一次载入大量数据、重复计算等。对于复杂的计算或数据处理，建议分批处理或使用缓存。
@@ -30,7 +31,7 @@
 
 **非目标**：多用户、公网商用、版权绕过。仅供个人学习与备份。
 
-当前版本（以代码为准）：`0.15.0-rc21`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
+当前版本（以代码为准）：`0.15.1-rc5`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
 
 ### 1.1 歌词与元信息边界
 
@@ -52,7 +53,7 @@
 - 歌词工作台支持查询条件、候选、当前/候选比较、保存和明确清空。
 - 元信息候选采用前会逐项比较；封面显示新旧图片、图片尺寸和旧文件大小；旧封面缺失时默认选择候选封面，已有旧封面时默认保留。
 - 刮削信息与歌词保存/清空会写入同一逻辑歌曲的全部可用本地 `SongFile` 版本及各自侧车；WebDAV 版本只展示并明确标记为远端只读。
-- 刮削与歌词工作台的「歌曲文件」区域必须列出全部本地/WebDAV 版本，不使用表单输入框展示文件位置。
+- 刮削与歌词工作台的「歌曲文件」区域必须列出全部本地/WebDAV 版本，不使用表单输入框展示文件位置。弹窗打开时应通过 `GET /api/songs/{song_id}/files`（复用 `SongFileResolver.describe_files`，与播放同源）拉取权威文件列表，而不是依赖内存里的 `player.current.versions`——后者仅部分列表接口（曲库 `list_songs`、重检 `recheck_song`）会填充，来自歌单/历史/搜索等上下文时会缺失，导致「暂无歌曲文件记录」。
 - 曲库、播放器列表与来源页可创建批量歌词任务。
 - 任务中心展示匹配、写入、纯音乐、跳过已有、未命中、限流等待和失败统计。
 
@@ -151,6 +152,7 @@ music/
 - **元数据 L0（展示/刮削成功只认）**：`Song` 文本字段 + 封面 `data/covers/by-hash/{sha}`（`Song.cover_path` 指向它）+ 歌词指针/provenance。侧车 `cover.jpg` / `.lrc` 与内嵌标签是 L1/L2 写穿；格式不支持内嵌（如 WMA）为 `unsupported`，不算刮削失败。详见 `docs/metadata-l0-cover-refactor.md`。
 - `Song.cover_path` / `Song.lrc_path` 是 L0 指针（封面应为 by-hash）；`SongFile.cover_path` / `SongFile.lrc_path` 是版本侧车资源。扫描和选中版本时可回填 L0。
 - 扫描接口 `/api/library/scan` 和 `/api/sources/{source_id}/scan` 会创建 `type=scan` 的异步任务；前端经任务中心/单任务 SSE 接收终态。
+- **扫描不覆盖已存在的 Song 文本元数据**：扫描仅补充缺失字段（title/artist/album 为空或仅为通用目录名时），绝不反向用文件名/目录派生值覆盖用户已刮削或手动修正的标题/艺人/专辑。封面/歌词侧车与时长/大小等物质事实可刷新，但文本归属数据以用户修正为准。回归测试要点：刮削修正后再次扫描不得回退。
 - 失效记录管理：`GET /api/songs?availability=available|all|unavailable` 筛选；`POST /api/songs/{id}/recheck` 单歌重检（本地 stat + WebDAV 探测，连接失败保留原状态）；`POST /api/library/cleanup/preview` 分析 + `POST /api/library/cleanup` 创建 `type=cleanup` 异步任务（`library_cleanup_service`：文件还在→恢复 available，确认失联→仅删 DB 记录，存储不可达→跳过防误删）。
 - `Task.created_at` 表示入队时间，`Task.started_at` 表示 worker 实际开始执行时间；排队等待与任务耗时必须分别使用这两个时间计算。
 
@@ -423,10 +425,18 @@ ssh qnap 'curl -sS http://127.0.0.1:8301/health'
 - 目标已存在同一首歌：**保留音质好的**（无损>有损，同类比文件大小）；源更差→删源（抢救 .lrc）、SongFile 指向保留文件；源更好→替换目标。preview 标注 `dedup_keep_existing`/`replace_lower_quality`，结果含 `deduped` 计数
 - WebDAV 整理基于 SongFile.webdav_path，目标同样带所选目录前缀
 
+### 单曲整理（刮削弹窗「整理到标准路径」，per-song organize）
+- 入口仅刮削信息弹窗：后端 `POST /songs/{song_id}/organize/preview|apply`（`library_organize_service.preview_organize_song` / `apply_organize_song`），复用 `library_organize_service` 既有路径计算，不另起一套。
+- 前置条件：`song.album` 与 `song.title` 均非通用目录名/未知（前端 `canOrganizeCurrent` 同口径）；不满足时 `apply` 直接抛 `ValueError`（HTTP 400「专辑或标题不完整，无法整理到标准路径」）。
+- 冲突处理：同一歌曲多版本解析到同一标准路径（如 `歌曲名.flac` 与 `歌曲名(1).flac`）→ preview 按目标分组 `conflicts`，每候选带 `format`/`file_size`/`bitrate`（码率按需 `read_audio_bitrate_kbps` 探测，失败为 `None`）；apply 按 `choices` 保留所选，缺省保「码率更高、否则体积更大」者。**执行分两遍**：PASS1 删除非保留版本、PASS2 移动保留版本，且 PASS2 跳过 PASS1 已删除的 id（避免 UNIQUE `local_path` 冲突）。
+- 跨歌曲占用：目标路径已属另一首歌的既有 `SongFile` → 该版本标 `blocked`，preview 提示、`apply` 跳过（`skipped++`），**绝不覆盖或删除他人文件**。
+- 空目录清理：仅在两遍执行结束后，对"被动过的源父目录"做一次 `rmdir`，且**只删直接父目录、不向上递归**（避免误删其他歌曲/共享封面）；文件缺失标 `missing`、无本地源标 `no_source`、被占用标 `blocked` 的版本均不参与移动/删除。
+
 ### 易踩的坑
 
 - **music.js 手工列字段**：`previewReorganize`/`applyReorganize` 等函数逐个列 body 字段，新增后端参数时必须同步加上（`relocate_format_dirs` 曾因此被丢，开关形同虚设）
 - macOS 路径比较要先 `resolve()`（`/var` ↔ `/private/var`），`_format_base_dirs` 返回已 resolve 的路径
+- `LRC_EXTS` 是 `tuple`、`IMAGE_EXTS` 是 `frozenset`，二者不能用 `|` 直接并；要 `set(LRC_EXTS) | IMAGE_EXTS`（否则 `TypeError` 会被 `apply_organize_song` 的 `except` 吞掉，导致重复版本删不掉、PASS2 又移动触发 UNIQUE 冲突）
 - SQLite 读回的 datetime 可能是 naive，比较前归一化 tz
 
 ---

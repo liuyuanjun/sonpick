@@ -87,6 +87,18 @@ export function fetchScrapeCandidates(songId, payload = {}) {
   return api.post(`/songs/${songId}/scrape/candidates`, { source: 'auto', limit: 8, ...payload }, { timeout: 120000 })
 }
 
+export function fetchSongFiles(songId) {
+  return api.get(`/songs/${songId}/files`, { timeout: 30000 })
+}
+
+export function previewOrganizeSong(songId) {
+  return api.post(`/songs/${songId}/organize/preview`, {}, { timeout: 30000 })
+}
+
+export function applyOrganizeSong(songId, payload = {}) {
+  return api.post(`/songs/${songId}/organize/apply`, { choices: payload.choices || [] }, { timeout: 60000 })
+}
+
 export function fetchScrapeCandidateDetails(songId, candidate) {
   return api.post(`/songs/${songId}/scrape/candidate-details`, {
     candidate,

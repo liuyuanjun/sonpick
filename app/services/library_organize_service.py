@@ -32,13 +32,14 @@ from app.services.library_layout import (
 from app.services.media_meta_service import (
     extract_embedded_cover_bytes,
     is_local_file,
+    read_audio_bitrate_kbps,
     read_audio_duration,
     read_audio_tags,
     resolve_song_meta,
     write_album_cover_file,
 )
 from app.services.operation_log_service import write_log
-from app.services.constants import AUDIO_EXTS
+from app.services.constants import AUDIO_EXTS, IMAGE_EXTS, LRC_EXTS
 from app.services.scrape.query_normalize import clean_artist, clean_title, split_title_artist
 
 FAILED_DIR_NAME = "_failed"
@@ -72,6 +73,22 @@ def _unique_path(dst: Path) -> Path:
         if not cand.exists():
             return cand
         i += 1
+
+
+def _try_rmdir_empty(parent: Path) -> bool:
+    """Remove a folder only if it is now empty (no song files, no sidecars, no subdirs).
+
+    Per product rule: clean up the immediate parent after a song's files leave it,
+    but never recurse upward (would risk deleting other songs / shared covers).
+    Returns True if the folder was removed.
+    """
+    try:
+        if parent.is_dir() and not any(parent.iterdir()):
+            parent.rmdir()
+            return True
+    except OSError:
+        pass
+    return False
 
 
 def _move_local(src: Path, dst: Path) -> Path:
@@ -1438,4 +1455,315 @@ class LibraryOrganizeService:
             "allow_network": allow_network,
             "overwrite": overwrite,
             "providers": ["musicbrainz", "musicdl"],
+        }
+
+    # ------------------------------------------------------------------
+    # Per-song organize (scrape dialog "整理到标准路径")
+    # ------------------------------------------------------------------
+    def _organize_song_plan(self, song_id: int) -> dict[str, Any]:
+        """Compute per-song standard-path plan from SongFile rows (source of truth).
+
+        Returns each local version's resolved target plus completeness/block flags.
+        Reused by both preview and apply so they never diverge.
+        """
+        song = self.db.get(Song, song_id)
+        if not song:
+            raise ValueError("歌曲不存在")
+
+        title_ok = bool(song.title and str(song.title).strip() and not is_generic_dir_name(song.title))
+        album_ok = bool(song.album and str(song.album).strip() and not is_generic_dir_name(song.album))
+        artist = str(song.artist).strip() if (song.artist and not is_generic_dir_name(song.artist)) else None
+        complete = title_ok and album_ok
+
+        local_files = (
+            self.db.query(SongFile)
+            .filter(SongFile.song_id == song_id, SongFile.local_path.isnot(None))
+            .order_by(SongFile.id.asc())
+            .all()
+        )
+
+        source = None
+        for sf in local_files:
+            if sf.library_source_id is not None:
+                cand = self.db.get(MediaSource, sf.library_source_id)
+                if cand and cand.type == "local" and cand.root_path:
+                    source = cand
+                    break
+        root = _source_root_local(source) if source else None
+
+        entries: list[dict[str, Any]] = []
+        for sf in local_files:
+            path = Path(sf.local_path)
+            entry = {
+                "song_file_id": sf.id,
+                "from_path": sf.local_path,
+                "format": sf.format,
+                "file_size": sf.file_size,
+                "bitrate": None,
+                "exists": path.is_file(),
+                "target_abs": None,
+                "to_path": None,
+                "changed": False,
+                "blocked": False,
+                "block_reason": None,
+                "status": "planned",
+            }
+            if not path.is_file():
+                entry["status"] = "missing"
+                entries.append(entry)
+                continue
+            if root is None:
+                entry["status"] = "no_source"
+                entries.append(entry)
+                continue
+            ext = path.suffix.lower() or ".mp3"
+            rel_dir = library_relative_dir(artist, song.album)
+            stem = track_stem(song.title, path.stem)
+            target = root / rel_dir / f"{stem}{ext}"
+            entry["bitrate"] = read_audio_bitrate_kbps(path)
+            entry["target_abs"] = target
+            entry["to_path"] = _safe_rel(target, root)
+            entry["changed"] = path.resolve() != target.resolve()
+            if path.resolve() != target.resolve():
+                # cross-song occupation: another song already owns the target
+                owner = (
+                    self.db.query(SongFile)
+                    .filter(
+                        SongFile.local_path == str(target.resolve()),
+                        SongFile.song_id != song_id,
+                        SongFile.local_path.isnot(None),
+                    )
+                    .first()
+                )
+                if owner and owner.local_path and Path(owner.local_path).is_file():
+                    entry["blocked"] = True
+                    entry["block_reason"] = f"目标路径已被另一首歌(#{owner.song_id})占用"
+            entries.append(entry)
+
+        return {
+            "song": song,
+            "source": source,
+            "root": root,
+            "complete": complete,
+            "artist": artist,
+            "album": str(song.album) if song.album else None,
+            "title": str(song.title) if song.title else None,
+            "entries": entries,
+        }
+
+    def preview_organize_song(self, song_id: int) -> dict[str, Any]:
+        plan = self._organize_song_plan(song_id)
+        entries = plan["entries"]
+
+        # group by resolved target -> detect same-song collisions (same format)
+        by_target: dict[str, list[dict[str, Any]]] = {}
+        for e in entries:
+            if e["target_abs"] is None or e["status"] in ("missing", "no_source"):
+                continue
+            by_target.setdefault(str(e["target_abs"].resolve()), []).append(e)
+
+        conflicts = []
+        for t, group in by_target.items():
+            if len(group) > 1:
+                conflicts.append(
+                    {
+                        "target": group[0]["to_path"],
+                        "candidates": [
+                            {
+                                "song_file_id": e["song_file_id"],
+                                "from_path": e["from_path"],
+                                "format": e["format"],
+                                "file_size": e["file_size"],
+                                "bitrate": e["bitrate"],
+                            }
+                            for e in group
+                        ],
+                    }
+                )
+
+        return {
+            "song_id": song_id,
+            "complete": plan["complete"],
+            "title": plan["title"],
+            "artist": plan["artist"],
+            "album": plan["album"],
+            "root": str(plan["root"]) if plan["root"] else None,
+            "moves": [
+                {
+                    "song_file_id": e["song_file_id"],
+                    "from_path": e["from_path"],
+                    "to_path": e["to_path"],
+                    "format": e["format"],
+                    "file_size": e["file_size"],
+                    "bitrate": e["bitrate"],
+                    "changed": e["changed"],
+                    "blocked": e["blocked"],
+                    "block_reason": e["block_reason"],
+                    "status": e["status"],
+                }
+                for e in entries
+            ],
+            "conflicts": conflicts,
+            "blocked_count": sum(1 for e in entries if e.get("blocked")),
+        }
+
+    def _relocate_song_file(self, song: Song, e: dict[str, Any]) -> None:
+        src = Path(e["from_path"])
+        dst = e["target_abs"]
+        if src.resolve() == dst.resolve():
+            new_audio = src
+        else:
+            if dst.exists():
+                # safety: should only happen for conflicts where the non-keep
+                # file is at target; that file is deleted in the delete pass first.
+                try:
+                    dst.unlink()
+                except OSError:
+                    pass
+            new_audio = _move_local(src, dst)
+
+        lrc_src = find_lrc_sidecar(src)
+        new_lrc = new_audio.with_suffix(".lrc")
+        if lrc_src and lrc_src.is_file() and lrc_src.resolve() != new_lrc.resolve():
+            _move_local(lrc_src, new_lrc)
+        track_cover = find_track_cover_file(src)
+        album_cover = find_album_cover_file(src.parent)
+        emb_cover = extract_embedded_cover_bytes(src)
+        cover_dst = preferred_album_cover_path(new_audio.parent)
+        if not cover_dst.is_file():
+            if emb_cover:
+                write_album_cover_file(new_audio.parent, emb_cover)
+            else:
+                side = track_cover or album_cover
+                if side and side.is_file() and side.resolve() != cover_dst.resolve():
+                    _copy_local(side, cover_dst)
+
+        sf = self.db.get(SongFile, e["song_file_id"])
+        if sf:
+            sf.local_path = str(new_audio)
+            if new_audio.exists():
+                sf.file_size = new_audio.stat().st_size
+            sf.lrc_path = str(new_lrc) if new_lrc.is_file() else sf.lrc_path
+            sf.cover_path = str(cover_dst) if cover_dst.is_file() else sf.cover_path
+            self.db.add(sf)
+        if new_lrc.is_file():
+            song.lrc_path = str(new_lrc)
+        if cover_dst.is_file():
+            song.cover_path = str(cover_dst)
+        self.db.add(song)
+
+    def _delete_song_file(self, e: dict[str, Any]) -> None:
+        src = Path(e["from_path"])
+        # remove same-stem sidecars (lrc / track cover) of the removed audio
+        for ext in set(LRC_EXTS) | IMAGE_EXTS:
+            cand = src.with_suffix(ext)
+            if cand.exists():
+                try:
+                    cand.unlink()
+                except OSError:
+                    pass
+        if src.exists():
+            try:
+                src.unlink()
+            except OSError:
+                pass
+        sf = self.db.get(SongFile, e["song_file_id"])
+        if sf:
+            self.db.delete(sf)
+
+    def apply_organize_song(self, song_id: int, choices: list[int] | None = None) -> dict[str, Any]:
+        plan = self._organize_song_plan(song_id)
+        if not plan["complete"]:
+            raise ValueError("专辑或标题不完整，无法整理到标准路径")
+        song = plan["song"]
+        root = plan["root"]
+        entries = plan["entries"]
+        choices = choices or []
+
+        # group by resolved target for conflict detection
+        by_target: dict[str, list[dict[str, Any]]] = {}
+        for e in entries:
+            if e["target_abs"] is None or e["status"] in ("missing", "no_source"):
+                continue
+            by_target.setdefault(str(e["target_abs"].resolve()), []).append(e)
+
+        conflicts = [g for g in by_target.values() if len(g) > 1]
+        keep_ids: set[int] = set()
+        for i, group in enumerate(conflicts):
+            cand_ids = {e["song_file_id"] for e in group}
+            chosen = choices[i] if i < len(choices) else None
+            if chosen not in cand_ids:
+                # default: keep higher bitrate, then larger file
+                chosen = max(group, key=lambda e: (e.get("bitrate") or 0, e.get("file_size") or 0))["song_file_id"]
+            keep_ids.add(chosen)
+
+        deleted = moved = kept = skipped = 0
+        deleted_ids: set[int] = set()
+        emptied_parents: set[Path] = set()
+        # PASS 1: delete non-kept (duplicate) files
+        for e in entries:
+            if e["blocked"] or e["status"] in ("missing", "no_source"):
+                if e["blocked"]:
+                    skipped += 1
+                continue
+            in_conflict = str(e["target_abs"].resolve()) in by_target and len(by_target[str(e["target_abs"].resolve())]) > 1
+            if in_conflict and e["song_file_id"] not in keep_ids:
+                try:
+                    self._delete_song_file(e)
+                    deleted += 1
+                    deleted_ids.add(e["song_file_id"])
+                    emptied_parents.add(Path(e["from_path"]).parent)
+                except Exception:
+                    skipped += 1
+
+        # PASS 2: relocate kept files (conflict-keep + non-conflict changed)
+        # Skip files already removed in PASS 1 (their row is pending-delete).
+        for e in entries:
+            if e["song_file_id"] in deleted_ids:
+                continue
+            if e["blocked"] or e["status"] in ("missing", "no_source"):
+                continue
+            if e["song_file_id"] in keep_ids and not e["changed"]:
+                kept += 1
+                continue
+            if e["changed"]:
+                try:
+                    self._relocate_song_file(song, e)
+                    moved += 1
+                    emptied_parents.add(Path(e["from_path"]).parent)
+                except Exception:
+                    skipped += 1
+            else:
+                kept += 1
+
+        # Deferred empty-folder cleanup: a source folder may still hold the kept
+        # file until PASS 2 moves it out, so we sweep only after both passes.
+        # Never recurse upward (would risk deleting other songs / shared covers).
+        cleaned = 0
+        for parent in sorted(emptied_parents, key=lambda p: str(p)):
+            if _try_rmdir_empty(parent):
+                cleaned += 1
+
+        self.db.commit()
+        try:
+            write_log(
+                self.db,
+                action="reorganize",
+                target=f"song:{song_id}",
+                status="success" if skipped == 0 else "partial",
+                title="整理单曲到标准路径",
+                message=f"moved={moved} deleted={deleted} kept={kept} skipped={skipped}",
+                detail={"song_id": song_id, "moved": moved, "deleted": deleted, "kept": kept, "skipped": skipped},
+                commit=True,
+            )
+        except Exception:
+            pass
+        return {
+            "song_id": song_id,
+            "moved": moved,
+            "deleted": deleted,
+            "kept": kept,
+            "skipped": skipped,
+            "conflicts": len(conflicts),
+            "summary": {"moved": moved, "deleted": deleted, "kept": kept, "skipped": skipped},
         }

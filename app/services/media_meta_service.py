@@ -218,6 +218,65 @@ def read_audio_duration(path: str | Path) -> Optional[int]:
     return None
 
 
+def read_audio_bitrate_kbps(path: str | Path) -> Optional[int]:
+    """读取音频码率（kbps）。mutagen 优先，tinytag 次之，ffprobe 兜底。
+
+    仅用于整理冲突界面展示，按需探测单文件（不会批量扫描）。
+    """
+    p = Path(path)
+    if not p.is_file():
+        return None
+
+    # 1) mutagen
+    try:
+        from mutagen import File as MutagenFile
+
+        audio = MutagenFile(str(p))
+        if audio is not None:
+            info = getattr(audio, "info", None)
+            br = getattr(info, "bitrate", None)
+            if br and int(br) > 0:
+                return max(1, int(round(int(br) / 1000)))
+    except Exception:
+        pass
+
+    # 2) tinytag
+    try:
+        from tinytag import TinyTag
+
+        tag = TinyTag.get(str(p))
+        if tag and tag.bitrate and float(tag.bitrate) > 0:
+            return max(1, int(round(float(tag.bitrate))))
+    except Exception:
+        pass
+
+    # 3) ffprobe
+    try:
+        proc = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=bit_rate",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(p),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            bps = int(float(proc.stdout.strip()))
+            if bps > 0:
+                return max(1, int(round(bps / 1000)))
+    except Exception:
+        pass
+    return None
+
+
 def extract_embedded_cover_bytes(path: str | Path) -> Optional[bytes]:
     p = Path(path)
     if not p.is_file():

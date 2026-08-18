@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.15.1-rc5
+
+### 新功能
+- 刮削信息弹窗整合「整理到标准路径」：当歌曲已刮削且专辑/标题完整时，文件列表中可一键把文件移动到 `歌手/专辑/歌曲` 标准路径（`POST /songs/{song_id}/organize/preview|apply`）。重复下载（如 `歌曲名.flac` 与 `歌曲名(1).flac` 解析到同一标准路径）触发路径冲突：弹窗按冲突分组列出每个候选的**格式、体积与码率**（`read_audio_bitrate_kbps` 按需探测），用户选择保留哪一个，其余被移除；保留项移动到标准路径后，若源父目录已无歌曲文件则删除该空目录（仅删直接父目录、不向上递归）。
+
+### 修复
+- 单曲整理执行正确性：修正 `_delete_song_file` 中 `LRC_EXTS | IMAGE_EXTS`（`tuple | frozenset` 非法导致 `TypeError` 被吞、重复版本删不掉）为 `set(LRC_EXTS) | IMAGE_EXTS`；`apply_organize_song` 改为两遍执行（PASS1 删非保留、PASS2 移动保留并跳过已删 id），避免 UNIQUE `local_path` 冲突；空目录清理延后到两遍执行结束后再对"被动过的源父目录"一次性 `rmdir`，解决「删除重复文件时同目录的保留文件尚未移走导致文件夹删不掉」的时序问题。
+- 跨歌曲占用目标路径的版本在预览中标记 `blocked`、`apply` 跳过（`skipped`），绝不覆盖或删除其他歌曲的文件。
+
+## 0.15.1-rc4
+
+### 修复
+- 刮削/歌词弹窗「暂无歌曲文件记录」：弹窗打开时原先直接读取内存里的 `player.current.versions` 作为「歌曲文件」列表，而该字段仅在部分列表接口（曲库 `list_songs`、重检 `recheck_song`）中被填充；来自歌单、历史、搜索等未填充 `versions` 的上下文时该字段为空，导致弹窗显示「暂无歌曲文件记录」，尽管歌曲仍可正常播放（播放经由后端 `SongFileResolver` 实时解析）。新增 `GET /api/songs/{song_id}/files`（复用 `SongFileResolver.describe_files`，与播放同源），前端 `openScrapeModal`/`openLyricsModal` 打开时拉取后端权威文件列表覆盖 `scrapeSongFiles`/`lyricsSongFiles`，保证弹窗与播放口径一致。
+
+## 0.15.1-rc3
+
+### 修复
+- 扫描曲库回退刮削信息：修复 `library_scan_service._upsert_local` 更新既有 Song 时，标题的合并条件 `song.title == path.stem` 会让"标题恰好等于文件名"的歌曲被文件名派生值覆盖（尤其文件名含序号 `03 Song`、而 `path_meta` 已去序号时），导致刮削/手动修正后的标题又退回文件名派生值。改为仅在 `song.title` 缺失时补充，绝不覆盖已有标题；artist/album 维持"仅填缺失/替换通用目录名"语义。
+
 ## 0.15.1-rc2
 
 ### 变更（后端模块化改造 R1–R5，见 `docs/backend-modularity-review.md`）

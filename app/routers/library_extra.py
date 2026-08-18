@@ -134,6 +134,63 @@ def get_lyrics(
     )
 
 
+@router.get("/songs/{song_id}/files")
+def get_song_files(
+    song_id: int,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """返回该逻辑歌曲的全部本地/WebDAV 版本（含封面/歌词侧车与可写状态）。
+
+    与播放、刮削/歌词检索共用 SongFileResolver.describe_files，作为「歌曲文件」列表的
+    权威来源；前端刮削/歌词弹窗在打开时应拉取此处而非依赖内存里的 versions 字段，
+    避免歌曲来自未填充 versions 的列表（如歌单）时显示「暂无歌曲文件记录」。
+    """
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(status_code=404, detail="歌曲不存在")
+    return {"song_files": SongFileResolver(db).describe_files(song)}
+
+
+class OrganizeSongApplyRequest(BaseModel):
+    choices: list[int] = Field(default_factory=list, description="每个冲突项要保留的 song_file_id，顺序与 preview.conflicts 一致")
+
+
+@router.post("/songs/{song_id}/organize/preview")
+def organize_song_preview(
+    song_id: int,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """预览把该歌的本地版本整理到标准路径（艺术家/专辑/歌名）。
+
+    返回每个本地版本的去向、同歌同格式冲突（需用户选择保留哪一个，含码率/大小）、
+    以及跨歌占用导致的 blocked 项（不自动覆盖他人文件）。专辑或标题不完整时
+    complete=false，调用方应禁用整理。
+    """
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(status_code=404, detail="歌曲不存在")
+    return LibraryOrganizeService(db).preview_organize_song(song_id)
+
+
+@router.post("/songs/{song_id}/organize/apply")
+def organize_song_apply(
+    song_id: int,
+    body: OrganizeSongApplyRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """执行单曲整理：按选择保留冲突文件、删除另一文件及其侧车、清理空父文件夹、同步 SongFile/Song。"""
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(status_code=404, detail="歌曲不存在")
+    try:
+        return LibraryOrganizeService(db).apply_organize_song(song_id, body.choices)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post("/songs/{song_id}/play", response_model=SongOut)
 def record_play(
     song_id: int,
