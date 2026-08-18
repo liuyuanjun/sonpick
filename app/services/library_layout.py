@@ -27,20 +27,7 @@ import re
 from pathlib import Path
 from typing import Iterable, Optional
 
-# 音频 / 侧车扩展
-AUDIO_EXTS: tuple[str, ...] = (
-    ".mp3",
-    ".flac",
-    ".m4a",
-    ".wav",
-    ".ogg",
-    ".aac",
-    ".ape",
-    ".wma",
-    ".opus",
-)
-LRC_EXTS: tuple[str, ...] = (".lrc", ".LRC", ".txt", ".TXT")
-COVER_IMAGE_EXTS: tuple[str, ...] = (".jpg", ".jpeg", ".png", ".webp", ".gif")
+from app.services.constants import AUDIO_EXTS, IMAGE_EXTS, LRC_EXTS
 
 # 专辑目录内封面候选（按优先级）
 ALBUM_COVER_NAMES: tuple[str, ...] = (
@@ -277,13 +264,13 @@ def find_track_cover_file(audio_path: str | Path) -> Optional[Path]:
     """同 stem 单曲封面：Title.jpg / Title.png ..."""
     audio = Path(audio_path)
     stem = audio.with_suffix("")
-    for ext in COVER_IMAGE_EXTS:
+    for ext in IMAGE_EXTS:
         for cand in (Path(str(stem) + ext), audio.with_suffix(ext)):
             if cand.is_file():
                 return cand
     # 大小写
     try:
-        wanted = {audio.stem.lower() + e for e in COVER_IMAGE_EXTS}
+        wanted = {audio.stem.lower() + e for e in IMAGE_EXTS}
         for child in audio.parent.iterdir():
             if child.is_file() and child.name.lower() in wanted:
                 return child

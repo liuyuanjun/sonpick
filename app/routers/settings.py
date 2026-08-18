@@ -11,81 +11,9 @@ from app.models import AppSettings, iso_utc
 from app.schemas import SettingsResponse, SettingsUpdate, decrypt_text, encrypt_text
 from app.routers.auth import get_current_user
 from app.services.scrape.source_registry import SOURCE_IDS, select_source_configs, source_configs
+from app.services.settings_service import DEFAULT_SCAN_EXCLUDE, DEFAULT_SCAN_EXTS, dump_json_list, ensure_settings, parse_json_list
 
 router = APIRouter(prefix="/settings", tags=["settings"])
-
-
-DEFAULT_SCAN_EXCLUDE = [
-    "**/.*",
-    "**/.@*",
-    "**/@eaDir/**",
-    "**/#recycle/**",
-    "**/Thumbs.db",
-    "**/*.tmp",
-]
-DEFAULT_SCAN_EXTS = "mp3,flac,m4a,wav,ogg,aac,ape,wma"
-
-
-def _parse_json_list(raw, default):
-    if raw is None or raw == "":
-        return list(default)
-    if isinstance(raw, list):
-        return [str(x) for x in raw]
-    try:
-        data = json.loads(raw)
-        if isinstance(data, list):
-            return [str(x) for x in data]
-    except Exception:
-        pass
-    # multiline / comma separated fallback
-    parts = []
-    for line in str(raw).replace(",", "\n").splitlines():
-        s = line.strip()
-        if s:
-            parts.append(s)
-    return parts or list(default)
-
-
-def _dump_json_list(items):
-    clean = []
-    for x in items or []:
-        s = str(x).strip()
-        # keep empty string (WebDAV root)
-        if s not in clean:
-            clean.append(s)
-    return json.dumps(clean, ensure_ascii=False)
-
-
-
-def _ensure_settings(db: Session) -> AppSettings:
-    s = db.get(AppSettings, 1)
-    if not s:
-        cfg = get_settings()
-        s = AppSettings(
-            id=1,
-            storage_path=cfg.storage_path,
-            prefer_format="any",
-            auto_convert_mp3=False,
-            lossy_output_path=str(Path(cfg.storage_path) / "LOSSY"),
-            lossless_output_path=str(Path(cfg.storage_path) / "LOSSLESS"),
-            lossless_preferred=False,
-            auto_convert_when_lossless_not_preferred=False,
-            auto_upload_webdav=False,
-            webdav_delete_local_after_upload=False,
-            webdav_upload_sidecar=True,
-            webdav_conflict_policy="rename",
-            webdav_remote_dir="",
-            scan_local_enabled=True,
-            scan_local_dirs="[]",
-            scan_webdav_enabled=True,
-            scan_webdav_dirs='[""]',
-            scan_exclude_globs=json.dumps(DEFAULT_SCAN_EXCLUDE, ensure_ascii=False),
-            scan_audio_exts=DEFAULT_SCAN_EXTS,
-        )
-        db.add(s)
-        db.commit()
-        db.refresh(s)
-    return s
 
 
 def _to_response(s: AppSettings) -> SettingsResponse:
@@ -120,10 +48,10 @@ def _to_response(s: AppSettings) -> SettingsResponse:
         webdav_conflict_policy=getattr(s, "webdav_conflict_policy", None) or "rename",
         webdav_remote_dir=getattr(s, "webdav_remote_dir", None) or "",
         scan_local_enabled=bool(getattr(s, "scan_local_enabled", True)),
-        scan_local_dirs=_parse_json_list(getattr(s, "scan_local_dirs", None), []),
+        scan_local_dirs=parse_json_list(getattr(s, "scan_local_dirs", None), []),
         scan_webdav_enabled=bool(getattr(s, "scan_webdav_enabled", True)),
-        scan_webdav_dirs=_parse_json_list(getattr(s, "scan_webdav_dirs", None), [""]),
-        scan_exclude_globs=_parse_json_list(getattr(s, "scan_exclude_globs", None), DEFAULT_SCAN_EXCLUDE),
+        scan_webdav_dirs=parse_json_list(getattr(s, "scan_webdav_dirs", None), [""]),
+        scan_exclude_globs=parse_json_list(getattr(s, "scan_exclude_globs", None), DEFAULT_SCAN_EXCLUDE),
         scan_audio_exts=getattr(s, "scan_audio_exts", None) or DEFAULT_SCAN_EXTS,
         scrape_sources=sources,
         lyrics_sources=lyrics_sources,
@@ -137,7 +65,7 @@ def _to_response(s: AppSettings) -> SettingsResponse:
 def test_scrape_source(source_id: str, keyword: str = "周杰伦", user: str = Depends(get_current_user), db: Session = Depends(get_db)):
     if source_id not in SOURCE_IDS:
         raise HTTPException(status_code=404, detail="未知刮削源")
-    settings = _ensure_settings(db)
+    settings = ensure_settings(db)
     config = next((item for item in source_configs(settings.scrape_sources_json) if item["id"] == source_id), None)
     if not config or not config["enabled"]:
         raise HTTPException(status_code=400, detail="请先启用该刮削源")
@@ -170,7 +98,7 @@ def test_lyrics_source(
 
     if source_id not in LYRICS_SOURCE_IDS:
         raise HTTPException(status_code=404, detail="未知歌词源")
-    settings = _ensure_settings(db)
+    settings = ensure_settings(db)
     config = next((item for item in lyrics_source_configs(settings.lyrics_sources_json, scrape_raw=settings.scrape_sources_json) if item["id"] == source_id), None)
     if not config or not config["enabled"]:
         raise HTTPException(status_code=400, detail="请先启用该歌词源")
@@ -188,13 +116,13 @@ def test_lyrics_source(
 
 @router.get("", response_model=SettingsResponse)
 def get_settings_api(user: str = Depends(get_current_user), db: Session = Depends(get_db)):
-    s = _ensure_settings(db)
+    s = ensure_settings(db)
     return _to_response(s)
 
 
 @router.put("", response_model=SettingsResponse)
 def update_settings(req: SettingsUpdate, user: str = Depends(get_current_user), db: Session = Depends(get_db)):
-    s = _ensure_settings(db)
+    s = ensure_settings(db)
 
     if req.storage_path is not None:
         p = Path(req.storage_path)
@@ -236,13 +164,13 @@ def update_settings(req: SettingsUpdate, user: str = Depends(get_current_user), 
     if req.scan_local_enabled is not None:
         s.scan_local_enabled = req.scan_local_enabled
     if req.scan_local_dirs is not None:
-        s.scan_local_dirs = _dump_json_list(req.scan_local_dirs)
+        s.scan_local_dirs = dump_json_list(req.scan_local_dirs)
     if req.scan_webdav_enabled is not None:
         s.scan_webdav_enabled = req.scan_webdav_enabled
     if req.scan_webdav_dirs is not None:
-        s.scan_webdav_dirs = _dump_json_list(req.scan_webdav_dirs)
+        s.scan_webdav_dirs = dump_json_list(req.scan_webdav_dirs)
     if req.scan_exclude_globs is not None:
-        s.scan_exclude_globs = _dump_json_list(req.scan_exclude_globs)
+        s.scan_exclude_globs = dump_json_list(req.scan_exclude_globs)
     if req.scan_audio_exts is not None:
         s.scan_audio_exts = (req.scan_audio_exts or DEFAULT_SCAN_EXTS).strip()
     if req.scrape_sources is not None:

@@ -17,7 +17,8 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.models import Song, SongFile
-from app.services.library_layout import AUDIO_EXTS, unique_path
+from app.services.constants import AUDIO_EXTS
+from app.services.library_layout import unique_path
 from app.services.song_file_resolver import SongFileResolver
 
 

@@ -33,7 +33,7 @@ from app.services.scrape.query_normalize import (
 
 log = logging.getLogger("sonpick.scrape")
 from app.services.scrape.match import score_candidate
-from app.services.scrape.cover_utils import extract_cover_url
+from app.services.scrape.cover_utils import download_cover_with_diagnostics, extract_cover_url
 
 PREFER_FORMATS = {
     "flac": ["flac"],
@@ -550,17 +550,11 @@ class MusicDLService:
         cover_url, _cover_source = extract_cover_url(picked)
         if not cover_url or not str(cover_url).startswith("http"):
             return None
-        try:
-            import requests
-            r = requests.get(cover_url, timeout=15, headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            })
-            r.raise_for_status()
-            target = self._unique_path(output_dir, stem, ".jpg")
-            target.write_bytes(r.content)
-            return target
-        except Exception:
-            return None
+        target = self._unique_path(output_dir, stem, ".jpg")
+        result = download_cover_with_diagnostics(cover_url, target, timeout=15)
+        if result.get("ok") and result.get("path"):
+            return Path(result["path"])
+        return None
 
     @staticmethod
     def parse_line(line: str) -> tuple[str, str]:

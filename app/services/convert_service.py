@@ -13,9 +13,9 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import AppSettings, MediaSource, Song, SongFile
+from app.services.constants import LOSSLESS_FORMATS
 
 BITRATE = "320k"
-LOSSLESS_FORMATS = {"flac", "wav", "aiff", "alac", "ape"}
 
 
 def resolve_output_dir(raw: str | None, storage_path: str | None, default_name: str) -> str:

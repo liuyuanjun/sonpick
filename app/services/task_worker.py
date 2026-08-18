@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import queue
 import threading
 import time
@@ -18,6 +19,8 @@ from app.services.musicdl_service import MusicDLService
 from app.services.operation_log_service import write_log
 from app.services.song_file_resolver import SongFileResolver
 from app.services.webdav_service import WebDAVService
+
+log = logging.getLogger("sonpick.task")
 
 
 class WSManager:
@@ -90,7 +93,7 @@ class TaskEventHub:
                 coro.close()
             except Exception:
                 pass
-            print(f"[task_event_hub push error] {type(e).__name__}: {e}", flush=True)
+            log.error(f"[task_event_hub push error] {type(e).__name__}: {e}")
 
 
 task_event_hub = TaskEventHub()
@@ -157,7 +160,7 @@ class TaskWorker:
             self._loop_push_failures += 1
             n = self._loop_push_failures
             if n <= 5 or n % 100 == 0:
-                print(f"[loop push error] {type(e).__name__}: {e}（累计 {n} 次）", flush=True)
+                log.warning(f"[loop push error] {type(e).__name__}: {e}（累计 {n} 次）")
             return False
 
     async def process_loop(self):
@@ -206,7 +209,7 @@ class TaskWorker:
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                print(f"[worker_loop {idx} error] {e}", flush=True)
+                log.error(f"[worker_loop {idx} error] {e}")
                 traceback.print_exc()
             finally:
                 with self._ids_lock:
@@ -233,7 +236,7 @@ class TaskWorker:
                 .all()
             ]
         except Exception as e:
-            print(f"[pending scan error] {e}", flush=True)
+            log.warning(f"[pending scan error] {e}")
             return []
         finally:
             db.close()
@@ -243,7 +246,7 @@ class TaskWorker:
         for tid in ids:
             self.enqueue(tid)
         if ids:
-            print(f"[task_worker] 启动恢复 {len(ids)} 个遗留 pending 任务", flush=True)
+            log.info(f"[task_worker] 启动恢复 {len(ids)} 个遗留 pending 任务")
 
     async def _reconcile_loop(self):
         """兜底：捞回队列未就绪期间入 DB / 漏 enqueue 的 pending 任务。"""
@@ -253,7 +256,7 @@ class TaskWorker:
                 for tid in self._pending_ids():
                     self.enqueue(tid)
             except Exception as e:
-                print(f"[reconcile error] {e}", flush=True)
+                log.warning(f"[reconcile error] {e}")
                 traceback.print_exc()
 
     # ------------------------------------------------------------ emit 管线
@@ -264,7 +267,7 @@ class TaskWorker:
             try:
                 self._flush_events()
             except Exception as e:
-                print(f"[flusher error] {e}", flush=True)
+                log.warning(f"[flusher error] {e}")
                 traceback.print_exc()
 
     def _flush_events(self):
@@ -313,7 +316,7 @@ class TaskWorker:
                 if task:
                     snapshots[task_id] = task.to_dict()
         except Exception as e:
-            print(f"[flusher db error] {e}", flush=True)
+            log.error(f"[flusher db error] {e}")
             try:
                 db.rollback()
             except Exception:
@@ -368,7 +371,7 @@ class TaskWorker:
                 task.updated_at = datetime.now(timezone.utc)
                 db.commit()
         except Exception as e:
-            print(f"[emit error] {e}", flush=True)
+            log.warning(f"[emit error] {e}")
             try:
                 db.rollback()
             except Exception:
@@ -783,7 +786,7 @@ class TaskWorker:
             db.commit()
             self.emit(task_id, "完成", 100)
         except Exception as e:
-            print(f"[_run_sync error] {e}", flush=True)
+            log.error(f"[_run_sync error] {e}")
             traceback.print_exc()
             # worker 的 Session 可能已处于 PendingRollbackError（DB 层崩溃），
             # 必须用全新 Session 写终态，否则任务状态会永远卡在 running
@@ -794,7 +797,7 @@ class TaskWorker:
             try:
                 self._flush_events()
             except Exception as e:
-                print(f"[finally flush error] {e}", flush=True)
+                log.warning(f"[finally flush error] {e}")
             db2 = SessionLocal()
             try:
                 task = db2.get(Task, task_id)
@@ -805,7 +808,7 @@ class TaskWorker:
                     if task.status in {"completed", "failed", "cancelled"} and self.loop:
                         task_event_hub.publish_threadsafe(task_id, task.to_dict(), self.loop)
             except Exception as e:
-                print(f"[finally db error] {e}", flush=True)
+                log.error(f"[finally db error] {e}")
                 try:
                     db2.rollback()
                 except Exception:
@@ -814,7 +817,7 @@ class TaskWorker:
                 try:
                     db2.close()
                 except Exception as e:
-                    print(f"[finally close error] {e}", flush=True)
+                    log.warning(f"[finally close error] {e}")
             try:
                 db.close()
             except Exception:
@@ -843,7 +846,7 @@ class TaskWorker:
             task.updated_at = datetime.now(timezone.utc)
             db.commit()
         except Exception as e:
-            print(f"[_mark_failed error] {e}", flush=True)
+            log.error(f"[_mark_failed error] {e}")
             try:
                 db.rollback()
             except Exception:
@@ -921,14 +924,14 @@ class TaskWorker:
                             )
                             task_event_hub.publish_threadsafe(tid, task.to_dict(), self.loop)
 
-                            print(f"[watchdog] marked task {tid} as failed (stale/lost thread)", flush=True)
+                            log.warning(f"[watchdog] marked task {tid} as failed (stale/lost thread)")
 
                             with self._future_lock:
                                 self._running_futures.pop(tid, None)
                 finally:
                     db.close()
             except Exception as e:
-                print(f"[watchdog error] {e}", flush=True)
+                log.error(f"[watchdog error] {e}")
                 traceback.print_exc()
 
             await asyncio.sleep(CHECK_INTERVAL_SECONDS)

@@ -1,11 +1,10 @@
 """Deezer public search scrape provider."""
 from __future__ import annotations
 
-import json
 import urllib.parse
-import urllib.request
 from typing import Any, Optional
 
+from app.services.http_client import http_json
 from app.services.scrape.base import ScrapeQuery, ScrapeResult
 from app.services.scrape.match import score_candidate
 
@@ -24,10 +23,14 @@ def search_deezer(keyword: str, *, limit: int = 8, timeout: float = 12.0) -> lis
     if not term:
         return []
     url = f"https://api.deezer.com/search?{urllib.parse.urlencode({'q': term, 'limit': max(1, min(int(limit), 20))})}"
-    request = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "Sonpick/1.0"})
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            data = json.loads(response.read().decode("utf-8", errors="replace"))
+        data = http_json(
+            url,
+            host="api.deezer.com",
+            timeout=timeout,
+            ua="Sonpick/1.0",
+            headers={"Accept": "application/json"},
+        )
     except Exception:
         return []
     rows: list[dict[str, Any]] = []

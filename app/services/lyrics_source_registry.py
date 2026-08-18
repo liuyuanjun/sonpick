@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import json
-from copy import deepcopy
 from typing import Any
+
+from app.services.source_config import dump_configs, load_configs, select_configs
 
 DEFAULT_LYRICS_SOURCES = [
     {
@@ -38,60 +39,59 @@ DEFAULT_LYRICS_SOURCES = [
     },
 ]
 LYRICS_SOURCE_IDS = {item["id"] for item in DEFAULT_LYRICS_SOURCES}
+_MUTABLE_KEYS = {"enabled", "auto_enabled", "priority", "timeout"}
+
+
+def _coerce(item: dict[str, Any], default: dict[str, Any]) -> None:
+    item["priority"] = int(item.get("priority") or default["priority"])
+    item["timeout"] = max(5, min(60, int(item.get("timeout") or default["timeout"])))
+
+
+def _inherit_enabled_from_scrape(
+    configs: list[dict[str, Any]], raw: str | None, scrape_raw: str | None
+) -> None:
+    """迁移兼容：歌词源从未单独配置时，从刮削源继承网易/咪咕的开关状态。
+
+    这是历史遗留的一次性兼容逻辑（歌词源曾与刮削源共享开关），集中在此并标注为
+    迁移 shim，不应再扩展新的跨注册表耦合。
+    """
+    if not scrape_raw:
+        return
+    try:
+        stored_items = [
+            item
+            for item in json.loads(raw or "[]")
+            if isinstance(item, dict) and item.get("id") in LYRICS_SOURCE_IDS
+        ]
+    except (TypeError, ValueError):
+        stored_items = []
+    if stored_items:
+        return
+    try:
+        scrape_enabled = {
+            str(item.get("id")): bool(item.get("enabled", True))
+            for item in json.loads(scrape_raw or "[]")
+            if isinstance(item, dict)
+        }
+    except (TypeError, ValueError):
+        return
+    for item in configs:
+        if item["id"] in {"netease", "migu"} and item["id"] in scrape_enabled:
+            item["enabled"] = scrape_enabled[item["id"]]
+            item["auto_enabled"] = scrape_enabled[item["id"]]
 
 
 def lyrics_source_configs(raw: str | None, *, scrape_raw: str | None = None) -> list[dict[str, Any]]:
-    stored: dict[str, dict[str, Any]] = {}
-    try:
-        for item in json.loads(raw or "[]"):
-            if isinstance(item, dict) and item.get("id") in LYRICS_SOURCE_IDS:
-                stored[str(item["id"])] = item
-    except (TypeError, ValueError):
-        pass
-
-    scrape_enabled: dict[str, bool] = {}
-    if not stored and scrape_raw:
-        try:
-            scrape_enabled = {
-                str(item.get("id")): bool(item.get("enabled", True))
-                for item in json.loads(scrape_raw or "[]")
-                if isinstance(item, dict)
-            }
-        except (TypeError, ValueError):
-            scrape_enabled = {}
-
-    configs = []
-    for default in DEFAULT_LYRICS_SOURCES:
-        item = deepcopy(default)
-        saved = stored.get(default["id"], {})
-        for key in ("enabled", "auto_enabled", "priority", "timeout"):
-            if key in saved:
-                item[key] = saved[key]
-        if not stored and default["id"] in {"netease", "migu"} and default["id"] in scrape_enabled:
-            item["enabled"] = scrape_enabled[default["id"]]
-            item["auto_enabled"] = scrape_enabled[default["id"]]
-        item["priority"] = int(item.get("priority") or default["priority"])
-        item["timeout"] = max(5, min(60, int(item.get("timeout") or default["timeout"])))
-        configs.append(item)
-    return sorted(configs, key=lambda item: (item["priority"], item["id"]))
+    configs = load_configs(raw, DEFAULT_LYRICS_SOURCES, mutable_keys=_MUTABLE_KEYS, coerce=_coerce)
+    _inherit_enabled_from_scrape(configs, raw, scrape_raw)
+    return configs
 
 
 def dump_lyrics_source_configs(configs: list[dict[str, Any]]) -> str:
-    allowed = {item["id"]: item for item in configs if item.get("id") in LYRICS_SOURCE_IDS}
-    merged = []
-    for default in DEFAULT_LYRICS_SOURCES:
-        item = deepcopy(default)
-        saved = allowed.get(default["id"], {})
-        for key in ("enabled", "auto_enabled", "priority", "timeout"):
-            if key in saved:
-                item[key] = saved[key]
-        merged.append(item)
-    return json.dumps(lyrics_source_configs(json.dumps(merged, ensure_ascii=False)), ensure_ascii=False)
+    return dump_configs(configs, DEFAULT_LYRICS_SOURCES, mutable_keys=_MUTABLE_KEYS, coerce=_coerce)
 
 
-def select_lyrics_source_configs(raw: str | None, *, automatic: bool, scrape_raw: str | None = None) -> list[dict[str, Any]]:
-    return [
-        item
-        for item in lyrics_source_configs(raw, scrape_raw=scrape_raw)
-        if item["enabled"] and (item["auto_enabled"] if automatic else True)
-    ]
+def select_lyrics_source_configs(
+    raw: str | None, *, automatic: bool, scrape_raw: str | None = None
+) -> list[dict[str, Any]]:
+    return select_configs(lyrics_source_configs(raw, scrape_raw=scrape_raw), automatic=automatic)

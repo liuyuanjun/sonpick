@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.15.1-rc2
+
+### 变更（后端模块化改造 R1–R5，见 `docs/backend-modularity-review.md`）
+- R1 常量/格式收口：媒体格式与扩展名常量统一到 `app/services/constants.py`（`LOSSLESS_FORMATS` / `AUDIO_EXTS` / `IMAGE_EXTS` / `LRC_EXTS`），`convert_service`、`song_file_resolver`、`library_layout`、`library_organize_service`、`download_duplicate_service`、`media_meta_service`、`lyrics_service` 不再各自维护重复集合；封面下载三合一，刮削管线与 `musicdl_service` 统一走 `download_cover_with_diagnostics`，删除重复下载实现与刮削链路对 `requests` 的直接依赖。
+- R2 统一外部 HTTP 层：新增 `app/services/http_client.py`（`host_from_url` / `http_json`），刮削 provider（MusicBrainz / Deezer / iTunes / AcoustID / 网易云 / 咪咕）统一改用 urllib + per-host `HostLimiter`，不再各自拼请求；MusicBrainz 串行节流（并发 1 + 间隔 1s）。QQ 走 musicdl（三方库）无法注入传输层限流，维持 lane 信号量约束。
+- R3 分层修正与源注册表统一：新增 `app/services/source_config.py`（`load_configs` / `dump_configs` / `select_configs`）与 `app/services/settings_service.py`，刮削源与歌词源注册表共用同一套配置解析/合并/排序/可选逻辑，消除重复实现；歌词源从刮削源继承开关的历史兼容逻辑集中为显式迁移 shim；服务层不再反向依赖路由层。
+- R4 日志收口：`task_worker.py` / `database.py` 的 `print(..., flush=True)` 统一改为 `logging`（`sonpick.task` / `sonpick.db`），与容器 stdout 日志体系一致，支持分级/时间戳/模块名；`cli.py` 面向终端保留 `print`。
+- R5 SQLite 单写者纪律：数据访问层（engine 事件）引入进程内 `RLock`，任何线程/会话执行写语句（INSERT/UPDATE/DELETE/REPLACE/CREATE/ALTER/DROP）前先取锁、事务提交或回滚时释放；纯读事务不阻塞。写写串行不再只靠 `busy_timeout` 兜底，为后续继续放开并发扫清 SQLite 争用障碍。
+
 ## 0.15.1-rc1
 
 ### 新功能

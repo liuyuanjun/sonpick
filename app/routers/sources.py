@@ -18,6 +18,7 @@ from app.services.library_scan_service import LibraryScanService
 from app.services.library_organize_service import LibraryOrganizeService
 from app.services.operation_log_service import write_log
 from app.services.webdav_service import WebDAVService
+from app.services.settings_service import dump_json_list
 
 router = APIRouter(prefix="/sources", tags=["sources"])
 
@@ -31,34 +32,6 @@ def _norm_path(value: str | None) -> str:
 def _is_builtin_local_source(source: MediaSource) -> bool:
     return source.type == "local" and _norm_path(source.root_path) == DEFAULT_LOCAL_ROOT
 
-
-
-def _parse_json_list(raw: Any, default: list) -> list:
-    if raw is None or raw == "":
-        return list(default)
-    if isinstance(raw, list):
-        return [str(x) for x in raw]
-    try:
-        data = json.loads(raw)
-        if isinstance(data, list):
-            return [str(x) for x in data]
-    except Exception:
-        pass
-    parts = []
-    for line in str(raw).replace(",", "\n").splitlines():
-        s = line.strip()
-        if s:
-            parts.append(s)
-    return parts or list(default)
-
-
-def _dump_json_list(items: Optional[list]) -> str:
-    clean = []
-    for x in items or []:
-        s = str(x).strip()
-        if s not in clean:
-            clean.append(s)
-    return json.dumps(clean, ensure_ascii=False)
 
 
 def _source_out(source: MediaSource) -> dict:
@@ -88,13 +61,13 @@ def create_source(req: SourceCreate, user: str = Depends(get_current_user), db: 
         type=req.type,
         enabled=req.enabled,
         root_path=req.root_path,
-        scan_dirs=_dump_json_list(req.scan_dirs),
+        scan_dirs=dump_json_list(req.scan_dirs),
         webdav_url=req.webdav_url,
         webdav_username=req.webdav_username,
         webdav_password_enc=encrypt_text(req.webdav_password) if req.webdav_password else None,
         remote_dir=req.remote_dir or "",
-        scan_remote_dirs=_dump_json_list(req.scan_remote_dirs) if req.scan_remote_dirs is not None else '[""]',
-        exclude_globs=_dump_json_list(req.exclude_globs) if req.exclude_globs is not None else None,
+        scan_remote_dirs=dump_json_list(req.scan_remote_dirs) if req.scan_remote_dirs is not None else '[""]',
+        exclude_globs=dump_json_list(req.exclude_globs) if req.exclude_globs is not None else None,
         audio_exts=req.audio_exts,
         is_default_upload=req.is_default_upload,
         upload_sidecar=req.upload_sidecar if req.upload_sidecar is not None else True,
@@ -264,7 +237,7 @@ def update_source(
             raise HTTPException(status_code=400, detail="内置本地曲库路径不可修改")
         source.root_path = req.root_path
     if req.scan_dirs is not None:
-        source.scan_dirs = _dump_json_list(req.scan_dirs)
+        source.scan_dirs = dump_json_list(req.scan_dirs)
     if req.webdav_url is not None:
         source.webdav_url = req.webdav_url.strip() or None
     if req.webdav_username is not None:
@@ -274,9 +247,9 @@ def update_source(
     if req.remote_dir is not None:
         source.remote_dir = req.remote_dir.strip()
     if req.scan_remote_dirs is not None:
-        source.scan_remote_dirs = _dump_json_list(req.scan_remote_dirs)
+        source.scan_remote_dirs = dump_json_list(req.scan_remote_dirs)
     if req.exclude_globs is not None:
-        source.exclude_globs = _dump_json_list(req.exclude_globs)
+        source.exclude_globs = dump_json_list(req.exclude_globs)
     if req.audio_exts is not None:
         source.audio_exts = req.audio_exts.strip()
     if req.is_default_upload is not None and source.type == "webdav":

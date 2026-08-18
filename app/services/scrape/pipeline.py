@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import urllib.request
 from pathlib import Path
 from typing import Any, Iterable, Optional, TYPE_CHECKING
 
@@ -200,32 +199,6 @@ def lookup_album_via_pipeline(
             payload=out,
         )
     return out
-
-
-def _download_cover(url: str, dest: Path, *, timeout: float = 8.0) -> Optional[Path]:
-    if not url or not dest:
-        return None
-    try:
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        req = urllib.request.Request(
-            url,
-            headers={"User-Agent": "Sonpick/0.5.2 (personal music library)"},
-            method="GET",
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = resp.read()
-        if not data or len(data) < 100:
-            return None
-        # basic image sniff
-        ext = ".jpg"
-        if data.startswith(b"\x89PNG"):
-            ext = ".png"
-        if dest.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
-            dest = dest.with_suffix(ext)
-        dest.write_bytes(data)
-        return dest
-    except Exception:
-        return None
 
 
 def enrich_song_via_pipeline(

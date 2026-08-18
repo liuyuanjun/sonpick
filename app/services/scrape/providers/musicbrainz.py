@@ -1,13 +1,11 @@
 """MusicBrainz + Cover Art Archive provider (stable open API)."""
 from __future__ import annotations
 
-import json
 import re
-import urllib.error
 import urllib.parse
-import urllib.request
 from typing import Any, Optional
 
+from app.services.http_client import http_json
 from app.services.scrape.base import ScrapeQuery, ScrapeResult
 from app.services.scrape.query_normalize import clean_artist, clean_title
 
@@ -24,21 +22,16 @@ def _norm(s: str | None) -> str:
 
 
 def _http_json(url: str, *, timeout: float) -> dict[str, Any] | list | None:
-    req = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": _UA,
-            "Accept": "application/json",
-        },
-        method="GET",
-    )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            raw = resp.read()
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError):
-        return None
-    try:
-        return json.loads(raw.decode("utf-8", errors="replace"))
+        return http_json(
+            url,
+            host="musicbrainz.org",
+            timeout=timeout,
+            ua=_UA,
+            headers={"Accept": "application/json"},
+            max_concurrent=1,
+            min_interval=1.0,
+        )
     except Exception:
         return None
 

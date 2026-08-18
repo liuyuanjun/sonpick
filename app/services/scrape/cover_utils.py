@@ -12,6 +12,9 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from app.services.host_limiter import get_limiter
+from app.services.http_client import host_from_url
+
 log = logging.getLogger("sonpick.meta")
 
 
@@ -200,7 +203,8 @@ def download_cover_with_diagnostics(url: str | None, dest: str | Path, *, timeou
             "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
         },
     )
-    try:
+
+    def _fetch() -> tuple[int, str, bytes]:
         # Prefer IPv4 opener; fall back to default urlopen if needed.
         try:
             resp_cm = _IPV4_OPENER.open(req, timeout=timeout)
@@ -211,6 +215,13 @@ def download_cover_with_diagnostics(url: str | None, dest: str | Path, *, timeou
             status = getattr(resp, "status", 200)
             content_type = resp.headers.get("Content-Type", "")
             data = resp.read()
+        return status, content_type, data
+
+    try:
+        # 图片 CDN 通常无需严格间隔限流，这里只做并发上限，避免批量刮削打爆连接。
+        status, content_type, data = get_limiter(
+            host_from_url(url_s), max_concurrent=4, min_interval=0.0
+        ).run(_fetch)
         if status >= 400:
             return {"ok": False, "path": None, "error": f"HTTP {status}", "status": status, "content_type": content_type, "url": url_s}
         if not data:
@@ -254,9 +265,12 @@ def qq_song_detail_cover(songmid: str | None, *, timeout: float = 12.0) -> dict:
         },
         method="POST",
     )
-    try:
+    def _do() -> Any:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            body = json.loads(resp.read().decode("utf-8", errors="replace"))
+            return json.loads(resp.read().decode("utf-8", errors="replace"))
+
+    try:
+        body = get_limiter("u.y.qq.com", max_concurrent=2, min_interval=0.3).run(_do)
         track = _get_path(body, ["songinfo", "data", "track_info"]) or {}
         album_mid = _get_path(track, ["album", "mid"]) or track.get("albummid") or track.get("albumMid")
         cover_url = qq_album_cover_url(album_mid)

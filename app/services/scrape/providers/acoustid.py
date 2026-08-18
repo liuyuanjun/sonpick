@@ -5,10 +5,10 @@ import json
 import shutil
 import subprocess
 import urllib.parse
-import urllib.request
 from pathlib import Path
 from typing import Optional
 
+from app.services.http_client import http_json
 from app.services.scrape.base import ScrapeQuery, ScrapeResult
 
 NAME = "acoustid"
@@ -45,13 +45,14 @@ def lookup_acoustid(path: str, api_key: str, *, timeout: float = 15.0) -> Option
     params = urllib.parse.urlencode({
         "client": api_key, "meta": "recordings+releasegroups+releases+artists", "duration": duration, "fingerprint": fingerprint,
     })
-    request = urllib.request.Request(
-        f"https://api.acoustid.org/v2/lookup?{params}",
-        headers={"Accept": "application/json", "User-Agent": "Sonpick/1.0"},
-    )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            payload = json.loads(response.read().decode("utf-8", errors="replace"))
+        payload = http_json(
+            f"https://api.acoustid.org/v2/lookup?{params}",
+            host="api.acoustid.org",
+            timeout=timeout,
+            ua="Sonpick/1.0",
+            headers={"Accept": "application/json"},
+        )
     except Exception:
         return None
     for item in payload.get("results") or []:

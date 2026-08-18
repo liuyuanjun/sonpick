@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from webdav3.client import Client
 
 from app.models import AppSettings, MediaSource, Song, SongFile
-from app.routers.settings import _ensure_settings
+from app.services.settings_service import ensure_settings
 from app.schemas import decrypt_text
 from app.services.operation_log_service import write_log
 from app.services.song_file_resolver import NoPlayableSongFileError, SongFileResolver
@@ -35,11 +35,11 @@ class WebDAVService:
 
     def _get_config(self) -> AppSettings:
         if self.db:
-            return _ensure_settings(self.db)
+            return ensure_settings(self.db)
         from app.database import SessionLocal
         db = SessionLocal()
         try:
-            return _ensure_settings(db)
+            return ensure_settings(db)
         finally:
             db.close()
 

@@ -6,8 +6,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.models import MediaSource, Song, SongFile
-
-LOSSLESS_FORMATS = {"flac", "wav", "aiff", "alac", "ape", "dsf", "dff"}
+from app.services.constants import LOSSLESS_FORMATS
 
 
 class NoPlayableSongFileError(RuntimeError):

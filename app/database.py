@@ -1,3 +1,5 @@
+import logging
+import threading
 from pathlib import Path
 
 from sqlalchemy import create_engine, event, inspect, text
@@ -7,6 +9,8 @@ from sqlalchemy.pool import NullPool
 
 from app.config import get_settings
 
+log = logging.getLogger("sonpick.db")
+
 
 class Base(DeclarativeBase):
     pass
@@ -14,6 +18,52 @@ class Base(DeclarativeBase):
 
 _engine: Engine | None = None
 SessionLocal = sessionmaker(autocommit=False, autoflush=False)
+
+
+# —— SQLite 单写者纪律 ——
+# WAL 允许读写并发，但写写必须串行。除 busy_timeout 兜底外，在数据访问层（engine 事件）
+# 用进程内 RLock 收口：任何线程/会话执行写语句前先取锁，事务提交/回滚/连接关闭时释放。
+# 用 RLock 而非 Lock：同一线程内（如写事务内部再开新连接写）可重入，避免自锁。
+_sqlite_write_lock = threading.RLock()
+_WRITE_KEYWORDS = frozenset({"INSERT", "UPDATE", "DELETE", "REPLACE", "CREATE", "ALTER", "DROP"})
+_WRITE_LOCK_FLAG = "_sonpick_write_lock"
+
+
+def _is_write_statement(statement: str) -> bool:
+    head = statement.lstrip()
+    # 跳过 SQLAlchemy 注入的前导注释（如 /* sqlalchemy */）
+    while head.startswith("/*"):
+        end = head.find("*/")
+        if end == -1:
+            break
+        head = head[end + 2:].lstrip()
+    first_word = head.split(None, 1)[0].upper() if head else ""
+    return first_word in _WRITE_KEYWORDS
+
+
+def _release_write_lock(conn) -> None:
+    if conn.info.pop(_WRITE_LOCK_FLAG, False):
+        _sqlite_write_lock.release()
+
+
+def _attach_single_writer(engine: Engine) -> None:
+    """挂接 engine 事件：写事务串行化。只在首个写语句上取锁，纯读事务不阻塞。"""
+
+    @event.listens_for(engine, "before_cursor_execute")
+    def _acquire_on_write(conn, cursor, statement, parameters, context, executemany):
+        if conn.info.get(_WRITE_LOCK_FLAG):
+            return
+        if _is_write_statement(statement):
+            conn.info[_WRITE_LOCK_FLAG] = True
+            _sqlite_write_lock.acquire()
+
+    @event.listens_for(engine, "commit")
+    def _release_on_commit(conn):
+        _release_write_lock(conn)
+
+    @event.listens_for(engine, "rollback")
+    def _release_on_rollback(conn):
+        _release_write_lock(conn)
 
 
 def get_engine() -> Engine:
@@ -41,6 +91,8 @@ def get_engine() -> Engine:
             cursor.execute("PRAGMA busy_timeout=30000")
             cursor.execute("PRAGMA synchronous=NORMAL")
             cursor.close()
+
+        _attach_single_writer(_engine)
 
         # 仅在未绑定时配置；测试会用 SessionLocal.configure 绑到临时库，不得覆盖
         if SessionLocal.kw.get("bind") is None:
@@ -171,9 +223,9 @@ def _migrate_settings_lossy_output(engine: Engine):
         version = conn.execute(text("SELECT sqlite_version()")).scalar() or "0.0.0"
         if tuple(int(p) for p in version.split(".")[:3]) >= (3, 35, 0):
             conn.execute(text("ALTER TABLE settings DROP COLUMN mp3_output_path"))
-            print("[migration] settings.mp3_output_path → lossy_output_path（旧列已删除）", flush=True)
+            log.info("[migration] settings.mp3_output_path → lossy_output_path（旧列已删除）")
         else:
-            print("[migration] settings.mp3_output_path → lossy_output_path（SQLite 过旧，保留旧列）", flush=True)
+            log.info("[migration] settings.mp3_output_path → lossy_output_path（SQLite 过旧，保留旧列）")
 
 
 def _ensure_song_file_indexes(engine: Engine):
@@ -284,7 +336,7 @@ def _migrate_song_path_responsibility(engine: Engine):
         conn.execute(text("DROP TABLE songs"))
         conn.execute(text("ALTER TABLE songs__path_migration RENAME TO songs"))
         conn.commit()
-        print(f"[migration] SongFile path responsibility: created={created}, enriched={enriched}", flush=True)
+        log.info(f"[migration] SongFile path responsibility: created={created}, enriched={enriched}")
 
 
 def _migrate_song_drop_library_source(engine: Engine):
@@ -342,18 +394,7 @@ def _migrate_song_drop_library_source(engine: Engine):
         conn.execute(text("DROP TABLE songs"))
         conn.execute(text("ALTER TABLE songs__drop_libsrc RENAME TO songs"))
         conn.commit()
-        print("[migration] songs.library_source_id dropped; source ownership lives on song_files", flush=True)
-
-
-def _dump_json_list(items):
-    import json
-
-    clean = []
-    for x in items or []:
-        s = str(x).strip()
-        if s not in clean:
-            clean.append(s)
-    return json.dumps(clean, ensure_ascii=False)
+        log.info("[migration] songs.library_source_id dropped; source ownership lives on song_files")
 
 
 def _seed_media_sources(engine: Engine):
@@ -362,7 +403,7 @@ def _seed_media_sources(engine: Engine):
 
     from app.config import get_settings
     from app.models import AppSettings, MediaSource, Song
-    from app.routers.settings import DEFAULT_SCAN_EXCLUDE, DEFAULT_SCAN_EXTS, _ensure_settings, _parse_json_list
+    from app.services.settings_service import DEFAULT_SCAN_EXCLUDE, DEFAULT_SCAN_EXTS, dump_json_list, ensure_settings, parse_json_list
 
     cfg = get_settings()
     with Session(engine) as db:
@@ -370,10 +411,10 @@ def _seed_media_sources(engine: Engine):
         if count > 0:
             return
 
-        s = _ensure_settings(db)
+        s = ensure_settings(db)
 
         # default local source
-        scan_dirs = _parse_json_list(getattr(s, "scan_local_dirs", None), [])
+        scan_dirs = parse_json_list(getattr(s, "scan_local_dirs", None), [])
         if not scan_dirs:
             scan_dirs = [""]
         local = MediaSource(
@@ -381,8 +422,8 @@ def _seed_media_sources(engine: Engine):
             type="local",
             enabled=True,
             root_path=s.storage_path or cfg.storage_path,
-            scan_dirs=_dump_json_list(scan_dirs),
-            exclude_globs=getattr(s, "scan_exclude_globs", None) or _dump_json_list(DEFAULT_SCAN_EXCLUDE),
+            scan_dirs=dump_json_list(scan_dirs),
+            exclude_globs=getattr(s, "scan_exclude_globs", None) or dump_json_list(DEFAULT_SCAN_EXCLUDE),
             audio_exts=getattr(s, "scan_audio_exts", None) or DEFAULT_SCAN_EXTS,
             connection_status="unknown",
         )
@@ -401,7 +442,7 @@ def _seed_media_sources(engine: Engine):
                 webdav_password_enc=s.webdav_password_enc,
                 remote_dir=getattr(s, "webdav_remote_dir", None) or "",
                 scan_remote_dirs=getattr(s, "scan_webdav_dirs", None) or '[""]',
-                exclude_globs=getattr(s, "scan_exclude_globs", None) or _dump_json_list(DEFAULT_SCAN_EXCLUDE),
+                exclude_globs=getattr(s, "scan_exclude_globs", None) or dump_json_list(DEFAULT_SCAN_EXCLUDE),
                 audio_exts=getattr(s, "scan_audio_exts", None) or DEFAULT_SCAN_EXTS,
                 is_default_upload=bool(getattr(s, "auto_upload_webdav", False)),
                 upload_sidecar=bool(getattr(s, "webdav_upload_sidecar", True)),

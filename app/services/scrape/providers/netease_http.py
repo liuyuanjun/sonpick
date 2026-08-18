@@ -1,14 +1,11 @@
 """Lightweight NetEase search/lyrics via public HTTP APIs (no musicdl)."""
 from __future__ import annotations
 
-import json
 import logging
-import urllib.error
 import urllib.parse
-import urllib.request
 from typing import Any, Optional
 
-from app.services.host_limiter import get_limiter
+from app.services.http_client import http_json
 
 log = logging.getLogger("sonpick.scrape")
 
@@ -26,26 +23,18 @@ def _http_json(
     timeout: float = 12.0,
     headers: Optional[dict[str, str]] = None,
 ) -> Any:
-    hdrs = {
-        "User-Agent": _UA,
-        "Referer": "https://music.163.com/",
-        "Accept": "application/json,text/plain,*/*",
-    }
+    hdrs = {"Referer": "https://music.163.com/"}
     if headers:
         hdrs.update(headers)
-    body = None
-    if data is not None:
-        body = urllib.parse.urlencode(data).encode("utf-8")
-        hdrs.setdefault("Content-Type", "application/x-www-form-urlencoded")
-    req = urllib.request.Request(url, data=body, headers=hdrs, method=method)
-
-    def _do() -> Any:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            raw = resp.read()
-        return json.loads(raw.decode("utf-8", errors="replace"))
-
-    # per-host 限流（并发 2 + 最小间隔 0.3s），替代各调用方自制节流
-    return get_limiter("music.163.com", max_concurrent=2, min_interval=0.3).run(_do)
+    return http_json(
+        url,
+        host="music.163.com",
+        method=method,
+        data=data,
+        timeout=timeout,
+        headers=hdrs,
+        ua=_UA,
+    )
 
 
 def search_netease(keyword: str, *, limit: int = 8, timeout: float = 12.0) -> list[dict[str, Any]]:

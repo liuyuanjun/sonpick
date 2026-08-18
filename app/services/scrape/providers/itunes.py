@@ -1,11 +1,10 @@
 """iTunes Search API scrape provider."""
 from __future__ import annotations
 
-import json
 import urllib.parse
-import urllib.request
 from typing import Any, Optional
 
+from app.services.http_client import http_json
 from app.services.scrape.base import ScrapeQuery, ScrapeResult
 from app.services.scrape.match import score_candidate
 
@@ -35,13 +34,14 @@ def search_itunes(keyword: str, *, country: str = "hk", limit: int = 8, timeout:
         "country": (country or "hk").lower(),
         "limit": max(1, min(int(limit), 20)),
     }
-    request = urllib.request.Request(
-        f"https://itunes.apple.com/search?{urllib.parse.urlencode(params)}",
-        headers={"Accept": "application/json", "User-Agent": "Sonpick/1.0"},
-    )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            data = json.loads(response.read().decode("utf-8", errors="replace"))
+        data = http_json(
+            f"https://itunes.apple.com/search?{urllib.parse.urlencode(params)}",
+            host="itunes.apple.com",
+            timeout=timeout,
+            ua="Sonpick/1.0",
+            headers={"Accept": "application/json"},
+        )
     except Exception:
         return []
     rows: list[dict[str, Any]] = []

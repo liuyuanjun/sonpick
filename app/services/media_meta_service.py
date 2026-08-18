@@ -11,6 +11,7 @@ import time
 from app.config import get_settings
 
 log = logging.getLogger("sonpick.meta")
+from app.services.constants import IMAGE_EXTS
 from app.services.library_layout import (
     find_album_cover_file,
     find_lrc_sidecar,
@@ -23,10 +24,6 @@ from app.services.library_layout import (
 # song_id -> expire_ts for cover miss (avoid concurrent WebDAV stampede)
 _COVER_MISS_CACHE: dict[int, float] = {}
 _COVER_MISS_TTL = 120.0
-
-AUDIO_EXTS = {".mp3", ".flac", ".m4a", ".wav", ".ogg", ".aac", ".ape", ".wma", ".opus"}
-IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
-
 
 def covers_root() -> Path:
     root = Path(get_settings().data_dir) / "covers"

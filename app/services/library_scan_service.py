@@ -11,11 +11,11 @@ from typing import Any, Optional
 from sqlalchemy.orm import Session
 
 from app.models import AppSettings, Favorite, MediaSource, Song, SongFile
-from app.routers.settings import (
+from app.services.settings_service import (
     DEFAULT_SCAN_EXCLUDE,
     DEFAULT_SCAN_EXTS,
-    _ensure_settings,
-    _parse_json_list,
+    ensure_settings,
+    parse_json_list,
 )
 from app.services.library_layout import (
     find_album_cover_file,
@@ -190,7 +190,7 @@ def _find_sidecar_remote(files_by_stem: dict[str, dict[str, str]], remote_path: 
 class LibraryScanService:
     def __init__(self, db: Session):
         self.db = db
-        self.cfg: AppSettings = _ensure_settings(db)
+        self.cfg: AppSettings = ensure_settings(db)
 
     def _stats(self, source: str, source_id: int | None = None) -> dict[str, Any]:
         return {
@@ -220,9 +220,9 @@ class LibraryScanService:
 
     def _exclude_globs(self, source: MediaSource | None = None) -> list[str]:
         if source:
-            return _normalize_globs(_parse_json_list(source.exclude_globs, DEFAULT_SCAN_EXCLUDE))
+            return _normalize_globs(parse_json_list(source.exclude_globs, DEFAULT_SCAN_EXCLUDE))
         return _normalize_globs(
-            _parse_json_list(getattr(self.cfg, "scan_exclude_globs", None), DEFAULT_SCAN_EXCLUDE)
+            parse_json_list(getattr(self.cfg, "scan_exclude_globs", None), DEFAULT_SCAN_EXCLUDE)
         )
 
     def _find_logical_song(self, meta: dict[str, Optional[str]], duration: int | None) -> Song | None:
@@ -584,7 +584,7 @@ class LibraryScanService:
             return stats
 
         storage = (source.root_path or "").strip()
-        dirs = _parse_json_list(getattr(source, "scan_dirs", None), [])
+        dirs = parse_json_list(getattr(source, "scan_dirs", None), [])
         roots: list[Path] = []
         for d in dirs:
             s = str(d).strip()
@@ -662,7 +662,7 @@ class LibraryScanService:
             stats["errors"] += 1
             return stats
 
-        dirs = _parse_json_list(getattr(source, "scan_remote_dirs", None), [""])
+        dirs = parse_json_list(getattr(source, "scan_remote_dirs", None), [""])
         if not dirs:
             dirs = [""]
         exts = self._audio_exts(source)

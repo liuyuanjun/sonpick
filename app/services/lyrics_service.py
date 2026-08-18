@@ -4,15 +4,13 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from app.services.constants import LRC_EXTS
 from app.services.library_layout import find_lrc_sidecar
 from typing import Optional
 
 _LRC_LINE = re.compile(
     r"\[(\d{1,2}):(\d{1,2})(?:[.:](\d{1,3}))?\](.*)"
 )
-
-# Prefer timed LRC; plain txt only as last resort for same-stem sidecar.
-SIDE_LRC_EXTS = (".lrc", ".LRC", ".txt", ".TXT")
 
 
 def parse_lrc_text(raw: str) -> list[dict]:
@@ -159,7 +157,7 @@ def candidate_lrc_paths(song, db=None) -> list[str]:
                     add(str(found))
             except Exception:
                 pass
-            for ext in SIDE_LRC_EXTS:
+            for ext in LRC_EXTS:
                 add(str(audio.with_suffix(ext)))
         if song_file.webdav_path:
             remote = song_file.webdav_path.replace("\\", "/").lstrip("/")

@@ -38,9 +38,9 @@ from app.services.media_meta_service import (
     write_album_cover_file,
 )
 from app.services.operation_log_service import write_log
+from app.services.constants import AUDIO_EXTS
 from app.services.scrape.query_normalize import clean_artist, clean_title, split_title_artist
 
-AUDIO_EXTS = {".mp3", ".flac", ".m4a", ".wav", ".ogg", ".aac", ".ape", ".wma", ".opus"}
 FAILED_DIR_NAME = "_failed"
 SKIP_DIR_NAMES = {
     ".git",

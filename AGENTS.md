@@ -145,6 +145,7 @@ music/
 - `Song.status`：`local` / `uploaded` / `both` / `remote`（历史值需兼容）
 - `OperationLog.action`：`download` / `upload` / `delete` / `convert`
 - SQLite 迁移顺序：`init_db()` 依次执行建表、`_ensure_columns`、默认媒体源、SongFile 索引以及路径责任迁移；迁移会将历史 Song 路径/侧车回填到 SongFile 后重建 `songs` 表删除旧路径列。
+- SQLite 单写者纪律：`database.py` 在数据访问层（engine 事件）用进程内 `RLock` 串行化写事务——执行写语句（INSERT/UPDATE/DELETE/REPLACE/CREATE/ALTER/DROP）前取锁，提交/回滚时释放；纯读事务不阻塞。业务代码无需感知此锁，也不要自建写锁绕过它。
 - **SongFile 是物理文件唯一真相源**：所有播放、上传、转码、删除、整理、刮削和标签写入必须通过 `SongFileResolver` 或明确 SongFile 查询选择版本；禁止重新引入 `Song.local_path` / `Song.webdav_path`。
 - **Song 不记录来源**：歌曲与来源的归属只由 `SongFile.library_source_id` 承载。可见性过滤（喜欢/艺术家/专辑/历史/歌单/统计）、批量任务按来源选歌、来源歌曲数统计，统一使用 `app/services/library_visibility.py`（`active_song_query` / `active_song_filter` / `has_version_in_source` / `count_songs_in_source`）；禁止再按 Song 判断来源或重新加回 `Song.library_source_id`。
 - **元数据 L0（展示/刮削成功只认）**：`Song` 文本字段 + 封面 `data/covers/by-hash/{sha}`（`Song.cover_path` 指向它）+ 歌词指针/provenance。侧车 `cover.jpg` / `.lrc` 与内嵌标签是 L1/L2 写穿；格式不支持内嵌（如 WMA）为 `unsupported`，不算刮削失败。详见 `docs/metadata-l0-cover-refactor.md`。
@@ -176,6 +177,9 @@ music/
 - `TaskWorker`：内存队列 + 4 worker 协程消费 `pending` 任务（lane 限流，见 §10.1）；进度经事件队列由 flusher 批量落库 + WS/SSE 广播
 - `execution.py`：统一并发内核——共享线程池 + lane 信号量 + `run_with_hard_timeout`；**禁止**在业务代码里再自建 `ThreadPoolExecutor` / 裸 `threading.Thread`
 - `host_limiter.py`：per-host 外部调用限流（并发槽 + 最小间隔 + 429 冷却）；新增外部 HTTP 调用必须挂接 `get_limiter(host)`
+- `http_client.py`：统一外部 HTTP JSON 拉取（`host_from_url` / `http_json`），刮削/歌词 provider 走 urllib + per-host `HostLimiter`；新增外部 JSON 接口不要再裸 `urllib` 拼请求
+- `constants.py`：媒体格式/扩展名常量的唯一权威（`LOSSLESS_FORMATS` / `AUDIO_EXTS` / `IMAGE_EXTS` / `LRC_EXTS`），禁止在业务模块重复定义
+- `source_config.py`：刮削源/歌词源注册表共用的配置解析基元（`load_configs` / `dump_configs` / `select_configs`）
 - `write_log(...)`：文件类操作尽量落操作日志
 
 ### 4.5 安全
@@ -396,7 +400,7 @@ ssh qnap 'curl -sS http://127.0.0.1:8301/health'
   - `library_scan_service.py` / `library_scan.py`：扫描入库
   - `scrape/`：元数据刮削管线（MusicBrainz → 网易/QQ/咪咕）
   - `media_meta_service.py`：标签/时长/封面读取（mutagen→tinytag→ffprobe；**无比特率工具**）
-  - `convert_service.py`：转码 MP3（`LOSSLESS_FORMATS = {flac,wav,aiff,alac,ape}` 是全库唯一的无损判断权威）
+  - `convert_service.py`：转码 MP3（`LOSSLESS_FORMATS` 见 `constants.py`，是全库唯一的无损判断权威，含 dsf/dff）
   - `library_layout.py`：目录规范 `Artist/Album/Title.ext`、cover.jpg、同名 lrc、`sanitize_component`
 
 ### 任务系统细节
