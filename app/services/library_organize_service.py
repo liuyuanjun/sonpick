@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import traceback
@@ -40,6 +41,8 @@ from app.services.media_meta_service import (
 )
 from app.services.operation_log_service import write_log
 from app.services.constants import AUDIO_EXTS, IMAGE_EXTS, LRC_EXTS
+from app.services.library_scan_service import _is_excluded, _normalize_globs
+from app.services.settings_service import parse_json_list
 from app.services.scrape.query_normalize import clean_artist, clean_title, split_title_artist
 
 FAILED_DIR_NAME = "_failed"
@@ -1492,8 +1495,24 @@ class LibraryOrganizeService:
         root = _source_root_local(source) if source else None
 
         entries: list[dict[str, Any]] = []
+        excludes = (
+            _normalize_globs(parse_json_list(getattr(source, "exclude_globs", None), []))
+            if source is not None
+            else []
+        )
         for sf in local_files:
             path = Path(sf.local_path)
+            # Skip files whose path falls under an excluded directory (e.g. a
+            # recycle bin such as `.@#local/trash`); they must never be organized.
+            if excludes and root is not None:
+                try:
+                    rel = os.path.relpath(str(Path(path).resolve()), str(Path(root).resolve()))
+                except (ValueError, OSError):
+                    rel = str(path)
+                # `..` only appears if the file sits outside root; exclusion rules
+                # are root-relative, so don't apply them to such paths.
+                if not rel.startswith("..") and _is_excluded(rel, excludes):
+                    continue
             entry = {
                 "song_file_id": sf.id,
                 "from_path": sf.local_path,

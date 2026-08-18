@@ -207,12 +207,60 @@ class OrganizeSongTests(unittest.TestCase):
     def test_missing_file_is_reported_in_preview(self):
         song = self._make_song()
         sf = self._make_file(song, self.source, "Inbox/歌曲名.flac", 1024)
-        # 物理文件不存在（如已手动移动）
+        # .物理文件不存在（如已手动移动）
         (self.root / "Inbox" / "歌曲名.flac").unlink()
         self.db.commit()
         preview = LibraryOrganizeService(self.db).preview_organize_song(song.id)
         move = preview["moves"][0]
         self.assertEqual(move["status"], "missing")
+
+    def test_excluded_trash_path_skipped_in_preview(self):
+        song = self._make_song(title="关于郑州的记忆", artist="李志", album="你好，郑州")
+        # 真实版本：已处于标准路径
+        real = self._make_file(
+            song, self.source, "李志/你好，郑州/关于郑州的记忆.mp3", 9128, fmt="mp3"
+        )
+        # 回收站里的同名文件（.@#local/trash），应被排除、不出现在整理计划
+        trash = self._make_file(
+            song,
+            self.source,
+            ".@#local/trash/Standard/李志/05你好，郑州.wav/关于郑州的记忆.mp3",
+            9128,
+            fmt="mp3",
+        )
+        self.db.commit()
+        preview = LibraryOrganizeService(self.db).preview_organize_song(song.id)
+        ids = [e["song_file_id"] for e in preview["moves"]]
+        self.assertIn(real.id, ids)
+        self.assertNotIn(trash.id, ids)
+
+
+class ScanExcludeTests(unittest.TestCase):
+    def test_excluded_matches_nested_hidden_dirs(self):
+        from app.services.library_scan_service import _is_excluded
+
+        globs = [
+            "**/.*",
+            "**/.@*",
+            "**/@eaDir/**",
+            "**/#recycle/**",
+            "**/Thumbs.db",
+            "**/*.tmp",
+        ]
+        self.assertTrue(
+            _is_excluded(
+                ".@#local/trash/Standard/李志/05你好，郑州.wav/3关于郑州的记忆.mp3", globs
+            )
+        )
+        # 普通歌曲路径不应被排除
+        self.assertFalse(
+            _is_excluded("李志/你好，郑州/关于郑州的记忆.mp3", globs)
+        )
+        # @eaDir 与 #recycle 嵌套
+        self.assertTrue(_is_excluded("@eaDir/sub/foo.mp3", globs))
+        self.assertTrue(_is_excluded("#recycle/foo.mp3", globs))
+        # 隐藏目录下的任意层级都应被排除
+        self.assertTrue(_is_excluded("a/b/.hidden/deep/file.mp3", globs))
 
 
 if __name__ == "__main__":

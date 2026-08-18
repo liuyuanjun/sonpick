@@ -57,16 +57,42 @@ def _normalize_globs(globs: list[str]) -> list[str]:
 
 
 def _is_excluded(path: str, globs: list[str]) -> bool:
+    """Return True if `path` should be excluded by one of the glob rules.
+
+    Globs are anchored with an optional leading ``**/`` (meaning "at any depth")
+    and an optional trailing ``/**`` (meaning "anything under this directory").
+    A path is excluded when ANY of its components (directory or file) matches the
+    glob's core pattern, so ``**/.*`` / ``**/.@*`` also catch files nested inside
+    a hidden directory such as `.@#local/trash/...` (Synology recycle bin).
+    """
     rel = (path or "").replace("\\", "/").lstrip("/")
-    name = rel.split("/")[-1] if rel else ""
+    if not rel:
+        return False
+    parts = [p for p in rel.split("/") if p]
+    if not parts:
+        return False
+    name = parts[-1]
     for g in globs:
         gg = g.replace("\\", "/")
+        core = gg[3:] if gg.startswith("**/") else gg
+        # Tree glob `X/**` (or `**/  X/**`): exclude anything beneath directory X.
+        if core.endswith("/**"):
+            tree = core[:-3]
+            tree_last = tree.split("/")[-1]
+            for p in parts[:-1]:  # only directory components can be ancestors
+                if fnmatch.fnmatch(p, tree) or fnmatch.fnmatch(p, tree_last):
+                    return True
+            if rel == tree or rel.startswith(tree + "/"):
+                return True
+            continue
+        # Component glob: exclude if the full rel matches, the basename matches,
+        # or ANY path component (dir or file) matches -> supports `**/.@*` /
+        # `**/.*` at arbitrary depth.
         if fnmatch.fnmatch(rel, gg) or fnmatch.fnmatch(name, gg):
             return True
-        if not gg.startswith("**/") and fnmatch.fnmatch(rel, f"**/{gg}"):
-            return True
-        if gg.endswith("/**") and (rel.startswith(gg[:-3]) or f"/{gg[:-3]}" in f"/{rel}"):
-            return True
+        for p in parts:
+            if fnmatch.fnmatch(p, core):
+                return True
     return False
 
 

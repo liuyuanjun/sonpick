@@ -399,7 +399,7 @@ ssh qnap 'curl -sS http://127.0.0.1:8301/health'
   - `task_worker.py`：后台任务（线程池 max_workers=2，**线程不是进程**）
   - `musicdl_service.py`：搜索/下载，按格式落盘（`_format_base_dir`）
   - `library_organize_service.py`：曲库整理（preview/apply × local/webdav）
-  - `library_scan_service.py` / `library_scan.py`：扫描入库
+  - `library_scan_service.py` / `library_scan.py`：扫描入库；排除规则 `_is_excluded`（核心 `**/.*`/`**/.@*`/`**/@eaDir/**`/`**/#recycle/**`/`**/Thumbs.db`/`**/*.tmp`）匹配路径**任意组成部分**，支持任意深度与 `X/**` 目录树；单曲整理 `_organize_song_plan` 同样套用该排除，回收站等目录下的文件不会进入扫描/整理计划
   - `scrape/`：元数据刮削管线（MusicBrainz → 网易/QQ/咪咕）
   - `media_meta_service.py`：标签/时长/封面读取（mutagen→tinytag→ffprobe；**无比特率工具**）
   - `convert_service.py`：转码 MP3（`LOSSLESS_FORMATS` 见 `constants.py`，是全库唯一的无损判断权威，含 dsf/dff）
@@ -438,6 +438,7 @@ ssh qnap 'curl -sS http://127.0.0.1:8301/health'
 - macOS 路径比较要先 `resolve()`（`/var` ↔ `/private/var`），`_format_base_dirs` 返回已 resolve 的路径
 - `LRC_EXTS` 是 `tuple`、`IMAGE_EXTS` 是 `frozenset`，二者不能用 `|` 直接并；要 `set(LRC_EXTS) | IMAGE_EXTS`（否则 `TypeError` 会被 `apply_organize_song` 的 `except` 吞掉，导致重复版本删不掉、PASS2 又移动触发 UNIQUE 冲突）
 - SQLite 读回的 datetime 可能是 naive，比较前归一化 tz
+- 整理排除只对 root 内文件生效：对 `os.path.relpath` 产生 `..`（文件落在 root 之外，常见于 macOS `/var`↔`/private/var` 软链接）的版本不加排除，避免误伤正常文件；两边路径都先用 `Path(...).resolve()` 归一
 
 ---
 
