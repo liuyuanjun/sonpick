@@ -226,6 +226,7 @@
         <template #trigger>
           <n-button
             quaternary
+            circle
             size="small"
             class="ctrl format-toggle"
             :class="{ active: player.losslessPreferred }"
@@ -238,7 +239,6 @@
                 <flash-outline v-else />
               </n-icon>
             </template>
-            {{ player.losslessPreferred ? '无损优先' : '速度优先' }}
           </n-button>
         </template>
         {{ player.losslessPreferred ? '无损优先：优先 FLAC' : '速度优先：优先 MP3，缺失时自动回退' }}
@@ -1855,10 +1855,7 @@ async function toggleFavorite() {
   color: var(--fg) !important;
 }
 .format-toggle {
-  border-radius: 999px;
-  padding: 0 12px;
-  font-size: 12px;
-  letter-spacing: 0;
+  padding: 0;
 }
 .format-toggle.active {
   color: var(--accent, #18a058) !important;

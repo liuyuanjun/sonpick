@@ -224,6 +224,20 @@ class SongPageOut(BaseModel):
     page_size: int
 
 
+class RandomSongOut(BaseModel):
+    id: int
+    title: str
+    artist: Optional[str] = None
+    album: Optional[str] = None
+    duration: Optional[int] = None
+    cover_path: Optional[str] = None
+
+
+class RandomPoolOut(BaseModel):
+    items: list[RandomSongOut]
+    total: int
+
+
 class CleanupSongEntry(BaseModel):
     song_id: int
     title: Optional[str] = None

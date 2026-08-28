@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import AppSettings, Favorite, MediaSource, Song, SongFile, Task
 from app.routers.auth import get_current_user
-from app.schemas import SongOut, SongPageOut
+from app.schemas import RandomPoolOut, RandomSongOut, SongOut, SongPageOut
 from app.services.convert_service import LOSSLESS_FORMATS, ConvertService
 from app.services.library_visibility import active_song_query
 from app.services.operation_log_service import write_log
@@ -83,6 +83,31 @@ def _favorite_ids(db: Session, song_ids: list[int]) -> set[int]:
         return set()
     rows = db.query(Favorite.song_id).filter(Favorite.song_id.in_(song_ids)).all()
     return {r[0] for r in rows}
+
+
+@router.get("/random-pool", response_model=RandomPoolOut)
+def random_pool(
+    q: str = Query(None),
+    source_id: int | None = Query(None),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    query = active_song_query(db).filter(Song.id.in_(_playable_song_ids(db)))
+    if q:
+        like = f"%{q}%"
+        query = query.filter((Song.title.ilike(like)) | (Song.artist.ilike(like)))
+    if source_id is not None:
+        query = query.filter(Song.id.in_(
+            db.query(SongFile.song_id).filter(SongFile.library_source_id == source_id)
+        ))
+    songs = query.order_by(Song.id).all()
+    return RandomPoolOut(
+        items=[RandomSongOut(
+            id=s.id, title=s.title, artist=s.artist, album=s.album,
+            duration=s.duration, cover_path=s.cover_path,
+        ) for s in songs],
+        total=len(songs),
+    )
 
 
 @router.get("", response_model=SongPageOut)
@@ -163,10 +188,13 @@ def list_songs(
                 versions = [v for v in versions if v.local_path and Path(v.local_path).exists()]
             elif source_type == "webdav":
                 versions = [v for v in versions if v.webdav_path and v.availability_status != "unavailable"]
-        primary = ConvertService(db).select_playable_file(s, lossless_preferred=False, source_id=source_id)
+        playable_versions = [
+            item for item in versions
+            if (item.local_path or item.webdav_path) and item.availability_status != "unavailable"
+        ]
         data["versions"] = [item.to_dict() for item in versions]
         data["available_formats"] = sorted({item.format for item in versions if item.format})
-        data["has_playable_file"] = primary is not None
+        data["has_playable_file"] = bool(playable_versions)
         result.append(SongOut(**data))
     return SongPageOut(items=result, total=total, page=page, page_size=page_size)
 

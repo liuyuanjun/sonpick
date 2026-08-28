@@ -334,6 +334,7 @@ import {
   fetchPlaylistSongs,
   fetchPlaylists,
   fetchSongs,
+  fetchRandomPool,
   fetchSources,
   removeSongFromPlaylist,
   scanLibrary,
@@ -614,20 +615,11 @@ async function playAllSongs() {
   if (!songsTotal.value) return
   playingAllSongs.value = true
   try {
-    const res = await fetchSongs({
-      q: songsQuery.value || undefined,
-      page: 1,
-      page_size: Math.min(songsTotal.value, 2000),
-    })
+    const res = await fetchRandomPool({ q: songsQuery.value || undefined })
     const items = res.data?.items || []
     if (!items.length) return
-    // Fisher-Yates 洗牌，随机播放全部
-    for (let i = items.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1))
-      ;[items[i], items[j]] = [items[j], items[i]]
-    }
-    player.playList(items, 0)
-    message.success(`已随机加载 ${items.length} 首歌曲到播放队列`)
+    player.playShuffledList(items)
+    message.success(`已随机加载 ${items.length} 首可播放歌曲到播放队列`)
   } catch (err) {
     message.error(err.response?.data?.detail || '加载播放队列失败')
   } finally {

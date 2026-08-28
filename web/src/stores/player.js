@@ -35,6 +35,8 @@ export const usePlayerStore = defineStore('player', () => {
   const showPlayer = ref(false)
   const queue = ref([])
   const currentIndex = ref(-1)
+  const playHistory = ref([])
+  const historyIndex = ref(-1)
   const mode = ref(localStorage.getItem('sonpick-play-mode') || 'loop')
   const losslessPreferred = ref(localStorage.getItem('sonpick-lossless-preferred') === '1')
   const volume = ref(Number(localStorage.getItem('sonpick-volume') ?? 0.8))
@@ -149,6 +151,8 @@ export const usePlayerStore = defineStore('player', () => {
         currentIndex.value = queue.value.length - 1
       }
     }
+    playHistory.value = [song]
+    historyIndex.value = 0
     applySong(song, true)
   }
 
@@ -156,7 +160,24 @@ export const usePlayerStore = defineStore('player', () => {
     if (!list?.length) return
     queue.value = list.slice()
     currentIndex.value = Math.min(Math.max(0, startIndex), queue.value.length - 1)
+    playHistory.value = [queue.value[currentIndex.value]]
+    historyIndex.value = 0
     applySong(queue.value[currentIndex.value], true)
+  }
+
+  function shuffleSongs(list) {
+    const shuffled = list.slice()
+    for (let i = shuffled.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+    }
+    return shuffled
+  }
+
+  function playShuffledList(list) {
+    if (!list?.length) return
+    mode.value = 'shuffle'
+    playList(shuffleSongs(list), 0)
   }
 
   function enqueue(song) {
@@ -187,57 +208,63 @@ export const usePlayerStore = defineStore('player', () => {
   function jumpTo(index) {
     if (index < 0 || index >= queue.value.length) return
     currentIndex.value = index
+    if (historyIndex.value < playHistory.value.length - 1) {
+      playHistory.value = playHistory.value.slice(0, historyIndex.value + 1)
+    }
+    playHistory.value.push(queue.value[index])
+    historyIndex.value = playHistory.value.length - 1
     applySong(queue.value[index], true)
+  }
+
+  function recordHistory(song) {
+    if (!song?.id) return
+    if (historyIndex.value < playHistory.value.length - 1) {
+      playHistory.value = playHistory.value.slice(0, historyIndex.value + 1)
+    }
+    if (playHistory.value.at(-1)?.id !== song.id) playHistory.value.push(song)
+    if (playHistory.value.length > 1000) playHistory.value.shift()
+    historyIndex.value = playHistory.value.length - 1
   }
 
   function next() {
     if (!queue.value.length) return
+    if (historyIndex.value < playHistory.value.length - 1) {
+      historyIndex.value += 1
+      const song = playHistory.value[historyIndex.value]
+      currentIndex.value = queue.value.findIndex((item) => item.id === song.id)
+      applySong(song, true)
+      return
+    }
     if (mode.value === 'single') {
       applySong(queue.value[currentIndex.value], true)
       return
     }
-    if (mode.value === 'shuffle') {
-      if (queue.value.length === 1) {
-        applySong(queue.value[0], true)
-        return
-      }
-      let nextIdx = currentIndex.value
-      while (nextIdx === currentIndex.value) {
-        nextIdx = Math.floor(Math.random() * queue.value.length)
-      }
-      currentIndex.value = nextIdx
-      applySong(queue.value[nextIdx], true)
-      return
-    }
     let nextIdx = currentIndex.value + 1
     if (nextIdx >= queue.value.length) {
-      if (mode.value === 'loop') nextIdx = 0
+      if (mode.value === 'shuffle') {
+        const previousId = current.value?.id
+        queue.value = shuffleSongs(queue.value)
+        if (queue.value.length > 1 && queue.value[0]?.id === previousId) {
+          ;[queue.value[0], queue.value[1]] = [queue.value[1], queue.value[0]]
+        }
+        nextIdx = 0
+      } else if (mode.value === 'loop') nextIdx = 0
       else {
         playing.value = false
         return
       }
     }
     currentIndex.value = nextIdx
+    recordHistory(queue.value[nextIdx])
     applySong(queue.value[nextIdx], true)
   }
 
   function prev() {
-    if (!queue.value.length) return
-    if (currentTime.value > 3) {
-      window.dispatchEvent(new CustomEvent('sonpick-seek', { detail: 0 }))
-      return
-    }
-    if (mode.value === 'shuffle') {
-      next()
-      return
-    }
-    let prevIdx = currentIndex.value - 1
-    if (prevIdx < 0) {
-      if (mode.value === 'loop') prevIdx = queue.value.length - 1
-      else prevIdx = 0
-    }
-    currentIndex.value = prevIdx
-    applySong(queue.value[prevIdx], true)
+    if (!queue.value.length || historyIndex.value <= 0) return
+    historyIndex.value -= 1
+    const song = playHistory.value[historyIndex.value]
+    currentIndex.value = queue.value.findIndex((item) => item.id === song.id)
+    applySong(song, true)
   }
 
   function toggleMode() {
@@ -312,6 +339,8 @@ export const usePlayerStore = defineStore('player', () => {
     showPlayer.value = false
     queue.value = []
     currentIndex.value = -1
+    playHistory.value = []
+    historyIndex.value = -1
     lyrics.value = []
     lyricsMeta.value = { type: null, provider: null, sourceId: null, fetchedAt: null, instrumental: false }
     lyricIndex.value = -1
@@ -332,7 +361,7 @@ export const usePlayerStore = defineStore('player', () => {
     losslessPreferred,
     volume, muted, currentTime, duration, lyrics, lyricsMeta, lyricIndex, showQueue, expanded, fullPlayerOpen,
     stageView, showLyrics, lyricFontSize,
-    hasPrev, hasNext, play, playList, enqueue, removeFromQueue, clearQueue, jumpTo,
+    hasPrev, hasNext, play, playList, playShuffledList, enqueue, removeFromQueue, clearQueue, jumpTo,
     next, prev, toggleMode, toggleLosslessPreferred, setVolume, toggleMute, pause, resume, togglePlay, toggle,
     setProgress, setStageView, cycleStageView, setShowLyrics, toggleShowLyrics, setLyricFontSize, loadLyrics,
     scrapeCurrent, waitScrapeTask, close,

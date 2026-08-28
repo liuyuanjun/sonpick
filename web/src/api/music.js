@@ -6,6 +6,10 @@ export function fetchSongs(params = {}) {
   return api.get('/songs', { params })
 }
 
+export function fetchRandomPool(params = {}) {
+  return api.get('/songs/random-pool', { params })
+}
+
 export function fetchFavorites() {
   return api.get('/favorites')
 }

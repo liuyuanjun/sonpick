@@ -39,6 +39,7 @@
             <template #trigger>
               <n-button
                 quaternary
+                circle
                 size="small"
                 class="format-toggle"
                 :class="{ active: player.losslessPreferred }"
@@ -51,7 +52,6 @@
                     <flash-outline v-else />
                   </n-icon>
                 </template>
-                {{ player.losslessPreferred ? '无损优先' : '速度优先' }}
               </n-button>
             </template>
             {{ player.losslessPreferred ? '无损优先：优先 FLAC' : '速度优先：优先 MP3，缺失时自动回退' }}
@@ -372,10 +372,7 @@ onUnmounted(() => window.removeEventListener('sonpick-seek', onExternalSeek))
   gap: 6px;
 }
 .format-toggle {
-  border-radius: 999px;
-  padding: 0 12px;
-  font-size: 12px;
-  letter-spacing: 0;
+  padding: 0;
 }
 .progress-row {
   width: min(520px, 100%);
