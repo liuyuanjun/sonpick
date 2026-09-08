@@ -1,7 +1,7 @@
 <template>
   <n-config-provider
-    :theme="themeStore.isDark ? darkTheme : lightTheme"
-    :theme-overrides="themeOverrides"
+    :theme="themeStore.naiveTheme"
+    :theme-overrides="themeStore.naiveOverrides"
   >
     <n-loading-bar-provider>
       <n-dialog-provider>
@@ -16,38 +16,12 @@
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
-import { darkTheme, lightTheme } from 'naive-ui'
 import { useThemeStore } from '@/stores/theme'
 
+// 颜色一律由 @/theme/tokens 派生：
+// naiveOverrides 驱动 Naive 组件，--sp-ui-* CSS 变量由 store 注入到 :root 供业务样式消费。
+// 禁止在本文件写死任何颜色（历史 bug：写死暗色 overrides 导致明亮模式失效）。
 const themeStore = useThemeStore()
-onMounted(() => {
-  themeStore.init()
-})
-
-// 品牌色覆盖：青绿 #10B981 主色 + 蓝紫 #6366F1 辅色，与 web/public/brand/ 保持一致
-const themeOverrides = {
-  common: {
-    primaryColor: '#10B981',
-    primaryColorHover: '#34D399',
-    primaryColorPressed: '#059669',
-    primaryColorSuppl: '#34D399',
-    infoColor: '#6366F1',
-    infoColorHover: '#818CF8',
-    infoColorPressed: '#4F46E5',
-    infoColorSuppl: '#818CF8',
-    successColor: '#10B981',
-    warningColor: '#F59E0B',
-    errorColor: '#EF4444',
-    bodyColor: '#0B0C10',
-    cardColor: '#14161C',
-    borderColor: '#23262F',
-    textColorBase: '#ECEEF2',
-    textColor1: '#ECEEF2',
-    textColor2: '#B6BECB',
-    textColor3: '#8B95A5',
-  },
-}
 </script>
 
 <style>

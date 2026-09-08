@@ -438,10 +438,10 @@ async function downloadSelected() {
 
 <style scoped>
 .search-progress {
-  border: 1px solid var(--n-border-color);
+  border: 1px solid var(--sp-ui-border);
   border-radius: 10px;
   padding: 14px 16px;
-  background: color-mix(in srgb, var(--n-card-color) 92%, transparent);
+  background: color-mix(in srgb, var(--sp-ui-card) 92%, transparent);
 }
 .search-progress-head {
   display: flex;
@@ -470,10 +470,10 @@ async function downloadSelected() {
   opacity: 0.55;
 }
 .log-ok {
-  color: var(--n-success-color, #18a058);
+  color: var(--sp-ui-success);
 }
 .log-error {
-  color: var(--n-error-color, #d03050);
+  color: var(--sp-ui-error);
 }
 .log-heartbeat {
   opacity: 0.7;
@@ -499,14 +499,14 @@ async function downloadSelected() {
   flex-wrap: wrap;
 }
 .result-card {
-  border: 1px solid var(--n-border-color);
+  border: 1px solid var(--sp-ui-border);
   border-radius: 12px;
   padding: 12px;
-  background: color-mix(in srgb, var(--n-card-color) 92%, transparent);
+  background: color-mix(in srgb, var(--sp-ui-card) 92%, transparent);
 }
 .result-card.selected {
-  border-color: color-mix(in srgb, var(--n-primary-color) 55%, var(--n-border-color));
-  background: color-mix(in srgb, var(--n-primary-color) 8%, var(--n-card-color));
+  border-color: color-mix(in srgb, var(--sp-ui-primary) 55%, var(--sp-ui-border));
+  background: color-mix(in srgb, var(--sp-ui-primary) 8%, var(--sp-ui-card));
 }
 .result-main {
   display: flex;
@@ -524,7 +524,7 @@ async function downloadSelected() {
 }
 .result-sub {
   margin-top: 4px;
-  color: var(--n-text-color-3);
+  color: var(--sp-ui-text-3);
   font-size: 12px;
   line-height: 1.4;
   word-break: break-word;
@@ -546,7 +546,7 @@ async function downloadSelected() {
   line-height: 1.8;
 }
 .version-note {
-  color: var(--n-text-color-3);
+  color: var(--sp-ui-text-3);
   font-size: 12px;
 }
 @media (max-width: 768px) {

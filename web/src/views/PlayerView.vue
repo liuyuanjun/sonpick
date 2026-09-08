@@ -434,7 +434,8 @@ function onMobileAction(key) {
 const playlistOptions = computed(() => playlists.value.map((p) => ({ label: p.name, value: p.id })))
 const isLibraryEmpty = computed(() => !stats.value || !stats.value.song_count)
 const playerPageStyle = computed(() => {
-  const fallback = themeStore.isDark ? { r: 56, g: 189, b: 139 } : { r: 24, g: 160, b: 88 }
+  // 无封面时的强调色：暗色用品牌 400，亮色用品牌 700（与 tokens 主色一致）
+  const fallback = themeStore.isDark ? { r: 52, g: 211, b: 153 } : { r: 4, g: 120, b: 87 }
   const { r, g, b } = pageAccent.value || fallback
   const dark = themeStore.isDark
   return {
@@ -777,19 +778,19 @@ onUnmounted(() => {
   --player-surface: rgba(250, 252, 255, 0.74);
   --player-surface-strong: rgba(255, 255, 255, 0.86);
   --player-surface-soft: rgba(238, 243, 250, 0.50);
-  --cover-accent: rgb(24, 160, 88);
-  --cover-accent-seam: rgba(24, 160, 88, 0.18);
-  --cover-accent-seam-soft: rgba(24, 160, 88, 0.10);
-  --cover-accent-glow: rgba(24, 160, 88, 0.13);
-  --cover-accent-wash: rgba(24, 160, 88, 0.12);
-  --cover-accent-wash-soft: rgba(24, 160, 88, 0.08);
+  --cover-accent: var(--sp-ui-primary);
+  --cover-accent-seam: color-mix(in srgb, var(--sp-ui-primary) 18%, transparent);
+  --cover-accent-seam-soft: color-mix(in srgb, var(--sp-ui-primary) 10%, transparent);
+  --cover-accent-glow: color-mix(in srgb, var(--sp-ui-primary) 13%, transparent);
+  --cover-accent-wash: color-mix(in srgb, var(--sp-ui-primary) 12%, transparent);
+  --cover-accent-wash-soft: color-mix(in srgb, var(--sp-ui-primary) 8%, transparent);
   --player-seam: var(--cover-accent-seam);
   --player-seam-soft: var(--cover-accent-seam-soft);
   --player-stage-wash: color-mix(in srgb, var(--cover-accent-wash) 34%, rgba(245, 248, 252, 0.70));
   --player-stage-wash-soft: color-mix(in srgb, var(--cover-accent-wash-soft) 42%, rgba(245, 248, 252, 0.18));
   --player-panel-glow: var(--cover-accent-glow);
   --player-scrollbar-thumb: rgba(86, 99, 118, 0.24);
-  --player-scrollbar-thumb-hover: rgba(24, 160, 88, 0.46);
+  --player-scrollbar-thumb-hover: color-mix(in srgb, var(--sp-ui-primary) 46%, transparent);
   --player-scrollbar-track: rgba(255, 255, 255, 0.18);
   display: grid;
   align-items: stretch;
@@ -801,7 +802,7 @@ onUnmounted(() => {
   background:
     radial-gradient(980px 440px at 78% -12%, var(--player-panel-glow), transparent 60%),
     radial-gradient(760px 360px at 10% 100%, rgba(64, 128, 255, 0.07), transparent 58%),
-    var(--n-color);
+    var(--sp-ui-card);
   position: relative;
   overflow: hidden;
   border-radius: 0;
@@ -817,7 +818,7 @@ onUnmounted(() => {
   --player-stage-wash-soft: color-mix(in srgb, var(--cover-accent-wash-soft) 42%, rgba(18, 22, 30, 0.22));
   --player-panel-glow: var(--cover-accent-glow);
   --player-scrollbar-thumb: rgba(172, 190, 214, 0.24);
-  --player-scrollbar-thumb-hover: rgba(56, 189, 139, 0.48);
+  --player-scrollbar-thumb-hover: color-mix(in srgb, var(--sp-ui-primary) 48%, transparent);
   --player-scrollbar-track: rgba(255, 255, 255, 0.06);
 }
 .player-page.queue-open {
@@ -863,7 +864,7 @@ onUnmounted(() => {
   padding: 11px 12px;
   border-radius: 12px;
   cursor: pointer;
-  color: var(--n-text-color-2);
+  color: var(--sp-ui-text-2);
   margin-bottom: 4px;
   transition: all 0.15s ease;
   user-select: none;
@@ -872,8 +873,8 @@ onUnmounted(() => {
   background: rgba(127, 127, 127, 0.08);
 }
 .nav-item.active {
-  background: rgba(24, 160,  88, 0.14);
-  color: var(--n-primary-color);
+  background: color-mix(in srgb, var(--sp-ui-primary) 14%, transparent);
+  color: var(--sp-ui-primary);
   font-weight: 600;
 }
 
@@ -978,11 +979,11 @@ onUnmounted(() => {
 .queue-drawer {
   width: 280px;
   flex: 0 0 280px;
-  border-left: 1px solid var(--n-border-color);
+  border-left: 1px solid var(--sp-ui-border);
   min-height: 0;
   overflow: hidden;
-  background: var(--n-card-color);
-  color: var(--n-text-color);
+  background: var(--sp-ui-card);
+  color: var(--sp-ui-text-1);
 }
 .queue-slide-enter-active,
 .queue-slide-leave-active {
@@ -1035,7 +1036,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   margin-bottom: 10px;
-  color: var(--n-text-color-3);
+  color: var(--sp-ui-text-3);
 }
 .media-cover.circle {
   border-radius: 50%;
@@ -1056,7 +1057,7 @@ onUnmounted(() => {
 .media-sub {
   margin-top: 3px;
   font-size: 12px;
-  color: var(--n-text-color-3);
+  color: var(--sp-ui-text-3);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1152,13 +1153,13 @@ onUnmounted(() => {
   position: fixed;
   inset: 0;
   z-index: 1400;
-  background: #0b0c10;
+  background: var(--sp-ui-body);
 }
 .mobile-queue-sheet {
   position: fixed;
   inset: 0;
   z-index: 1500;
-  background: var(--n-card-color);
+  background: var(--sp-ui-card);
 }
 .panel-slide-enter-active,
 .panel-slide-leave-active {

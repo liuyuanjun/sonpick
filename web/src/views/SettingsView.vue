@@ -463,11 +463,11 @@ onMounted(load)
 .settings-nav {
   position: sticky;
   top: 16px;
-  background: color-mix(in srgb, var(--card-color) 92%, var(--primary-color) 8%);
+  background: color-mix(in srgb, var(--sp-ui-card) 92%, var(--sp-ui-primary) 8%);
 }
 .source-tier {
   margin-top: 3px;
-  color: var(--text-color-3);
+  color: var(--sp-ui-text-3);
   font-size: 12px;
 }
 .source-test {
@@ -523,7 +523,7 @@ onMounted(load)
   min-width: 0;
   flex: 1;
   font-size: 13px;
-  color: var(--text-color-3);
+  color: var(--sp-ui-text-3);
   word-break: break-word;
 }
 @media (max-width: 768px) {
@@ -534,9 +534,9 @@ onMounted(load)
   }
   .settings-mobile-tabs :deep(.n-tabs-nav) {
     padding: 3px;
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--sp-ui-border);
     border-radius: 10px;
-    background: color-mix(in srgb, var(--body-color) 78%, var(--primary-color) 5%);
+    background: color-mix(in srgb, var(--sp-ui-body) 78%, var(--sp-ui-primary) 5%);
   }
   .settings-mobile-tabs :deep(.n-tabs-tab) {
     flex: 1;

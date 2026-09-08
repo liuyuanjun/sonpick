@@ -410,7 +410,7 @@ onUnmounted(() => window.removeEventListener('sonpick-seek', onExternalSeek))
   display: block;
   height: 100%;
   width: 0%;
-  background: #18a058;
+  background: var(--sp-ui-primary);
   will-change: width;
 }
 .gp-mobile-actions {

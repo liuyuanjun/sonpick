@@ -221,8 +221,75 @@ music/
 - 新 Naive 组件要在 `web/src/main.js` **import 并注册**（未全量 unplugin 自动引入时尤其注意）
 - 全局播放器：Pinia `player` store；音频 URL 常带 `token` query
 - 系统媒体键/线控：`web/src/composables/useMediaSession.js`（Media Session API，挂载于 `GlobalPlayer.vue`）——单击播放/暂停、双击下一曲、三击上一曲由 OS 翻译成媒体命令，网页只收 action，无法感知按键次数
-- 主题：`theme` store；`App.vue` 使用 `n-config-provider` + dialog/message provider
+- 主题：`theme` store；`App.vue` 使用 `n-config-provider` + dialog/message provider。颜色规则见 **§5.4 主题与配色**
 - 前端文案：当前仓库以中文硬编码为主；**若新增 React 代码**，全局规则要求走 i18n、禁止硬编码用户可见字符串。现有 Vue 页面保持项目既有风格，不强制一次性 i18n 化
+- **改动即核对组件注册**：模板用了新 Naive 组件（`<n-xxx>`）或 `h(NXxx)`，必须在 `web/src/main.js` 的 `create({ components: [...] })` 里 import 并注册，否则构建产物在运行时对未注册标签渲染为原生未知元素（白屏/样式全丢），**编译不报错**。加组件后顺手 `grep -c "<n-组件名" src/` 确认模板与注册对得上。
+
+### 5.5 前端硬规范（避免重复踩坑）
+
+#### z-index 分层（浮层 / 覆盖层必须遵守）
+
+Naive UI 的弹层（modal / drawer / popover / dropdown / tooltip）共用从 **z-index 2000** 起步的动态计数器，message 用 **z-index 6000**。自定义定位元素不得与它们混用数值，按下列带分配：
+
+| 范围 | 用途 | 现有实例 |
+|------|------|----------|
+| `1–999` | 页面内部局部叠放（sticky 头、浮出操作条） | `PlayerPanel` 歌词操作栏 `z-index:3`、封面占位 `z-index:2` |
+| `1000` | 全局底部播放器 | `GlobalPlayer .global-player` |
+| `1100` | 移动端固定底栏 | `LayoutView .mobile-tabs` |
+| `1400` | 移动端全屏播放器 overlay（**低于 Naive 弹层 2000**，弹层须能盖在它上面） | `PlayerView .mobile-player-overlay` |
+| `1500` | 移动端队列抽屉 | `PlayerView .mobile-queue-sheet` |
+| `2000+` | 留给 Naive 弹层，**业务代码永不写死 ≥2000** | — |
+
+**规则**：业务自定义浮层的 z-index **只允许取上表列出的带**，禁止随手写 9999 / 99999 盖一切。若某元素必须盖在 Naive 弹层之上（很罕见），改用「同用 2000+ 的动态叠加」思路并注释理由，而不是拍个巨数。
+
+#### 弹层与 teleport 的颜色
+
+Naive 的 modal / drawer / popover 会被 teleport 到 `body`，脱离 `.app-layout`。因此：
+- 需要主题色的弹层内容，CSS 变量要写在 `documentElement`（已由 theme store 注入 `--sp-ui-*`），不要在页面容器上用 `:style` 注入再指望弹层能取到。
+- 组件样式里**不要写死**会给弹层用的背景/文字色，统一走 `--sp-ui-*`。
+
+#### 响应式 / 移动端断点
+
+- 移动端判定统一用 `useIsMobile()`（`web/src/composables/useIsMobile.js`），**禁止**各页面自己写 `window.innerWidth < X` 的裸逻辑；断点阈值改动只改这一个 composable。
+- CSS 媒体查询统一用 Naive 的默认断点（`max-width: 768px` 为移动），与 `useIsMobile` 的内部阈值保持一致，避免 JS 判移动、CSS 不生效的错位。
+
+#### 播放器 store 边界（player store 是单例真相源）
+
+- 全局播放器（底部、PlayerView 全屏）都读 Pinia `player` store，**不要**为某页面缓存独立的播放实例/currentTime 副本。
+- 音频 URL 常带 `token` query，来源接口变化时以 `api/music.js` 为准，不要裸拼 URL。
+
+#### 只改局部时不得破坏整体（呼应 §0）
+
+- 颜色：见 §5.4，禁止写死。
+- 半径 / 间距 / 阴影等视觉原子：沿用既有约定（卡片 `border-radius` 统一、间距用 `8px` 系），不要每处新造一套。
+- 移动端底部要预留安全区：`env(safe-area-inset-bottom)`，见 `LayoutView` 底部 tab 的写法，新增固定底栏时照抄。
+
+#### 错误与加载反馈
+
+- 网络请求统一走 `web/src/api/client.js` 的 axios 实例（自带 `baseURL:'/api'`、token 注入、401 自动登出）。**禁止**在业务里 `axios.create` 新实例。
+- 页内操作反馈用 `useMessage()`（App 已包 `n-message-provider`）；结构化确认用 `useDialog()`；不要在组件里自建 alert/confirm 覆盖层。
+
+### 5.4 主题与配色（明暗双模）
+
+**唯一真相源：`web/src/theme/tokens.js`**。任何颜色都从这里派生，业务组件**禁止写死色值**。
+
+```
+isDark ──┬──> buildNaiveOverrides()         → App.vue 的 :theme-overrides（驱动 Naive 组件）
+         ├──> buildCssVars()                → :root 上的 --sp-ui-*（业务样式消费）
+         ├──> documentElement.dataset.theme → 激活 brand.css 的 [data-theme] 分支
+         └──> <meta name="theme-color">
+```
+
+- **CSS 变量一律写在 `documentElement`**：Naive 的 modal / drawer / popover 会被 teleport 到 `body`，绑在页面容器上取不到变量。
+- **禁止在 `App.vue` 写死 `themeOverrides` 常量**：曾因把暗色 `bodyColor`/`cardColor`/`textColor*` 无条件套在 `lightTheme` 上，导致明亮模式只生效局部（v0.15.1-rc8 引入，rc11 修复）。overrides 优先级高于主题本身，这类错误是静默的。
+- **不要引用 `var(--n-*)`**：Naive UI **不注入**全局 `--n-*` 变量，这类声明会在计算值阶段失效（背景透明、颜色走继承），暗色下靠「透明叠深底」侥幸可用。统一用 `--sp-ui-body` / `--sp-ui-card` / `--sp-ui-card-strong` / `--sp-ui-elevated` / `--sp-ui-border` / `--sp-ui-divider` / `--sp-ui-text-1~3` / `--sp-ui-primary`(+`-hover`/`-pressed`/`-soft`/`-soft-2`/`-on-primary`) / `--sp-ui-info` / `--sp-ui-success` / `--sp-ui-warning` / `--sp-ui-error` / `--sp-ui-hover`。
+- **主色分模式**：暗色 `#10B981`（品牌 500），明亮 `#047857`（品牌 700）。后者是为了白底白字达到 WCAG AA 4.5:1（`#10B981` 仅 2.65:1）；亮色下 hover 继续加深而非提亮。
+- **半透明主色**用 `color-mix(in srgb, var(--sp-ui-primary) N%, transparent)`，不要写 `rgba(24,160,88,.N)`。
+- **分类/强调色**（KPI 卡、快捷入口、活动流图标等「按类别区分」处）用 `--sp-accent-teal|blue|rose|amber|sky|green|slate`，软底用 `--sp-accent-*-soft`。由 tokens 统一按模式给值（亮色 700 级、暗色 400 级，均满足 AA 4.5:1），**禁止**在业务里另写 `#0f766e` 之类硬编码——已因此出过「亮色主题下概览页 KPI 图标花屏」类问题。
+- 语义色（success/info/warning/error）用 `--sp-ui-{success|info|warning|error}`，不要写 Naive 默认 `#18a058` / `#d03050` 等。
+- `theme` store 支持 `system` / `light` / `dark`（默认跟随系统，localStorage `sonpick_theme`）；`init()` 必须在 `main.js` 的 `mount()` **之前**调用，否则首屏会闪一下错误配色。
+- `web/public/brand/brand.css` 的 `[data-theme="light"]` 分支取值必须与 `tokens.js` 的 `SURFACE.light` 一致，避免两处漂移。
+- 组件内部的局部调色板（如 `PlayerPanel` 的 `--fg`/`--rail`、`PlayerView` 的 `--cover-accent*`）可自定义，但必须同时给出暗色与 `.light` 两套。
 
 ### 5.3 构建
 

@@ -135,9 +135,13 @@ async function handleSubmit() {
   width: min(920px, 100%);
   border-radius: 24px;
   overflow: hidden;
-  border: 1px solid var(--sp-border, #23262F);
+  border: 1px solid var(--sp-ui-border);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.12);
+  background: var(--sp-ui-card);
+}
+
+[data-theme='dark'] .login-shell {
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
-  background: var(--sp-surface, #14161C);
 }
 
 /* ── 左：品牌区 ───────────────────────── */
@@ -149,9 +153,14 @@ async function handleSubmit() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #0B0C10;
-  border-right: 1px solid var(--sp-border, #23262F);
+  background: color-mix(in srgb, var(--sp-ui-primary) 6%, var(--sp-ui-card));
+  border-right: 1px solid var(--sp-ui-border);
   overflow: hidden;
+}
+
+/* 暗色下保留深邃的品牌底，亮色下随卡片走，避免整页出现深色硬边 */
+[data-theme='dark'] .brand-pane {
+  background: #0B0C10;
 }
 
 .brand-glow {
@@ -190,13 +199,13 @@ async function handleSubmit() {
   font-size: 26px;
   font-weight: 800;
   letter-spacing: 0.01em;
-  color: #F2F4F7;
+  color: var(--sp-ui-text-1);
 }
 
 .brand-cn {
   font-size: 17px;
   font-weight: 600;
-  color: var(--sp-primary-400, #34D399);
+  color: var(--sp-ui-primary);
 }
 
 .brand-mascot {
@@ -249,7 +258,7 @@ async function handleSubmit() {
 .form-foot {
   margin: 22px 0 0;
   font-size: 12px;
-  color: #6B7280;
+  color: var(--sp-ui-text-3);
   text-align: center;
 }
 

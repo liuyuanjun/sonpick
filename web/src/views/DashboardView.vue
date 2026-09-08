@@ -340,8 +340,8 @@ const kpiItems = computed(() => [
     value: stats.value.song_count || 0,
     hint: formatDuration(stats.value.total_duration),
     icon: MusicalNotesOutline,
-    color: '#0f766e',
-    bg: 'rgba(15,118,110,.12)',
+    color: 'var(--sp-accent-teal)',
+    bg: 'var(--sp-accent-teal-soft)',
     to: '/library',
   },
   {
@@ -350,8 +350,8 @@ const kpiItems = computed(() => [
     value: stats.value.artist_count || 0,
     hint: `${stats.value.album_count || 0} 张专辑`,
     icon: PeopleOutline,
-    color: '#1d4ed8',
-    bg: 'rgba(29,78,216,.12)',
+    color: 'var(--sp-accent-blue)',
+    bg: 'var(--sp-accent-blue-soft)',
     to: '/library',
   },
   {
@@ -360,8 +360,8 @@ const kpiItems = computed(() => [
     value: stats.value.favorite_count || 0,
     hint: `${stats.value.playlist_count || 0} 个歌单`,
     icon: HeartOutline,
-    color: '#be123c',
-    bg: 'rgba(190,18,60,.12)',
+    color: 'var(--sp-accent-rose)',
+    bg: 'var(--sp-accent-rose-soft)',
     to: '/player',
   },
   {
@@ -370,8 +370,8 @@ const kpiItems = computed(() => [
     value: `${tasks.value.running || 0}/${tasks.value.pending || 0}`,
     hint: activeTaskCount.value ? '运行 / 排队' : '当前空闲',
     icon: ListOutline,
-    color: '#b45309',
-    bg: 'rgba(180,83,9,.12)',
+    color: 'var(--sp-accent-amber)',
+    bg: 'var(--sp-accent-amber-soft)',
   },
   {
     key: 'size',
@@ -379,8 +379,8 @@ const kpiItems = computed(() => [
     value: formatSize(stats.value.total_size || 0),
     hint: '本地曲目合计',
     icon: AlbumsOutline,
-    color: '#0f766e',
-    bg: 'rgba(15,118,110,.10)',
+    color: 'var(--sp-accent-teal)',
+    bg: 'var(--sp-accent-teal-soft)',
     to: '/library',
   },
   {
@@ -389,8 +389,8 @@ const kpiItems = computed(() => [
     value: (stats.value.sources || []).length,
     hint: sourceHealthHint.value,
     icon: LibraryOutline,
-    color: '#0369a1',
-    bg: 'rgba(3,105,161,.12)',
+    color: 'var(--sp-accent-sky)',
+    bg: 'var(--sp-accent-sky-soft)',
     to: { path: '/library', query: { manage: '1' } },
   },
 ])
@@ -401,21 +401,21 @@ const metaItems = computed(() => [
     label: '封面',
     pct: pctNum(meta.value.cover_pct),
     count: meta.value.cover_count ?? Math.round((pctNum(meta.value.cover_pct) / 100) * (stats.value.song_count || 0)),
-    color: '#18a058',
+    color: 'var(--sp-ui-success)',
   },
   {
     key: 'lyrics',
     label: '歌词',
     pct: pctNum(meta.value.lyrics_pct),
     count: meta.value.lyrics_count ?? Math.round((pctNum(meta.value.lyrics_pct) / 100) * (stats.value.song_count || 0)),
-    color: '#2080f0',
+    color: 'var(--sp-ui-info)',
   },
   {
     key: 'duration',
     label: '时长',
     pct: pctNum(meta.value.duration_pct),
     count: meta.value.duration_count ?? Math.round((pctNum(meta.value.duration_pct) / 100) * (stats.value.song_count || 0)),
-    color: '#f0a020',
+    color: 'var(--sp-ui-warning)',
   },
 ])
 
@@ -428,12 +428,12 @@ const sourceHealthHint = computed(() => {
 })
 
 const quickActions = [
-  { key: 'download', title: '搜索下载', desc: 'QQ 音乐搜歌入库', icon: CloudDownloadOutline, color: '#0f766e', bg: 'rgba(15,118,110,.12)', to: '/download' },
-  { key: 'player', title: '打开播放器', desc: '舞台 / 队列 / 歌词', icon: PlayCircleOutline, color: '#15803d', bg: 'rgba(21,128,61,.12)', to: '/player' },
-  { key: 'library', title: '管理曲库', desc: '浏览、扫描、整理', icon: LibraryOutline, color: '#1d4ed8', bg: 'rgba(29,78,216,.12)', to: '/library' },
-  { key: 'sources', title: '曲库源', desc: '本地 / WebDAV 配置', icon: CloudUploadOutline, color: '#0369a1', bg: 'rgba(3,105,161,.12)', to: { path: '/library', query: { manage: '1' } } },
-  { key: 'logs', title: '操作日志', desc: '下载上传删除记录', icon: DocumentTextOutline, color: '#b45309', bg: 'rgba(180,83,9,.12)', to: '/logs' },
-  { key: 'settings', title: '系统设置', desc: '路径、格式、刮削源', icon: SettingsOutline, color: '#475569', bg: 'rgba(71,85,105,.12)', to: '/settings' },
+  { key: 'download', title: '搜索下载', desc: 'QQ 音乐搜歌入库', icon: CloudDownloadOutline, color: 'var(--sp-accent-teal)', bg: 'var(--sp-accent-teal-soft)', to: '/download' },
+  { key: 'player', title: '打开播放器', desc: '舞台 / 队列 / 歌词', icon: PlayCircleOutline, color: 'var(--sp-accent-green)', bg: 'var(--sp-accent-green-soft)', to: '/player' },
+  { key: 'library', title: '管理曲库', desc: '浏览、扫描、整理', icon: LibraryOutline, color: 'var(--sp-accent-blue)', bg: 'var(--sp-accent-blue-soft)', to: '/library' },
+  { key: 'sources', title: '曲库源', desc: '本地 / WebDAV 配置', icon: CloudUploadOutline, color: 'var(--sp-accent-sky)', bg: 'var(--sp-accent-sky-soft)', to: { path: '/library', query: { manage: '1' } } },
+  { key: 'logs', title: '操作日志', desc: '下载上传删除记录', icon: DocumentTextOutline, color: 'var(--sp-accent-amber)', bg: 'var(--sp-accent-amber-soft)', to: '/logs' },
+  { key: 'settings', title: '系统设置', desc: '路径、格式、刮削源', icon: SettingsOutline, color: 'var(--sp-accent-slate)', bg: 'var(--sp-accent-slate-soft)', to: '/settings' },
 ]
 
 watch(() => player.cover, () => {
@@ -616,11 +616,11 @@ onMounted(reload)
   grid-template-columns: minmax(0, 1.4fr) minmax(260px, 0.9fr);
   gap: 14px;
   padding: 18px;
-  border: 1px solid var(--border-color, rgba(127,127,127,.18));
+  border: 1px solid var(--sp-ui-border, rgba(127,127,127,.18));
   border-radius: 14px;
   background:
-    radial-gradient(1200px 240px at 0% 0%, color-mix(in srgb, #18a058 16%, transparent), transparent 60%),
-    color-mix(in srgb, var(--card-color, var(--n-card-color)) 94%, #18a058 6%);
+    radial-gradient(1200px 240px at 0% 0%, color-mix(in srgb, var(--sp-ui-primary) 16%, transparent), transparent 60%),
+    color-mix(in srgb, var(--sp-ui-card) 94%, var(--sp-ui-primary) 6%);
   box-shadow: 0 14px 34px rgba(21, 32, 53, .06);
 }
 
@@ -628,7 +628,7 @@ onMounted(reload)
   font-size: 12px;
   font-weight: 700;
   letter-spacing: .04em;
-  color: color-mix(in srgb, #18a058 80%, var(--text-color-3, #8a8f99));
+  color: color-mix(in srgb, var(--sp-ui-primary) 80%, var(--sp-ui-text-3, #8a8f99));
   margin-bottom: 6px;
 }
 
@@ -641,7 +641,7 @@ onMounted(reload)
 
 .hero-sub {
   margin: 8px 0 0;
-  color: var(--text-color-3, #8a8f99);
+  color: var(--sp-ui-text-3, #8a8f99);
   font-size: 13px;
 }
 
@@ -659,8 +659,8 @@ onMounted(reload)
   height: 34px;
   padding: 0 12px;
   border-radius: 999px;
-  border: 1px solid var(--border-color, rgba(127,127,127,.2));
-  background: color-mix(in srgb, var(--card-color, var(--n-card-color)) 88%, transparent);
+  border: 1px solid var(--sp-ui-border, rgba(127,127,127,.2));
+  background: color-mix(in srgb, var(--sp-ui-card) 88%, transparent);
   color: inherit;
   cursor: pointer;
   font-size: 13px;
@@ -668,8 +668,8 @@ onMounted(reload)
 }
 
 .chip.primary {
-  background: #18a058;
-  border-color: #18a058;
+  background: var(--sp-ui-primary);
+  border-color: var(--sp-ui-primary);
   color: #fff;
 }
 
@@ -689,8 +689,8 @@ onMounted(reload)
   min-width: 0;
   padding: 14px;
   border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--border-color, rgba(127,127,127,.2)) 80%, transparent);
-  background: color-mix(in srgb, var(--card-color, var(--n-card-color)) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sp-ui-border, rgba(127,127,127,.2)) 80%, transparent);
+  background: color-mix(in srgb, var(--sp-ui-card) 82%, transparent);
   cursor: pointer;
   transition: transform .15s ease, box-shadow .15s ease;
 }
@@ -715,7 +715,7 @@ onMounted(reload)
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-color-3, #8a8f99);
+  color: var(--sp-ui-text-3, #8a8f99);
 }
 
 .now-meta,
@@ -735,7 +735,7 @@ onMounted(reload)
 .activity-msg,
 .action-desc,
 .task-summary-body span {
-  color: var(--text-color-3, #8a8f99);
+  color: var(--sp-ui-text-3, #8a8f99);
   font-size: 12px;
 }
 
@@ -760,7 +760,7 @@ onMounted(reload)
 .recent-sub {
   margin-top: 2px;
   font-size: 12px;
-  color: var(--text-color-3, #8a8f99);
+  color: var(--sp-ui-text-3, #8a8f99);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -774,9 +774,9 @@ onMounted(reload)
 
 .kpi-card,
 .panel {
-  border: 1px solid var(--border-color, rgba(127,127,127,.18));
+  border: 1px solid var(--sp-ui-border, rgba(127,127,127,.18));
   border-radius: 12px;
-  background: color-mix(in srgb, var(--card-color, var(--n-card-color)) 94%, transparent);
+  background: color-mix(in srgb, var(--sp-ui-card) 94%, transparent);
   box-shadow: 0 10px 24px rgba(21, 32, 53, .05);
 }
 
@@ -876,15 +876,15 @@ onMounted(reload)
   padding: 8px;
   border-radius: 10px;
   border: 1px solid transparent;
-  background: color-mix(in srgb, var(--body-color, transparent) 70%, transparent);
+  background: color-mix(in srgb, var(--sp-ui-body, transparent) 70%, transparent);
   color: inherit;
   text-align: left;
   cursor: pointer;
 }
 
 .recent-item:hover {
-  border-color: color-mix(in srgb, #18a058 35%, transparent);
-  background: color-mix(in srgb, #18a058 8%, transparent);
+  border-color: color-mix(in srgb, var(--sp-ui-primary) 35%, transparent);
+  background: color-mix(in srgb, var(--sp-ui-primary) 8%, transparent);
 }
 
 .recent-cover {
@@ -899,7 +899,7 @@ onMounted(reload)
 }
 
 .recent-play {
-  color: var(--text-color-3, #8a8f99);
+  color: var(--sp-ui-text-3, #8a8f99);
   flex-shrink: 0;
 }
 
@@ -937,7 +937,7 @@ onMounted(reload)
 .activity-item {
   padding: 10px;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--body-color, transparent) 72%, transparent);
+  background: color-mix(in srgb, var(--sp-ui-body, transparent) 72%, transparent);
 }
 
 .source-top,
@@ -960,13 +960,13 @@ onMounted(reload)
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #94a3b8;
+  background: var(--sp-ui-text-3);
   flex-shrink: 0;
 }
 
-.source-dot.ok { background: #18a058; }
-.source-dot.fail { background: #d03050; }
-.source-dot.muted { background: #94a3b8; }
+.source-dot.ok { background: var(--sp-ui-primary); }
+.source-dot.fail { background: var(--sp-ui-error); }
+.source-dot.muted { background: var(--sp-ui-text-3); }
 
 .source-name {
   font-size: 13px;
@@ -984,14 +984,14 @@ onMounted(reload)
 }
 
 .activity-icon {
-  background: rgba(127,127,127,.12);
-  color: #475569;
+  background: var(--sp-accent-slate-soft);
+  color: var(--sp-accent-slate);
 }
 
-.activity-icon.act-download { background: rgba(15,118,110,.12); color: #0f766e; }
-.activity-icon.act-upload { background: rgba(3,105,161,.12); color: #0369a1; }
-.activity-icon.act-delete { background: rgba(190,18,60,.12); color: #be123c; }
-.activity-icon.act-convert { background: rgba(180,83,9,.12); color: #b45309; }
+.activity-icon.act-download { background: var(--sp-accent-teal-soft); color: var(--sp-accent-teal); }
+.activity-icon.act-upload { background: var(--sp-accent-sky-soft); color: var(--sp-accent-sky); }
+.activity-icon.act-delete { background: var(--sp-accent-rose-soft); color: var(--sp-accent-rose); }
+.activity-icon.act-convert { background: var(--sp-accent-amber-soft); color: var(--sp-accent-amber); }
 
 .activity-body {
   min-width: 0;
@@ -1023,8 +1023,8 @@ onMounted(reload)
   width: 100%;
   padding: 12px;
   border-radius: 10px;
-  border: 1px solid var(--border-color, rgba(127,127,127,.16));
-  background: color-mix(in srgb, var(--body-color, transparent) 70%, transparent);
+  border: 1px solid var(--sp-ui-border, rgba(127,127,127,.16));
+  background: color-mix(in srgb, var(--sp-ui-body, transparent) 70%, transparent);
   color: inherit;
   text-align: left;
   cursor: pointer;
@@ -1033,7 +1033,7 @@ onMounted(reload)
 
 .action-tile:hover {
   transform: translateY(-1px);
-  border-color: color-mix(in srgb, #18a058 35%, transparent);
+  border-color: color-mix(in srgb, var(--sp-ui-primary) 35%, transparent);
 }
 
 .action-text {
@@ -1053,8 +1053,8 @@ onMounted(reload)
   margin-top: 12px;
   padding: 12px;
   border-radius: 10px;
-  background: color-mix(in srgb, #18a058 8%, transparent);
-  border: 1px solid color-mix(in srgb, #18a058 18%, transparent);
+  background: color-mix(in srgb, var(--sp-ui-primary) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sp-ui-primary) 18%, transparent);
 }
 
 .task-summary-body {

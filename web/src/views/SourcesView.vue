@@ -535,7 +535,7 @@ const columns = [
             showIndicator: false,
             style: 'width:80px',
           }),
-          h('span', { style: 'font-size:11px;color:var(--text-color-3)' }, scanState.message || '扫描中...'),
+          h('span', { style: 'font-size:11px;color:var(--sp-ui-text-3)' }, scanState.message || '扫描中...'),
         ]))
       } else {
         buttons.push(h(NButton, { size: 'tiny', type: 'primary', onClick: () => onScan(row) }, { default: () => '扫描' }))
@@ -980,10 +980,10 @@ onMounted(load)
   grid-column: 1 / -1;
 }
 .source-card {
-  border: 1px solid var(--n-border-color);
+  border: 1px solid var(--sp-ui-border);
   border-radius: 12px;
   padding: 12px;
-  background: color-mix(in srgb, var(--n-card-color) 92%, transparent);
+  background: color-mix(in srgb, var(--sp-ui-card) 92%, transparent);
 }
 .source-card-head {
   display: flex;

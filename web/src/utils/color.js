@@ -111,7 +111,7 @@ export function ambientBackground(accent, { dark = true } = {}) {
       return {
         background: `
           radial-gradient(120% 80% at 85% 10%, rgba(88, 86, 214, 0.35), transparent 55%),
-          radial-gradient(90% 70% at 20% 90%, rgba(24, 160, 88, 0.12), transparent 50%),
+          radial-gradient(90% 70% at 20% 90%, color-mix(in srgb, var(--sp-ui-primary) 12%, transparent), transparent 50%),
           linear-gradient(180deg, #12141a 0%, #0b0c10 100%)
         `,
       }
@@ -130,7 +130,7 @@ export function ambientBackground(accent, { dark = true } = {}) {
   if (!accent) {
     return {
       background: `
-        radial-gradient(120% 90% at 90% 0%, rgba(24, 160, 88, 0.12), transparent 58%),
+        radial-gradient(120% 90% at 90% 0%, color-mix(in srgb, var(--sp-ui-primary) 12%, transparent), transparent 58%),
         radial-gradient(90% 70% at 8% 100%, rgba(64, 128, 255, 0.08), transparent 55%),
         linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(246, 248, 252, 0.98) 100%)
       `,

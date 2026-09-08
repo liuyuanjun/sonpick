@@ -1136,8 +1136,8 @@ watch(songsQuery, () => {
 }
 .source-panel,
 .content-panel {
-  border: 1px solid var(--border-color);
-  background: color-mix(in srgb, var(--card-color) 94%, var(--primary-color) 6%);
+  border: 1px solid var(--sp-ui-border);
+  background: color-mix(in srgb, var(--sp-ui-card) 94%, var(--sp-ui-primary) 6%);
   box-shadow: 0 14px 34px rgba(21, 32, 53, .07);
 }
 .source-card {
@@ -1152,9 +1152,9 @@ watch(songsQuery, () => {
   box-shadow: 0 10px 22px rgba(21, 32, 53, .09);
 }
 .source-card.active {
-  border-color: var(--primary-color);
-  background: color-mix(in srgb, var(--primary-color) 10%, var(--card-color));
-  box-shadow: 0 10px 22px color-mix(in srgb, var(--primary-color) 18%, transparent);
+  border-color: var(--sp-ui-primary);
+  background: color-mix(in srgb, var(--sp-ui-primary) 10%, var(--sp-ui-card));
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--sp-ui-primary) 18%, transparent);
 }
 .source-path {
   display: block;
@@ -1163,15 +1163,15 @@ watch(songsQuery, () => {
 }
 .library-toolbar {
   padding: 10px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--sp-ui-border);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--body-color) 72%, var(--primary-color) 4%);
+  background: color-mix(in srgb, var(--sp-ui-body) 72%, var(--sp-ui-primary) 4%);
 }
 .library-mode-tabs :deep(.n-tabs-nav) {
   padding: 3px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--sp-ui-border);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--body-color) 78%, var(--primary-color) 5%);
+  background: color-mix(in srgb, var(--sp-ui-body) 78%, var(--sp-ui-primary) 5%);
 }
 .library-mode-tabs :deep(.n-tabs-tab) {
   min-width: 116px;
@@ -1201,7 +1201,7 @@ watch(songsQuery, () => {
 .song-cell-sub {
   font-size: 12px;
   line-height: 1.3;
-  color: var(--text-color-3, #8a8f99);
+  color: var(--sp-ui-text-3, #8a8f99);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1278,9 +1278,9 @@ watch(songsQuery, () => {
     justify-content: space-between;
     gap: 10px;
     padding: 10px 12px;
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--sp-ui-border);
     border-radius: 12px;
-    background: color-mix(in srgb, var(--card-color) 94%, var(--primary-color) 6%);
+    background: color-mix(in srgb, var(--sp-ui-card) 94%, var(--sp-ui-primary) 6%);
     color: inherit;
     text-align: left;
     cursor: pointer;
@@ -1293,7 +1293,7 @@ watch(songsQuery, () => {
   }
   .mobile-source-label {
     font-size: 11px;
-    color: var(--text-color-3, #8a8f99);
+    color: var(--sp-ui-text-3, #8a8f99);
   }
   .mobile-source-name {
     font-size: 15px;
@@ -1304,7 +1304,7 @@ watch(songsQuery, () => {
   }
   .mobile-source-sub {
     font-size: 12px;
-    color: var(--text-color-3, #8a8f99);
+    color: var(--sp-ui-text-3, #8a8f99);
   }
   .mobile-source-actions {
     flex: 0 0 auto;
@@ -1337,7 +1337,7 @@ watch(songsQuery, () => {
     vertical-align: middle;
   }
   .library-table :deep(.n-data-table-tr) {
-    border-bottom: 1px solid color-mix(in srgb, var(--border-color) 80%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--sp-ui-border) 80%, transparent);
   }
   .song-cell-formats {
     margin-top: 1px;

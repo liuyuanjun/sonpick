@@ -254,10 +254,10 @@ onMounted(load)
   gap: 10px;
 }
 .log-card {
-  border: 1px solid var(--n-border-color);
+  border: 1px solid var(--sp-ui-border);
   border-radius: 12px;
   padding: 12px;
-  background: color-mix(in srgb, var(--n-card-color) 92%, transparent);
+  background: color-mix(in srgb, var(--sp-ui-card) 92%, transparent);
 }
 .log-head {
   display: flex;
@@ -285,7 +285,7 @@ onMounted(load)
 .log-path,
 .log-task {
   margin-top: 6px;
-  color: var(--n-text-color-3);
+  color: var(--sp-ui-text-3);
   font-size: 12px;
   line-height: 1.45;
   word-break: break-word;

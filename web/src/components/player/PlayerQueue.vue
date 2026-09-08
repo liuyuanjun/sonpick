@@ -55,10 +55,10 @@ const player = usePlayerStore()
   flex-direction: column;
   min-height: 0;
   background:
-    linear-gradient(180deg, var(--player-surface-strong, var(--n-card-color)) 0%, var(--player-surface, var(--n-card-color)) 100%),
-    radial-gradient(260px 220px at 12% 0%, var(--player-panel-glow, rgba(24, 160, 88, 0.10)), transparent 68%);
+    linear-gradient(180deg, var(--player-surface-strong, var(--sp-ui-card)) 0%, var(--player-surface, var(--sp-ui-card)) 100%),
+    radial-gradient(260px 220px at 12% 0%, var(--player-panel-glow, color-mix(in srgb, var(--sp-ui-primary) 10%, transparent)), transparent 68%);
   backdrop-filter: blur(18px) saturate(1.06);
-  color: var(--n-text-color);
+  color: var(--sp-ui-text-1);
 }
 .queue-head {
   display: flex;
@@ -72,12 +72,12 @@ const player = usePlayerStore()
 .queue-title {
   font-weight: 700;
   font-size: 14px;
-  color: var(--n-text-color);
+  color: var(--sp-ui-text-1);
 }
 .queue-count {
   margin-top: 2px;
   font-size: 12px;
-  color: var(--n-text-color-3);
+  color: var(--sp-ui-text-3);
 }
 .queue-empty {
   margin-top: 48px;
@@ -103,7 +103,7 @@ const player = usePlayerStore()
   background-clip: padding-box;
 }
 .queue-list::-webkit-scrollbar-thumb:hover {
-  background: var(--player-scrollbar-thumb-hover, rgba(24, 160, 88, 0.46));
+  background: var(--player-scrollbar-thumb-hover, color-mix(in srgb, var(--sp-ui-primary) 46%, transparent));
   background-clip: padding-box;
 }
 .queue-item {
@@ -115,25 +115,25 @@ const player = usePlayerStore()
   border-radius: 10px;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
-  color: var(--n-text-color);
+  color: var(--sp-ui-text-1);
 }
 .queue-item:hover {
-  background: color-mix(in srgb, var(--cover-accent, var(--n-primary-color)) 10%, transparent);
+  background: color-mix(in srgb, var(--cover-accent, var(--sp-ui-primary)) 10%, transparent);
 }
 .queue-item.active {
-  background: color-mix(in srgb, var(--cover-accent, var(--n-primary-color)) 18%, transparent);
+  background: color-mix(in srgb, var(--cover-accent, var(--sp-ui-primary)) 18%, transparent);
 }
 .queue-item.active .q-title {
-  color: var(--cover-accent, var(--n-primary-color));
+  color: var(--cover-accent, var(--sp-ui-primary));
 }
 .q-idx {
   font-size: 12px;
-  color: var(--n-text-color-3);
+  color: var(--sp-ui-text-3);
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
 .queue-item.active .q-idx {
-  color: var(--cover-accent, var(--n-primary-color));
+  color: var(--cover-accent, var(--sp-ui-primary));
 }
 .meta {
   min-width: 0;
@@ -148,18 +148,18 @@ const player = usePlayerStore()
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--n-text-color);
+  color: var(--sp-ui-text-1);
 }
 .q-artist {
   font-size: 12px;
-  color: var(--n-text-color-3);
+  color: var(--sp-ui-text-3);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .q-remove {
   opacity: 0.55;
-  color: var(--n-text-color-2);
+  color: var(--sp-ui-text-2);
 }
 .queue-item:hover .q-remove {
   opacity: 1;

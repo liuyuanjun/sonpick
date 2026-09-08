@@ -40,13 +40,15 @@
   --sp-font-cn: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
 }
 
-/* 主题：白天模式（可选，默认仍为暗色） */
+/* 主题：白天模式。由 web/src/stores/theme.js 写 document.documentElement.dataset.theme 驱动，
+ * 取值必须与 web/src/theme/tokens.js 的 SURFACE.light 保持一致，避免两处漂移。 */
 [data-theme="light"] {
-  --sp-bg: #FAFAFA;
+  --sp-bg: #F5F6F8;
   --sp-surface: #FFFFFF;
-  --sp-border: #E5E7EB;
-  --sp-text: #0B0C10;
-  --sp-text-2: #6B7280;
+  --sp-border: #E3E6EB;
+  --sp-text: #111827;
+  --sp-text-2: #4B5563;
+  --sp-primary-400: #047857;
 }
 
 /* 品牌渐变（仅用于 logo / 焦点态 / 强调条，禁止铺大面积背景） */

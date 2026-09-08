@@ -65,6 +65,7 @@ import {
 } from 'naive-ui'
 import App from './App.vue'
 import router from './router'
+import { useThemeStore } from '@/stores/theme'
 
 const naive = create({
   components: [
@@ -85,4 +86,8 @@ const app = createApp(App)
 app.use(createPinia())
 app.use(router)
 app.use(naive)
+
+// 挂载前先定主题：写 data-theme 与 :root 变量，避免首屏闪一下错误配色
+useThemeStore().init()
+
 app.mount('#app')

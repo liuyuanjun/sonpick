@@ -361,7 +361,7 @@ loadTasks()
 .task-item {
   padding: 10px 12px;
   margin-bottom: 8px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--sp-ui-border);
   border-radius: 10px;
 }
 .task-item-head {

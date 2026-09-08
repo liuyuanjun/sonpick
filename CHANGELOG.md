@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.15.1-rc11
+
+### 修复
+- **明亮模式失效（切过去只亮几条线、整体仍是暗的）**：`App.vue` 的 `themeOverrides` 是一个**与主题无关的常量对象**，把 `bodyColor` / `cardColor` / `borderColor` / `textColor*` 全写死成暗色，却无条件套用在 `lightTheme` 上，导致只有未被覆盖的衍生色（输入框 / 表头 / 弹窗 / hover / 分隔线）跟着变亮。回归自 v0.15.1-rc8 的品牌视觉系统改动。
+- **88 处 CSS 变量引用了从不存在的变量**：Naive UI 不向 `:root` 注入全局 `--n-*`，但项目有 55 处 `var(--n-card-color)` 之类、33 处 `var(--card-color)` 之类的引用，全部在计算值阶段失效（背景透明、颜色走继承）。暗色下靠「透明叠在深底上」蒙混过关，明亮模式下会成片错乱。
+- `brand.css` 的 `[data-theme="light"]` 分支此前是死代码——全项目没有任何一处设置 `documentElement.dataset.theme`，登录页永远走暗色回退值。
+
+### 变更
+- **主题 token 收口到单一真相源**：新增 `web/src/theme/tokens.js`，导出 `buildNaiveOverrides()`（驱动 Naive 组件）与 `buildCssVars()`（注入 `:root` 的 `--sp-ui-*` 系列）。业务样式一律消费 `--sp-ui-*`，**禁止写死颜色**。
+- **主色统一**：暗色沿用品牌 `#10B981`；明亮模式降级为品牌 700 `#047857`（`#10B981` 配白字仅 2.65:1，不达 WCAG AA），hover 在亮色下继续加深而非提亮。CSS 里残留的 `#18a058` / `rgba(24,160,88,*)` 全部收敛到 `var(--sp-ui-primary)`。
+- **登录页品牌栏**在明亮模式下随卡片走浅色（暗色保留 `#0B0C10` 深底）：深色栏会在明亮页面中形成硬边割裂，品牌感应由 LOGO 与主色承担。
+- **主题 store 增强**：支持 `system` / `light` / `dark`（默认跟随系统，兼容旧存储值）；主题变化同步写 `data-theme` 与 `<meta name="theme-color">`；监听 `prefers-color-scheme`；`init()` 提到 `mount()` 之前，消除首屏闪色。
+- 变量改名：`var(--n-*)` / `var(--card-color)` 等 88 处→ `var(--sp-ui-*)`，由 `scripts/migrate-theme-vars.js` 一次性迁移（幂等）。
+
+### 顺带修复
+- `PlayerPanel.vue` 的 `--bg` 从未定义，歌词操作栏粘性底栏背景失效。
+- `PlayerView.vue` 移动端全屏遮罩写死 `#0b0c10`。
+- `LoginView.vue` 表单脚注写死 `#6B7280`；卡片阴影在亮色下过重。
+- **概览页分类配色在暗色下对比度不足**：KPI / 快捷入口 / 活动流 / 元数据进度条此前写死浅色系 700 级色值（`#0f766e` 等），暗色底上仅约 3.3:1。现收口为 tokens 的 `--sp-accent-*`（亮色 700 级、暗色 400 级，两套均满足 WCAG AA 4.5:1），源状态点等一并改语义变量。
+
+### 变更
+- **主题按钮升级为三态**：`LayoutView` 顶栏主题入口由「点亮/暗二态切换」改为下拉菜单，提供 **跟随系统 / 明亮模式 / 暗色模式** 三态，当前项打勾、tooltip 显示当前模式。底层 `theme` store 的 `system` 支持至此真正可通过 UI 触达。
+
+### 规范
+- `AGENTS.md` 新增 **§5.4 分类强调色** 与 **§5.5 前端硬规范**：z-index 分层（自定义浮层只用 1000/1100/1400/1500 带，Naive 弹层 ≥2000、message 6000，业务禁止写死巨数）、弹层 teleport 的颜色注入、移动端断点收敛到 `useIsMobile`、播放器 store 单例边界、axios 单实例与 `useMessage`/`useDialog` 反馈规范。
+
 ## 0.15.1-rc10
 
 ### 变更

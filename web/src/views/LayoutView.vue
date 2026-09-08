@@ -12,7 +12,7 @@
       @expand="collapsed = false"
     >
       <div class="logo">
-        <n-icon size="28" color="#18a058">
+        <n-icon size="28" color="var(--sp-ui-primary)">
           <musical-notes />
         </n-icon>
         <span v-if="!collapsed" class="logo-text">拾音 Sonpick</span>
@@ -36,16 +36,23 @@
           <task-center />
           <n-tooltip>
             <template #trigger>
-              <n-button quaternary circle aria-label="切换主题" @click="themeStore.toggle()">
-                <template #icon>
-                  <n-icon>
-                    <moon v-if="themeStore.isDark" />
-                    <sunny v-else />
-                  </n-icon>
-                </template>
-              </n-button>
+              <n-dropdown
+                trigger="click"
+                :options="themeOptions"
+                :value="themeStore.mode"
+                @select="themeStore.setMode($event)"
+              >
+                <n-button quaternary circle aria-label="主题模式">
+                  <template #icon>
+                    <n-icon>
+                      <moon v-if="themeStore.isDark" />
+                      <sunny v-else />
+                    </n-icon>
+                  </template>
+                </n-button>
+              </n-dropdown>
             </template>
-            切换主题
+            主题：{{ themeModeLabel }}
           </n-tooltip>
           <n-tooltip>
             <template #trigger>
@@ -116,6 +123,7 @@ import {
   Sunny,
   LogOutOutline,
   KeyOutline,
+  CheckmarkOutline,
 } from '@vicons/ionicons5'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
@@ -128,6 +136,29 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const themeStore = useThemeStore()
+
+// 主题三态：跟随系统 / 明亮 / 暗色。当前项在菜单里打勾
+const THEME_MODES = [
+  { key: 'system', label: '跟随系统' },
+  { key: 'light', label: '明亮模式' },
+  { key: 'dark', label: '暗色模式' },
+]
+const themeOptions = computed(() =>
+  THEME_MODES.map((item) => ({
+    key: item.key,
+    label: item.label,
+    render: () =>
+      h('div', { style: 'display:flex;align-items:center;gap:8px;min-width:132px' }, [
+        h('span', { style: 'flex:1' }, item.label),
+        themeStore.mode === item.key
+          ? h(NIcon, { size: 16, color: 'var(--sp-ui-primary)' }, { default: () => h(CheckmarkOutline) })
+          : null,
+      ]),
+  })),
+)
+const themeModeLabel = computed(
+  () => THEME_MODES.find((item) => item.key === themeStore.mode)?.label || '跟随系统',
+)
 const message = useMessage()
 const collapsed = ref(false)
 const isMobile = useIsMobile()

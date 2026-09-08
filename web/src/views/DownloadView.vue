@@ -92,9 +92,9 @@ watch(activeTab, (v) => {
   }
   .download-tabs :deep(.n-tabs-nav) {
     padding: 3px;
-    border: 1px solid var(--n-border-color);
+    border: 1px solid var(--sp-ui-border);
     border-radius: 10px;
-    background: color-mix(in srgb, var(--n-body-color) 78%, var(--n-primary-color) 5%);
+    background: color-mix(in srgb, var(--sp-ui-body) 78%, var(--sp-ui-primary) 5%);
   }
   .download-tabs :deep(.n-tabs-tab) {
     flex: 1;
