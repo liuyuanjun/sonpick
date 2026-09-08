@@ -5,51 +5,44 @@
 
 ## 1. 母题与 LOGO
 
-### 意象：唱片 · 唱针 · 叶片（三重合一）
+### 意象：乐海 · 声波 · 拾音
 
-一枚音符斜搭在**同心圆唱片**上 —— 音符同时是**唱针**，伸出唱片外的那一段是**叶柄**。
-"拾音"（针拾声）与"拾起一片叶子做书签"（珍藏）在同一个动作里完成：
+圆角方形深底上，**两圈同向的同心声波弧线**向外扩散，中央悬浮一枚**八分音符**——
+声音从中心荡开，而你在声海中把它拾起。呼应 Slogan「**乐海拾音，好歌不散**」。
 
-- **外圆 r=16.5** = 唱片外缘
-- **内圆 r=8.5** = 唱片中心标签，与外圆**同心**（半径比约 1.94:1，接近真实唱片观感）
-- **音符** = 唱针 / 叶片；符头在唱片内，符干**伸出外圆之外**形成叶柄
+- **深色底**：圆角方形，近黑（`#0E0E16`），与产品主题一致
+- **双弧线**：同心、同向，左下开口，圆头端（`stroke-linecap="round"` 观感）
+- **八分音符**：椭圆符头 + 符干 + S 形符旗，居中悬浮
+- **渐变**：亮绿 → 青 → 蓝 → 紫，沿左上到右下方向过渡
 
-### 缺口逻辑（不是装饰，是叙事）
+> 取样色值（用于邻近配色参照，非重绘依据）：`#64F0AC` → `#22D3EE` → `#556FE1` → `#7A40DC`
 
-两个圆的缺口都开在**正上方（对准符干顶端）**。符干顶端是声源，声波从那里向外冲、把同心圆顶开 —— 所以外圈缺口 60° 比内圈 50° 更宽，呈**扇形辐射**，这才是"脉络"。
+### 资产形态：位图（非矢量）
 
-> ⚠️ 缺口位置不可随意改动；改了就变成"为了缺口而缺口"。
+LOGO 源自位图源图，**不再是参数化矢量**。历史上曾尝试手绘 SVG 复刻，两版均无法还原
+源图质感（色相、造型都失真），故改为直接从源图导出多尺寸 PNG。
 
-### 构造参数（48 × 48 网格）
-
-| 元素 | 参数 |
-|------|------|
-| 画布 | 48 × 48，外框圆角 14 |
-| 外圆 | 圆心 (24,24)，r=16.5，线宽 2，缺口 240°~300° |
-| 内圆 | 圆心 (24,24)，r=8.5，线宽 1.5，缺口 245°~295° |
-| 符头 | 椭圆 cx=21.5 cy=25，rx=4 ry=3.2，旋转 -30° |
-| 符干 | x=24，y 23 → 5（顶端伸出外圆 2.5） |
-| 符旗 | `M 24 5 C 28.5 7, 29.5 11, 26 14`，线宽 2.5 |
-| 弧线写法 | `M <终点角点> A r r 0 1 1 <起点角点>`（大弧 + 顺时针绕开缺口），端点 `stroke-linecap="round"` |
-
-**悬浮原则：圆与音符互不接触。** 符头在内圈内悬浮（间隙 ≈1.8），符干走两处缺口**正中央**（两侧各留 ≈2.3），符旗落在内圈外、外圈内。
+> ⚠️ **禁止对 LOGO 做矢量化重绘或手绘 SVG 复刻。** 需要新尺寸时，从源图重新导出，
+> 不要描摹。仅几何构成简单、原生矢量的图形才适合手绘 SVG。
 
 ### 资产与用法
 
-| 文件 | 用途 |
-|------|------|
-| `web/public/brand/logo.svg` | 首选用法，深底 + 渐变线条 |
-| `web/public/brand/logo-mono-white.svg` | 反白版：透明底 + 纯白线条，用于深色背景 |
-| `web/public/brand/logo-mono-black.svg` | 纯黑版：透明底 + 深墨线条，用于浅色背景 |
-| `web/public/brand/logo-mark-sm.svg` | 简化版（去内圆与符旗、加粗），≤32px 用 |
-| `web/public/brand/favicon.svg` | favicon，进一步加粗、圆角 10 |
+| 文件 | 尺寸 | 用途 |
+|------|------|------|
+| `web/public/brand/logo.png` | 512×512 | 首选用法；登录页主图、`apple-touch-icon` |
+| `web/public/brand/logo-mark-sm.png` | 128×128 | 小尺寸（侧栏、列表、≤32px 场景） |
+| `web/public/brand/favicon.png` | 64×64 | favicon 默认（高 DPI） |
+| `web/public/brand/favicon-32.png` | 32×32 | favicon 标准 |
+| `web/public/brand/favicon-16.png` | 16×16 | favicon 小尺寸回退 |
+
+`web/index.html` 按 `sizes` 声明三个 favicon，浏览器自动择优；`LoginView.vue` 引用 `logo.png`。
 
 ### 禁用
 
-- 拉伸变形 / 旋转 / 加描边投影 / 改渐变方向
-- 随意改动缺口位置或大小（见上文缺口逻辑）
-- 让音符与圆接触 —— 悬浮间隙是造型的一部分
-- 16px 以下仍使用完整版（应切到 logo-mark-sm / favicon）
+- 拉伸变形 / 旋转 / 加描边投影 / 改渐变方向 / 重新着色
+- **矢量化重绘或手绘 SVG 复刻**（见上文）
+- 用 CSS `filter` 改变品牌色相
+- 16px 以下仍使用 `logo.png` 大图（应切到 `favicon-16.png`）
 - 品牌渐变禁止铺大面积背景
 
 ## 2. 色彩
@@ -134,7 +127,14 @@ CSS：`--sp-font-en`、`--sp-font-cn`。
 
 ## 6. 集成步骤
 
-1. `web/index.html` 引入 `<link rel="icon" type="image/svg+xml" href="/brand/favicon.svg">`
+1. `web/index.html` 按尺寸引入三档 favicon：
+   ```html
+   <link rel="icon" type="image/png" sizes="64x64" href="/brand/favicon.png" />
+   <link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png" />
+   <link rel="icon" type="image/png" sizes="16x16" href="/brand/favicon-16.png" />
+   <link rel="apple-touch-icon" href="/brand/logo.png" />
+   ```
 2. 全局引入 `import './brand/brand.css'`（或 main.js）
 3. 主题色保留 Naive UI 的 `--n-primary-color`，或迁移到 `--sp-primary-500`
-4. 现有 280px 顶栏 logo 字符（`#18a058` n-icon）可考虑替换为 `/brand/logo.svg`
+4. 现有 280px 顶栏 logo 字符（`#18a058` n-icon）可考虑替换为 `/brand/logo.png`
+5. 登录页 Slogan 固定为「乐海拾音，好歌不散」（`LoginView.vue` 的 `.brand-slogan`）
