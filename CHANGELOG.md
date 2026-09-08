@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.15.1-rc10
+
+### 变更
+- **LOGO 改用位图**：此前手绘 SVG 反复无法还原源文件质感，现改为直接使用源图导出多尺寸 PNG，删除全部 LOGO 类 SVG。
+  - 资产：`logo.png`（512）、`logo-mark-sm.png`（128）、`favicon.png`（64）、`favicon-32.png`（32）、`favicon-16.png`（16）。
+  - `web/index.html`：3 个 favicon 尺寸全部指向 PNG；`apple-touch-icon` 由吉祥物改为主 LOGO（品牌识别更统一）。
+  - `LoginView.vue`：登录页 LOGO 引用由 `/brand/logo.svg` 改为 `/brand/logo.png`。
+- **Slogan 更新**：「听见，然后收藏。」→「**乐海拾音，好歌不散**」。前半句点题品牌名（乐海中"拾"音），后半句给出价值承诺（好歌不会流散丢失），兼顾动作与情感。
+
 ## 0.15.1-rc9
 
 ### 修复

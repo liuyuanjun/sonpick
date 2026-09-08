@@ -5,13 +5,13 @@
       <aside class="brand-pane">
         <span class="brand-glow" aria-hidden="true" />
         <div class="brand-inner">
-          <img class="brand-logo" src="/brand/logo.svg" alt="Sonpick 拾音" />
+          <img class="brand-logo" src="/brand/logo.png" alt="Sonpick 拾音" />
           <div class="brand-name">
             <span class="brand-en">Sonpick</span>
             <span class="brand-cn">拾音</span>
           </div>
           <img class="brand-mascot" src="/brand/mascot/mascot-main.png" alt="拾耳" />
-          <p class="brand-slogan">听见，然后收藏。</p>
+          <p class="brand-slogan">乐海拾音，好歌不散</p>
         </div>
       </aside>
 
