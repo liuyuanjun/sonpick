@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.15.1-rc8
+
+### 新功能
+- 品牌视觉系统 v1.0：从零建立 Sonpick 拾音的 LOGO、色彩、图标、吉祥物。
+  - LOGO：唱片 · 唱针 · 叶片三重意象 —— 音符斜搭在同心圆唱片上，既是唱针也是叶片，伸出唱片外的一段为叶柄；缺口开在正上方对准符干顶端（声源），外 60°/内 50° 呈扇形辐射；渐变 #34D399→#6366F1。
+  - LOGO 资产：`logo.svg`（深底渐变）、`logo-mono-white.svg`、`logo-mono-black.svg`、`logo-mark-sm.svg`（≤32px 简化）、`favicon.svg`。
+  - 色彩：青绿主色 #10B981 + 蓝紫辅色 #6366F1 + 近黑底 #0B0C10；CSS 变量见 `web/public/brand/brand.css`。
+  - 图标：21 个 24×24 单色图标（`stroke="currentColor"`，可继承主题色），统一 2px 线宽、圆头圆角。
+  - 吉祥物「拾耳」：戴品牌色耳机的暖橙色大耳狐，含主形象 / 4 表情组 / 3 场景图（空曲库 / 加载中 / 出错）。
+- 设计稿：Ardot 文件《Sonpick 拾音 · 品牌视觉系统》（fileId `723344971328404`）。
+- 详细规范：见 `docs/brand-guidelines.md`，`AGENTS.md` §1 已收录索引。
+
+### 应用到系统
+- 前端接入：`web/index.html` favicon 换为 `/brand/favicon.svg`，`apple-touch-icon` 用吉祥物主形象，并全局引入 `/brand/brand.css`。
+- 主题色统一：`App.vue` 通过 Naive UI `themeOverrides` 将主色由默认 `#18a058` 切到品牌青绿 `#10B981`（hover `#34D399`、pressed `#059669`），信息色设为蓝紫 `#6366F1`，并同步卡片/描边/文字色到品牌中性色阶。
+- 登录页重做：由单卡片改为**双栏**布局 —— 左品牌区（LOGO + 吉祥物「拾耳」+ 标语「听见，然后收藏。」），右表单区（标题 / 副标题 / 密码 / 提交）；`≤820px` 自动折叠为单栏。
+- 设计稿同步：Ardot `723344971328404` 的 LOGO 系统屏整屏替换为定稿（主标志横竖版 / App 图标 / 反白·纯黑 / 尺寸序列 / 构造说明），封面主标记同步更新。
+
 ## 0.15.1-rc7
 
 ### 变更

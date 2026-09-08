@@ -1,0 +1,61 @@
+/* Sonpick 拾音 · 品牌视觉变量 v1.0
+ * 暗色优先；可与 Naive UI 的 themeOverrides 一起使用。
+ * 与 web/public/brand/ 资源配套。
+ */
+:root {
+  /* 主色：青绿 */
+  --sp-primary-300: #6EE7B7;
+  --sp-primary-400: #34D399;
+  --sp-primary-500: #10B981; /* 主色 */
+  --sp-primary-600: #059669;
+  --sp-primary-700: #047857;
+
+  /* 辅色：蓝紫 */
+  --sp-accent-300: #A5B4FC;
+  --sp-accent-400: #818CF8;
+  --sp-accent-500: #6366F1; /* 辅色 */
+  --sp-accent-600: #4F46E5;
+  --sp-accent-700: #4338CA;
+
+  /* 中性（暗色为底） */
+  --sp-bg: #0B0C10;        /* 底 */
+  --sp-surface: #14161C;   /* 面 */
+  --sp-border: #23262F;    /* 描边 */
+  --sp-text: #ECEEF2;      /* 主文字 */
+  --sp-text-2: #8B95A5;    /* 次文字 */
+
+  /* 语义色 */
+  --sp-success: #10B981;
+  --sp-warning: #F59E0B;
+  --sp-error:   #EF4444;
+  --sp-info:    #6366F1;
+
+  /* 吉祥物色（拾耳） */
+  --sp-fox: #F5A45D;
+  --sp-fox-cream: #F7F1E8;
+  --sp-fox-ink: #2B2118;
+
+  /* 字体 */
+  --sp-font-en: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --sp-font-cn: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+/* 主题：白天模式（可选，默认仍为暗色） */
+[data-theme="light"] {
+  --sp-bg: #FAFAFA;
+  --sp-surface: #FFFFFF;
+  --sp-border: #E5E7EB;
+  --sp-text: #0B0C10;
+  --sp-text-2: #6B7280;
+}
+
+/* 品牌渐变（仅用于 logo / 焦点态 / 强调条，禁止铺大面积背景） */
+.sp-gradient-brand {
+  background: linear-gradient(135deg, #34D399 0%, #6366F1 100%);
+}
+.sp-text-gradient-brand {
+  background: linear-gradient(135deg, #34D399 0%, #6366F1 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}

@@ -41,3 +41,6 @@ web/.npm-cache
 musicdl/
 musicdl_outputs/
 .workbuddy
+
+# AI generated images (临时生图产物)
+generated-images/

@@ -33,6 +33,8 @@
 
 当前版本（以代码为准）：`0.15.1-rc7`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
 
+- **品牌视觉**：见 `web/public/brand/`（LOGO / 20 图标 / 吉祥物 PNG）与 `docs/brand-guidelines.md`，设计稿在 Ardot 文件《Sonpick 拾音 · 品牌视觉系统》。
+
 ### 1.1 歌词与元信息边界
 
 - **刮削信息**：标题、艺术家、专辑、年份、风格和封面。
