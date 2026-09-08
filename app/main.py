@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import logging
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -14,7 +14,7 @@ from app.routers import auth, download, library, library_extra, library_scan, lo
 from app.services.task_worker import worker, ws_manager
 from app.security import decode_token
 
-APP_VERSION = "0.15.1-rc8"
+APP_VERSION = "0.15.1-rc9"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -108,9 +108,19 @@ async def ws_progress(websocket: WebSocket, token: str = Query(...)):
 web_dist = Path(__file__).resolve().parent.parent / "web" / "dist"
 if web_dist.exists():
     app.mount("/assets", StaticFiles(directory=web_dist / "assets"), name="assets")
+    # 品牌静态资源（logo / 图标 / 吉祥物）。必须挂在 SPA catch-all 之前，
+    # 否则 /brand/* 会被 /{full_path:path} 兜走返回 index.html，
+    # 表现为「图片 200 但显示不出来」。
+    brand_dir = web_dist / "brand"
+    if brand_dir.exists():
+        app.mount("/brand", StaticFiles(directory=brand_dir), name="brand")
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
+        # 带扩展名的请求按静态资源处理：缺失时返回 404，
+        # 避免「文件不存在」被 200 + index.html 掩盖，难以排查。
+        if Path(full_path).suffix:
+            raise HTTPException(status_code=404, detail="Not Found")
         index = web_dist / "index.html"
         if index.exists():
             return FileResponse(index)

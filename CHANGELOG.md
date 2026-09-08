@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.1-rc9
+
+### 修复
+- 品牌静态资源「请求 200 但显示不出来」：FastAPI 此前**只挂载了 `/assets`**，`/brand/*`（LOGO / 图标 / 吉祥物）被 SPA catch-all `/{full_path:path}` 兜走，返回 `index.html`（状态码 200、Content-Type `text/html`），浏览器拿到 HTML 无法渲染图片。现已在 catch-all **之前**补上 `/brand` 静态挂载。
+- 静态资源缺失不再被掩盖：catch-all 对**带扩展名**的路径返回 404，而非回退 `index.html`，避免"文件不存在"表现为 200 + HTML、难以排查。
+
 ## 0.15.1-rc8
 
 ### 新功能
