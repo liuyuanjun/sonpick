@@ -53,6 +53,11 @@
 
 - 播放器顶部提供「刮削信息」和「获取歌词」两个独立入口。
 - 播放器：随机播放全部先获取当前筛选范围的轻量可播放歌曲池，在前端洗牌后按随机队列播放；当前随机轮次不重复，上一曲通过播放历史回退，文件版本仍由播放接口按需经 `SongFileResolver` 解析。
+- **播放器外壳只有三层，不得再增挂载点**（详见 §5.6）：
+  1. 系统侧边栏「我的音乐」六项 → `/player/<section>` 列表页（`PlayerView` 只渲染列表，不渲染播放面板）；
+  2. 底部悬浮胶囊 `GlobalPlayer` → 唯一音频出口；
+  3. 全局大播放器抽屉 `GlobalPlayerDrawer` → `PlayerPanel` 与 `PlayerQueue` 的唯一宿主，桌面覆盖 Header + 内容区（保留侧边栏），移动端视口全屏。
+- `player.fullPlayerOpen` 表示「大播放器抽屉打开」；`player.showQueue` 表示「队列展开」，队列渲染在抽屉内部，任意入口打开队列都会同时带出抽屉。
 - 歌词工作台支持查询条件、候选、当前/候选比较、保存和明确清空。
 - 元信息候选采用前会逐项比较；封面显示新旧图片、图片尺寸和旧文件大小；旧封面缺失时默认选择候选封面，已有旧封面时默认保留。
 - 刮削信息与歌词保存/清空会写入同一逻辑歌曲的全部可用本地 `SongFile` 版本及各自侧车；WebDAV 版本只展示并明确标记为远端只读。
@@ -93,7 +98,15 @@ music/
 │   ├── src/views/            # 页面
 │   ├── src/stores/           # Pinia
 │   ├── src/api/client.js     # Axios 封装
+│   ├── src/theme/tokens.js   # 主题 token 单一真相源（明暗双模）
+│   ├── src/components/GlobalPlayer.vue          # 底部悬浮胶囊播放条（唯一音频出口）
+│   ├── src/components/player/GlobalPlayerDrawer.vue  # 大播放器抽屉（PlayerPanel/PlayerQueue 唯一宿主）
+│   ├── src/components/player/PlayerPanel.vue    # 播放面板编排（工具栏 / 元信息 / 进度 / 控件 / 弹窗）
+│   ├── src/components/player/PlayerStage.vue    # 舞台视图（黑胶 / 叠层 / 纯歌词），纯展示组件
 │   └── dist/                 # 构建产物（Docker 默认 COPY 这里）
+├── docs/
+│   ├── ui-smoke-checklist.md # 前端人工冒烟清单（前端改动/发布前必跑）
+│   └── ...                   # 品牌、主题、元数据等专题文档
 ├── .github/workflows/release.yml # tag 触发：版本校验 + 多架构镜像构建 + 三仓库推送
 ├── scripts/deploy-nas.sh     # NAS 一键部署（远端 pull 镜像 → up -d → 健康检查）
 ├── Dockerfile                # 多阶段：Node 构建前端 → Python 运行时
@@ -205,7 +218,8 @@ music/
 | `/` | DashboardView | 概览 |
 | `/download` | DownloadView | 搜索下载 + 导入下载 |
 | `/library` | LibraryView | 曲库（含 local/WebDAV 来源管理、浏览、扫描/整理/刮削） |
-| `/player` | PlayerView | 播放器 |
+| `/player/<section>` | PlayerView | 音乐列表（我喜欢的 / 歌单 / 艺术家 / 专辑 / 全部歌曲 / 最近播放），**不含播放面板** |
+| `/player` | redirect → `/player/favorites` | 默认二级列表；非法 section 由路由守卫纠正 |
 | `/sources` | redirect → `/library` | 历史入口，统一收敛到曲库 |
 | `/logs` | LogsView | 操作日志 |
 | `/settings` | SettingsView | 存储路径/默认格式/自动转码/自动上传总开关 |
@@ -236,8 +250,8 @@ Naive UI 的弹层（modal / drawer / popover / dropdown / tooltip）共用从 *
 | `1–999` | 页面内部局部叠放（sticky 头、浮出操作条） | `PlayerPanel` 歌词操作栏 `z-index:3`、封面占位 `z-index:2` |
 | `1000` | 全局底部播放器 | `GlobalPlayer .global-player` |
 | `1100` | 移动端固定底栏 | `LayoutView .mobile-tabs` |
-| `1400` | 移动端全屏播放器 overlay（**低于 Naive 弹层 2000**，弹层须能盖在它上面） | `PlayerView .mobile-player-overlay` |
-| `1500` | 移动端队列抽屉 | `PlayerView .mobile-queue-sheet` |
+| `1400` | 全屏播放器覆盖层（**低于 Naive 弹层 2000**，弹层须能盖在它上面） | `GlobalPlayerDrawer .gp-drawer`（桌面覆盖内容区 / 移动端视口全屏，同一层带） |
+| `1500` | 移动端队列抽屉 | 目前**空置**：队列已收敛进 `GlobalPlayerDrawer`，不再单独占层 |
 | `2000+` | 留给 Naive 弹层，**业务代码永不写死 ≥2000** | — |
 
 **规则**：业务自定义浮层的 z-index **只允许取上表列出的带**，禁止随手写 9999 / 99999 盖一切。若某元素必须盖在 Naive 弹层之上（很罕见），改用「同用 2000+ 的动态叠加」思路并注释理由，而不是拍个巨数。
@@ -255,8 +269,9 @@ Naive 的 modal / drawer / popover 会被 teleport 到 `body`，脱离 `.app-lay
 
 #### 播放器 store 边界（player store 是单例真相源）
 
-- 全局播放器（底部、PlayerView 全屏）都读 Pinia `player` store，**不要**为某页面缓存独立的播放实例/currentTime 副本。
+- 全局播放器（底部胶囊、大播放器抽屉）都读 Pinia `player` store，**不要**为某页面缓存独立的播放实例/currentTime 副本。
 - 音频 URL 常带 `token` query，来源接口变化时以 `api/music.js` 为准，不要裸拼 URL。
+- 二级列表的合法值从 `stores/player.js` 的 `PLAYER_SECTIONS` / `normalizePlayerSection()` 取，**不要**在各页面各写一份清单。
 
 #### 只改局部时不得破坏整体（呼应 §0）
 
@@ -268,6 +283,40 @@ Naive 的 modal / drawer / popover 会被 teleport 到 `body`，脱离 `.app-lay
 
 - 网络请求统一走 `web/src/api/client.js` 的 axios 实例（自带 `baseURL:'/api'`、token 注入、401 自动登出）。**禁止**在业务里 `axios.create` 新实例。
 - 页内操作反馈用 `useMessage()`（App 已包 `n-message-provider`）；结构化确认用 `useDialog()`；不要在组件里自建 alert/confirm 覆盖层。
+
+### 5.6 播放器外壳与挂载点（禁止重复宿主）
+
+**每个组件在同一时刻只能有一个挂载点。** 历史上 `PlayerPanel` / `PlayerQueue` 同时在 `PlayerView.stage`、`PlayerView` 移动浮层、`LayoutView` 抽屉三处挂载，导致移动端同时渲染两份面板与两份队列（切歌错乱、歌词滚动互相打架、`fullPlayerOpen` 语义分裂）。现已收敛如下，**不得回退**：
+
+| 组件 | 唯一宿主 | 约束 |
+|------|----------|------|
+| `PlayerPanel` | `GlobalPlayerDrawer` | 任何页面都不得再挂 `PlayerPanel` |
+| `PlayerQueue` | `GlobalPlayerDrawer`（抽屉内右侧栏 / 移动端抽屉内覆盖层） | `player.showQueue` 只在这里被消费 |
+| `GlobalPlayer`（胶囊） | `LayoutView`，`teleport` 到 `body` | 全局唯一音频元素，界面唯一播放出口 |
+| `PlayerStage` | `PlayerPanel` | 纯展示组件：props 进、emits 出，不读 store |
+
+配套约定：
+
+- `player.fullPlayerOpen` = 大播放器抽屉开合；`showQueue` = 队列展开。**打开队列必须同时确保抽屉打开**，否则用户看不到任何反馈。
+- 「展开全屏」与「点胶囊封面」是两个入口、同一个动作（打开抽屉），不再跳页。
+- 播放器页 = 列表页。二级导航桌面端在系统侧边栏（`/player/<section>`），移动端在页面顶部横向 Tab（复用 `PlayerView .player-tabs`），**移动端不得删掉这层入口**。
+- 抽屉内的播放面板必须提供「收起」按钮（`PlayerPanel` 的 chevron，条件是 `player.fullPlayerOpen`），桌面端不能出现"打开了关不掉"。
+- 抽屉打开期间：body/滚动容器锁定滚动（`html.sp-overlay-open`）、焦点闭环（Tab 不逃逸）、`Esc` 关闭但**弹窗优先**（`.n-modal/.n-dialog/.n-drawer` 存在时让位）。任何一层都不得再自建全局 `keydown` Escape 监听。
+
+### 5.7 前端几何变量的单一真相源
+
+悬浮播放胶囊的定位与各页面底部留白由 `App.vue` 的 `:root` 变量统一驱动，**禁止再写魔法数字**：
+
+| 变量 | 含义 | 桌面 | ≤768px |
+|------|------|------|--------|
+| `--gp-bar-height` | 胶囊高度 | 84px | 60px |
+| `--gp-bar-gap` | 距底边间距 | 24px | 10px |
+| `--gp-bottom-offset` | 底部避让（移动端 Tab + 安全区） | 0 | `52px + env(safe-area-inset-bottom)` |
+| `--gp-reserve` | 页面底部预留高度（= 上三者 + 16px 呼吸位） | 124px | 138px + 安全区 |
+
+- 胶囊宽度：`left/right: 24px` + `margin: 0 auto` + `max-width: 880px`（移动端 ±14px）。
+- 圆角：`border-radius: 999px`（等于高度一半的"真胶囊"；CSS 会自动钳制，改高度不用改圆角）。**禁止**用 `border-radius: 50%`——那会变成橄榄形并让弧线侵入内容区。
+- 新增任何"浮在内容之上的底部条"时，改这里的变量，不要逐个页面调 padding。
 
 ### 5.4 主题与配色（明暗双模）
 
@@ -289,7 +338,7 @@ isDark ──┬──> buildNaiveOverrides()         → App.vue 的 :theme-ove
 - 语义色（success/info/warning/error）用 `--sp-ui-{success|info|warning|error}`，不要写 Naive 默认 `#18a058` / `#d03050` 等。
 - `theme` store 支持 `system` / `light` / `dark`（默认跟随系统，localStorage `sonpick_theme`）；`init()` 必须在 `main.js` 的 `mount()` **之前**调用，否则首屏会闪一下错误配色。
 - `web/public/brand/brand.css` 的 `[data-theme="light"]` 分支取值必须与 `tokens.js` 的 `SURFACE.light` 一致，避免两处漂移。
-- 组件内部的局部调色板（如 `PlayerPanel` 的 `--fg`/`--rail`、`PlayerView` 的 `--cover-accent*`）可自定义，但必须同时给出暗色与 `.light` 两套。
+- 组件内部的局部调色板（如 `PlayerPanel` 的 `--fg`/`--rail`、`PlayerPanel`/`GlobalPlayerDrawer` 的 `--cover-accent*`）可自定义，但必须同时给出暗色与 `.light` 两套。
 
 ### 5.3 构建
 
@@ -321,6 +370,8 @@ pnpm install && pnpm build
 2. `web/package.json`（及 lock 中顶层 version）
 3. `app/main.py` → `APP_VERSION`
 4. `CHANGELOG.md` 追加条目
+
+**前端改动额外要求**：发布前必须跑 `cd web && vite build`（必须绿）与 `venv/bin/python -m pytest tests -q`（必须全绿），并按 `docs/ui-smoke-checklist.md` 走一遍人工冒烟（至少覆盖明亮/暗色 × 桌面/移动四象限）。前端没有自动回归网，这张清单是唯一的质量门，不得跳过。
 
 API 必须继续暴露 `X-App-Version`。  
 用户要求 git 提交时：打 `v{版本号}` tag，并与代码一并推送（远程为 GitHub 时）。

@@ -12,6 +12,16 @@ const MODE_LABELS = {
   shuffle: '随机播放',
 }
 
+/**
+ * 播放器页的二级列表（路由 /player/:section）。
+ * 侧边栏菜单、移动端横向 Tab、路由校验都从这里取，避免多处各写一份。
+ */
+export const PLAYER_SECTIONS = ['favorites', 'playlists', 'artists', 'albums', 'songs', 'history']
+
+export function normalizePlayerSection(value) {
+  return PLAYER_SECTIONS.includes(value) ? value : 'favorites'
+}
+
 function clampLyricFontSize(size) {
   const n = Number(size)
   if (Number.isNaN(n)) return 18

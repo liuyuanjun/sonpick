@@ -81,7 +81,7 @@
           <n-button quaternary circle @click="player.next()">
             <n-icon size="20"><play-skip-forward /></n-icon>
           </n-button>
-          <n-button quaternary circle @click="player.showQueue = !player.showQueue">
+          <n-button quaternary circle @click="toggleQueue">
             <n-icon size="18"><list /></n-icon>
           </n-button>
         </div>
@@ -112,9 +112,9 @@
           </n-icon>
         </n-button>
         <n-slider
+          class="gp-volume"
           :value="player.volume * 100"
           :step="1"
-          style="width: 100px"
           :tooltip="false"
           @update:value="(v) => player.setVolume(v / 100)"
         />
@@ -132,7 +132,6 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
 import {
   Play, Pause, Close, MusicalNotes, PlaySkipBack, PlaySkipForward,
   Shuffle, Repeat, Reload, List, ListOutline, VolumeMedium, VolumeMute, Expand,
@@ -148,8 +147,6 @@ import { formatTime } from '@/utils/lrc'
 const player = usePlayerStore()
 const themeStore = useThemeStore()
 const message = useMessage()
-const router = useRouter()
-const route = useRoute()
 const isMobile = useIsMobile()
 const audio = ref(null)
 const coverBroken = ref(false)
@@ -271,13 +268,15 @@ function onExternalSeek(e) {
 }
 
 function goPlayer() {
-  if (isMobile.value) {
-    // 移动端：进入播放器页并展开全屏「正在播放」浮层
-    if (route.name !== 'Player') router.push({ name: 'Player' })
-    player.fullPlayerOpen = true
-    return
-  }
-  router.push({ name: 'Player' })
+  // 「正在播放」大视图由全局抽屉承载（桌面覆盖内容区、移动端全屏），不再跳页
+  player.fullPlayerOpen = true
+}
+
+function toggleQueue() {
+  const next = !player.showQueue
+  player.showQueue = next
+  // 队列渲染在抽屉内，关闭抽屉时点队列需要一并把抽屉带出来
+  if (next) player.fullPlayerOpen = true
 }
 
 onMounted(() => window.addEventListener('sonpick-seek', onExternalSeek))
@@ -287,35 +286,37 @@ onUnmounted(() => window.removeEventListener('sonpick-seek', onExternalSeek))
 <style scoped>
 .global-player {
   /* 本组件经 Teleport 挂载到 body，不在 n-config-provider 子树内，
-     --n-* 主题变量不可达，需按主题类显式定义配色 */
-  --gp-bg: rgba(255, 255, 255, 0.9);
-  --gp-border: rgb(239, 239, 245);
-  --gp-text: rgb(31, 34, 37);
-  --gp-text-3: rgb(118, 124, 130);
+     --n-* 主题变量不可达；颜色一律取 :root 上的 --sp-ui-* 令牌，不写死色值 */
+  --gp-bg: color-mix(in srgb, var(--sp-ui-card-strong) 88%, transparent);
+  --gp-border: var(--sp-ui-border);
+  --gp-text: var(--sp-ui-text-1);
+  --gp-text-3: var(--sp-ui-text-3);
+  --gp-shadow: 0 16px 40px rgba(15, 23, 42, 0.14), 0 4px 12px rgba(15, 23, 42, 0.05);
+  /* 悬浮胶囊：几何由 :root 的 --gp-* 变量驱动，改高度不用同步改圆角 */
   position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 84px;
+  left: 24px;
+  right: 24px;
+  margin: 0 auto;
+  max-width: 880px;
+  bottom: calc(var(--gp-bar-gap) + var(--gp-bottom-offset));
+  height: var(--gp-bar-height);
   z-index: 1000;
   display: grid;
-  grid-template-columns: minmax(180px, 280px) minmax(0, 1fr) minmax(180px, 260px);
+  grid-template-columns: minmax(150px, 250px) minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
-  padding: 0 16px;
+  gap: 16px;
+  padding: 0 22px;
   box-sizing: border-box;
+  overflow: hidden;
+  border-radius: 999px;
   background: var(--gp-bg);
-  border-top: 1px solid var(--gp-border);
+  border: 1px solid var(--gp-border);
   color: var(--gp-text);
-  backdrop-filter: blur(14px);
-  box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.06);
+  backdrop-filter: blur(20px) saturate(1.4);
+  box-shadow: var(--gp-shadow);
 }
 .global-player.dark {
-  --gp-bg: rgba(24, 24, 28, 0.9);
-  --gp-border: rgba(255, 255, 255, 0.09);
-  --gp-text: rgba(255, 255, 255, 0.9);
-  --gp-text-3: rgba(255, 255, 255, 0.52);
-  box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.4);
+  --gp-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.32);
 }
 .gp-left {
   display: flex;
@@ -402,7 +403,8 @@ onUnmounted(() => window.removeEventListener('sonpick-seek', onExternalSeek))
   right: 0;
   height: 3px;
   overflow: hidden;
-  background: rgba(127, 127, 127, 0.28);
+  border-radius: 999px 999px 0 0;
+  background: var(--sp-ui-hover);
   pointer-events: none;
   z-index: 3;
 }
@@ -418,32 +420,41 @@ onUnmounted(() => window.removeEventListener('sonpick-seek', onExternalSeek))
   align-items: center;
   gap: 2px;
 }
+.gp-volume {
+  width: 100px;
+  flex: 0 0 100px;
+}
 .slide-up-enter-active,
 .slide-up-leave-active {
-  transition: transform 0.2s ease, opacity 0.2s ease;
+  transition: transform 0.24s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.24s ease;
 }
 .slide-up-enter-from,
 .slide-up-leave-to {
-  transform: translateY(100%);
+  transform: translateY(140%);
   opacity: 0;
 }
-@media (max-width: 900px) {
+
+/* 中等宽度：胶囊变窄时先收掉音量条，保住中间进度条的可用宽度 */
+@media (max-width: 1040px) {
   .global-player {
-    grid-template-columns: minmax(0, 1fr) auto;
-    height: 92px;
-    padding: 8px 12px;
+    grid-template-columns: minmax(130px, 1fr) minmax(0, 1.6fr) auto;
+    gap: 12px;
   }
-  .gp-right {
+  .gp-volume {
     display: none;
   }
 }
 @media (max-width: 768px) {
   .global-player {
+    left: 14px;
+    right: 14px;
+    max-width: none;
     grid-template-columns: minmax(0, 1fr) auto;
-    height: 60px;
-    bottom: calc(52px + env(safe-area-inset-bottom, 0px));
-    padding: 0 10px;
+    padding: 0 14px;
     gap: 8px;
+  }
+  .gp-right {
+    display: none;
   }
   .gp-progress-line {
     display: block;
@@ -451,7 +462,13 @@ onUnmounted(() => window.removeEventListener('sonpick-seek', onExternalSeek))
   .cover {
     width: 40px;
     height: 40px;
-    border-radius: 8px;
+    border-radius: 10px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .slide-up-enter-active,
+  .slide-up-leave-active {
+    transition: none;
   }
 }
 </style>

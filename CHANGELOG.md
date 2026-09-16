@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.15.1-rc12
+
+### 修复
+- **移动端同时渲染两份播放面板与两份队列（P0）**：`LayoutView` 的全局抽屉没有移动端排除条件，而 `PlayerView` 的 `.mobile-player-overlay` / `.mobile-queue-sheet` 仍在监听同一组状态，`fullPlayerOpen` 打开时两份 `PlayerPanel` 叠在一起（歌词滚动互相打架、封面主色重复提取），队列也同时渲染两处。根因是"单一状态对应多个挂载点"，本次按"每组件单一宿主"重构，见下。
+- **播放器页二级列表与路由脱节**：`section` 只是 `PlayerView` 的局部 `ref`，`switchSection()` 不写路由。直接访问 `/player/albums` 进不了专辑页，浏览器前进/后退也不同步（侧边栏高亮却会变，属于半成品状态）。现改为 `section` 由路由 `player/:section?` 驱动，双向绑定。
+- **明亮模式暗色残留回归**：`LayoutView` 内联抽屉的 `.drawer-stage` 写死 `#0b0c10` 配 `mix-blend-mode: screen`，是 rc11"主题 token 单一真相源"刚清理过的同类问题。现全部走 `--sp-ui-*`。
+- **底部 Tab 的移动端高亮失效**：`LayoutView` 的移动 Tab 用 `activeKey === t.key` 判定，而 `/player/songs` 等二级路由下 `activeKey` 是 `/player/songs`，永远不等于 `/player`，导致进入播放器页时底部 Tab 不高亮。
+- **弹层层级倒挂**：抽屉 `z-index: 1050` 低于移动端底栏 `1100`，打开大播放器时底栏会浮在抽屉之上。
+
+### 变更
+- **播放器外壳收敛为三层，单一宿主**（新增 `AGENTS.md §5.6`）：
+  - `PlayerView` 只承载列表（100% 宽度），删除内部 `.side-nav`、右侧 `.stage`、`.mobile-player-overlay`、`.mobile-queue-sheet` 四个挂载点，页面高度不再靠 `calc(100vh - 56px - 84px)` 硬算；
+  - 新增 `GlobalPlayerDrawer`（`components/player/`）作为 `PlayerPanel` + `PlayerQueue` 的**唯一宿主**：桌面覆盖 Header + 内容区（左侧系统边栏保留可点，听歌与运维可并行），移动端视口全屏；队列在移动端改为抽屉内全屏覆盖层，不再是独立底部 sheet；
+  - 侧边栏「我的音乐」六项直接指向 `/player/<section>`，`/player` 重定向到 `/player/favorites`，非法 section 由路由守卫纠正；移动端保留页面顶部横向二级 Tab（**不删除入口**，这是易被顺手删掉的功能回退点）。
+- **悬浮胶囊播放条**：底部通铺改为悬浮胶囊 —— `height: 84px` + `border-radius: 999px`（真胶囊，两端完整半圆）+ `max-width: 880px` + `bottom: 24px` + 横向内边距 22px，配 `backdrop-filter: blur(20px)` 磨砂与多层软阴影；≤1040px 先收掉音量滑条保住进度条可用宽度，≤768px 收掉右区控件并让出底部 Tab 与安全区。
+- **几何变量单一真相源**（新增 `AGENTS.md §5.7`）：`--gp-bar-height` / `--gp-bar-gap` / `--gp-bottom-offset` / `--gp-reserve` 定义在 `App.vue` 的 `:root`，胶囊定位、`LayoutView` 底部预留、播放器页高度全部由它驱动，消除四处魔法数字。
+- **「展开」语义统一**：点胶囊封面/标题与右侧展开按钮都改为打开大播放器抽屉（不再跳页）；打开队列时自动带出抽屉；离开播放器页不再强制关闭抽屉。
+- **无障碍与动效**：抽屉补 `role="dialog"` / `aria-modal` / 焦点闭环（Tab 不逃逸）/ 打开期间锁定底层滚动；`Esc` 改为弹窗优先（`PlayerPanel` 的刮削、歌词工作台打开时先关弹窗）；`prefers-reduced-motion` 下禁用抽屉滑动与黑胶旋转；移动端二级 Tab 改用真实 `<button>` 并带 `aria-current`。
+
+### 重构
+- **拆分播放器巨石组件**：`PlayerPanel.vue` 1995 → 1672 行，舞台视图（黑胶 / 叠层 / 纯歌词）提取为纯展示组件 `PlayerStage.vue`（props 进、emits 出，不读 store，自带封面加载失败兜底）；`LayoutView` 由 520 行减回 ~460 行，内联抽屉与其 85 行样式全部移出。
+- 二级列表合法值收敛到 `stores/player.js` 的 `PLAYER_SECTIONS` / `normalizePlayerSection()`，侧边栏、移动 Tab、路由守卫共用一份，不再多处各写。
+
+### 文档
+- 新增 `docs/ui-smoke-checklist.md`：前端人工冒烟清单（明/暗 × 桌面/移动 × 768/900/1040/1280 断点，含挂载点唯一性、焦点闭环、滚动穿透、动效降级等 P0 判定项）。仓库 `tests/` 全是后端测试，前端无自动回归网，清单是目前唯一的质量门，已写入 `AGENTS.md §6` 作为发布前置。
+- `AGENTS.md`：新增 `§5.6 播放器外壳与挂载点`、`§5.7 前端几何变量`；更新 `§1.1 主要交互`、`§5.1 路由表`、`§5.5 z-index 分层`（1400 带改为 `GlobalPlayerDrawer`，1500 带空置）。
+
 ## 0.15.1-rc11
 
 ### 修复

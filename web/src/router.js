@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { normalizePlayerSection } from '@/stores/player'
 import LayoutView from '@/views/LayoutView.vue'
 
 const routes = [
@@ -18,7 +19,18 @@ const routes = [
       { path: 'search', redirect: '/download' },
       { path: 'import', redirect: { path: '/download', query: { tab: 'import' } } },
       { path: 'library', name: 'Library', component: () => import('@/views/LibraryView.vue') },
-      { path: 'player', name: 'Player', component: () => import('@/views/PlayerView.vue') },
+      { path: 'player', redirect: '/player/favorites' },
+      {
+        path: 'player/:section?',
+        name: 'Player',
+        component: () => import('@/views/PlayerView.vue'),
+        // 非法二级列表（手输地址 / 旧书签）直接纠正到「我喜欢的」，避免侧边栏无高亮
+        beforeEnter: (to) => {
+          const section = normalizePlayerSection(to.params.section)
+          if (section === to.params.section) return true
+          return { name: 'Player', params: { section }, replace: true }
+        },
+      },
       { path: 'sources', redirect: '/library' },
       { path: 'webdav', name: 'WebDAV', component: () => import('@/views/WebDAVView.vue') },
       { path: 'logs', name: 'Logs', component: () => import('@/views/LogsView.vue') },

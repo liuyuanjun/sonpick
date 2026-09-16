@@ -77,7 +77,7 @@
         </n-space>
       </n-layout-header>
 
-      <n-layout-content class="content" :class="{ 'player-content': activeKey === '/player', 'has-mini-player': player.showPlayer && !!player.current }">
+      <n-layout-content class="content" :class="{ 'has-mini-player': player.showPlayer && !!player.current }">
         <router-view />
       </n-layout-content>
 
@@ -86,13 +86,16 @@
           v-for="t in tabs"
           :key="t.key"
           class="tab"
-          :class="{ active: activeKey === t.key }"
+          :class="{ active: isTabActive(t) }"
           @click="onMenu(t.key)"
         >
           <n-icon size="20"><component :is="t.icon" /></n-icon>
           <span>{{ t.label }}</span>
         </div>
       </nav>
+
+      <!-- 全局大播放器抽屉：PlayerPanel / PlayerQueue 的唯一宿主 -->
+      <global-player-drawer />
     </n-layout>
   </n-layout>
 
@@ -124,6 +127,11 @@ import {
   LogOutOutline,
   KeyOutline,
   CheckmarkOutline,
+  HeartOutline,
+  ListOutline,
+  PersonOutline,
+  DiscOutline,
+  TimeOutline,
 } from '@vicons/ionicons5'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
@@ -131,6 +139,7 @@ import { useIsMobile } from '@/composables/useIsMobile'
 import { usePlayerStore } from '@/stores/player'
 import GlobalPlayer from '@/components/GlobalPlayer.vue'
 import TaskCenter from '@/components/TaskCenter.vue'
+import GlobalPlayerDrawer from '@/components/player/GlobalPlayerDrawer.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -166,7 +175,7 @@ const player = usePlayerStore()
 // Naive UI 不会全局注入 --n-* 变量，直接用主题变量才能区分激活态
 const themeVars = useThemeVars()
 
-// 移动端底部 Tab（日志入口暂不收进 Tab，可从设置页/直链访问）
+// 移动端底部 Tab
 const tabs = [
   { label: '概览', key: '/', icon: HomeOutline },
   { label: '播放器', key: '/player', icon: PlayCircleOutline },
@@ -180,10 +189,21 @@ const routeTitle = computed(() => {
     Dashboard: '概览',
     Download: '下载',
     Library: '曲库',
-    Player: '播放器',
     Sources: '曲库',
     Logs: '操作日志',
     Settings: '设置',
+  }
+  if (route.name === 'Player') {
+    const sec = route.params.section || 'favorites'
+    const secTitles = {
+      favorites: '我喜欢的',
+      playlists: '歌单',
+      artists: '艺术家',
+      albums: '专辑',
+      songs: '全部歌曲',
+      history: '最近播放'
+    }
+    return secTitles[sec] || '播放器'
   }
   return titles[route.name] || '拾音'
 })
@@ -193,23 +213,51 @@ function icon(comp) {
 }
 
 const menuOptions = [
-  { label: '概览', key: '/', icon: icon(HomeOutline) },
-  { label: '播放器', key: '/player', icon: icon(PlayCircleOutline) },
-  { label: '下载', key: '/download', icon: icon(CloudDownloadOutline) },
-  { label: '曲库', key: '/library', icon: icon(LibraryOutline) },
-  { label: '日志', key: '/logs', icon: icon(DocumentTextOutline) },
-  { label: '设置', key: '/settings', icon: icon(SettingsOutline) },
+  {
+    type: 'group',
+    label: '我的音乐',
+    key: 'music-group',
+    children: [
+      { label: '我喜欢的', key: '/player/favorites', icon: icon(HeartOutline) },
+      { label: '歌单', key: '/player/playlists', icon: icon(ListOutline) },
+      { label: '艺术家', key: '/player/artists', icon: icon(PersonOutline) },
+      { label: '专辑', key: '/player/albums', icon: icon(DiscOutline) },
+      { label: '全部歌曲', key: '/player/songs', icon: icon(MusicalNotes) },
+      { label: '最近播放', key: '/player/history', icon: icon(TimeOutline) },
+    ]
+  },
+  {
+    type: 'group',
+    label: '系统管理',
+    key: 'system-group',
+    children: [
+      { label: '概览', key: '/', icon: icon(HomeOutline) },
+      { label: '下载', key: '/download', icon: icon(CloudDownloadOutline) },
+      { label: '曲库', key: '/library', icon: icon(LibraryOutline) },
+      { label: '日志', key: '/logs', icon: icon(DocumentTextOutline) },
+      { label: '设置', key: '/settings', icon: icon(SettingsOutline) },
+    ]
+  }
 ]
 
 const activeKey = computed(() => {
   const p = route.path
   if (p.startsWith('/download') || p.startsWith('/search') || p.startsWith('/import')) return '/download'
   if (p.startsWith('/library') || p.startsWith('/sources') || p.startsWith('/webdav')) return '/library'
-  if (p.startsWith('/player')) return '/player'
+  if (p.startsWith('/player')) {
+    const sec = route.params.section
+    return sec ? `/player/${sec}` : '/player/favorites'
+  }
   if (p.startsWith('/logs')) return '/logs'
   if (p.startsWith('/settings')) return '/settings'
   return '/'
 })
+
+// 移动端底部 Tab 的激活判定：播放器下的二级 section（/player/songs 等）也算播放器 Tab
+function isTabActive(tab) {
+  if (tab.key === '/player') return activeKey.value.startsWith('/player')
+  return activeKey.value === tab.key
+}
 
 function onMenu(key) {
   router.push(key)
@@ -274,14 +322,9 @@ function logout() {
 .content {
   padding: 16px 20px 24px;
 }
+/* 悬浮播放胶囊浮在内容之上，为其预留底部空间；几何统一由 :root 的 --gp-* 变量驱动 */
 .content.has-mini-player {
-  padding-bottom: 96px;
-}
-.content.player-content {
-  padding: 0;
-}
-.content.player-content.has-mini-player {
-  padding-bottom: 84px;
+  padding-bottom: var(--gp-reserve);
 }
 .mobile-tabs {
   position: fixed;
@@ -314,6 +357,7 @@ function logout() {
   font-weight: 600;
   background: color-mix(in srgb, v-bind('themeVars.primaryColor') 10%, transparent);
 }
+
 @media (max-width: 768px) {
   .header {
     padding: 0 12px;
@@ -322,13 +366,7 @@ function logout() {
     padding: 12px 12px calc(52px + env(safe-area-inset-bottom, 0px) + 12px);
   }
   .content.has-mini-player {
-    padding-bottom: calc(60px + 52px + env(safe-area-inset-bottom, 0px) + 12px);
-  }
-  .content.player-content {
-    padding: 0 0 calc(52px + env(safe-area-inset-bottom, 0px));
-  }
-  .content.player-content.has-mini-player {
-    padding-bottom: calc(60px + 52px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: var(--gp-reserve);
   }
 }
 </style>

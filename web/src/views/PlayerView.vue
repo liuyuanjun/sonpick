@@ -1,19 +1,22 @@
 <template>
-  <div class="player-page" :class="{ 'queue-open': player.showQueue, 'is-dark': themeStore.isDark, 'no-mini': !hasMiniPlayer }" :style="playerPageStyle">
-    <aside class="side-nav">
-      <div
+  <div class="player-page">
+    <!-- 桌面端二级导航已上移到系统侧边栏；移动端保留这里的横向 Tab，避免丢失入口 -->
+    <nav class="player-tabs" aria-label="音乐列表">
+      <button
         v-for="item in menus"
         :key="item.key"
-        class="nav-item"
+        type="button"
+        class="player-tab"
         :class="{ active: section === item.key }"
+        :aria-current="section === item.key ? 'page' : undefined"
         @click="switchSection(item.key)"
       >
         <n-icon size="18"><component :is="item.icon" /></n-icon>
         <span>{{ item.label }}</span>
-      </div>
-    </aside>
+      </button>
+    </nav>
 
-    <main class="content">
+    <main class="player-body">
       <div class="content-head">
         <div>
           <h2 class="page-title">{{ sectionTitle }}</h2>
@@ -213,29 +216,6 @@
       </n-spin>
     </main>
 
-    <section v-if="!isMobile" class="stage">
-      <div class="stage-main">
-        <player-panel />
-      </div>
-      <transition name="queue-slide">
-        <aside v-if="player.showQueue" class="queue-drawer">
-          <player-queue />
-        </aside>
-      </transition>
-    </section>
-
-    <transition name="panel-slide">
-      <div v-if="isMobile && player.fullPlayerOpen" class="mobile-player-overlay">
-        <player-panel />
-      </div>
-    </transition>
-
-    <transition name="panel-slide">
-      <div v-if="isMobile && player.showQueue" class="mobile-queue-sheet">
-        <player-queue />
-      </div>
-    </transition>
-
     <n-modal v-model:show="showCreatePlaylist" preset="dialog" title="新建歌单" positive-text="创建" negative-text="取消" @positive-click="createPlaylistAndClose">
       <n-form>
         <n-form-item label="名称">
@@ -295,8 +275,8 @@
 <script setup>
 import BatchLyricsModal from '@/components/BatchLyricsModal.vue'
 import { computed, onMounted, ref, watch } from 'vue'
-import { onUnmounted } from 'vue'
 import { useMessage, useDialog } from 'naive-ui'
+import { useRoute, useRouter } from 'vue-router'
 import {
   Heart,
   HeartOutline,
@@ -312,13 +292,9 @@ import {
   RefreshOutline,
 } from '@vicons/ionicons5'
 import { useAuthStore } from '@/stores/auth'
-import { usePlayerStore } from '@/stores/player'
-import { useThemeStore } from '@/stores/theme'
+import { usePlayerStore, normalizePlayerSection } from '@/stores/player'
 import { useIsMobile } from '@/composables/useIsMobile'
 import SongTable from '@/components/player/SongTable.vue'
-import PlayerPanel from '@/components/player/PlayerPanel.vue'
-import PlayerQueue from '@/components/player/PlayerQueue.vue'
-import { extractAccentFromImage } from '@/utils/color'
 import {
   addSongsToPlaylist,
   coverUrl,
@@ -344,12 +320,16 @@ import {
 
 const player = usePlayerStore()
 const auth = useAuthStore()
-const themeStore = useThemeStore()
 const message = useMessage()
 const dialog = useDialog()
 const isMobile = useIsMobile()
+const route = useRoute()
+const router = useRouter()
 
-const section = ref('favorites')
+const normalizeSection = normalizePlayerSection
+
+// section 的唯一真相源是路由：/player/<section>，非法值回落到 favorites
+const section = ref(normalizeSection(route.params.section))
 const loading = ref(false)
 const songs = ref([])
 const songsTotal = ref(0)
@@ -365,7 +345,6 @@ const albums = ref([])
 const playlists = ref([])
 const history = ref([])
 const stats = ref(null)
-const pageAccent = ref(null)
 
 const selectedArtist = ref(null)
 const artistSongs = ref([])
@@ -396,8 +375,6 @@ const menus = [
 ]
 
 const sectionTitle = computed(() => menus.find((m) => m.key === section.value)?.label || '播放器')
-// 迷你播放器未展示时不为其预留底部空间，避免页面下方出现一条空白区域
-const hasMiniPlayer = computed(() => player.showPlayer && !!player.current)
 const scrapingVisible = ref(false)
 const showBatchLyrics = ref(false)
 const batchLyricsSongIds = ref([])
@@ -433,30 +410,6 @@ function onMobileAction(key) {
 }
 const playlistOptions = computed(() => playlists.value.map((p) => ({ label: p.name, value: p.id })))
 const isLibraryEmpty = computed(() => !stats.value || !stats.value.song_count)
-const playerPageStyle = computed(() => {
-  // 无封面时的强调色：暗色用品牌 400，亮色用品牌 700（与 tokens 主色一致）
-  const fallback = themeStore.isDark ? { r: 52, g: 211, b: 153 } : { r: 4, g: 120, b: 87 }
-  const { r, g, b } = pageAccent.value || fallback
-  const dark = themeStore.isDark
-  return {
-    '--cover-accent': `rgb(${r}, ${g}, ${b})`,
-    '--cover-accent-seam': `rgba(${r}, ${g}, ${b}, ${dark ? 0.20 : 0.18})`,
-    '--cover-accent-seam-soft': `rgba(${r}, ${g}, ${b}, ${dark ? 0.12 : 0.10})`,
-    '--cover-accent-glow': `rgba(${r}, ${g}, ${b}, ${dark ? 0.18 : 0.13})`,
-    '--cover-accent-wash': `rgba(${r}, ${g}, ${b}, ${dark ? 0.18 : 0.12})`,
-    '--cover-accent-wash-soft': `rgba(${r}, ${g}, ${b}, ${dark ? 0.10 : 0.08})`,
-  }
-})
-
-watch(
-  () => player.cover,
-  async (url) => {
-    pageAccent.value = null
-    if (!url) return
-    pageAccent.value = await extractAccentFromImage(url)
-  },
-  { immediate: true }
-)
 
 function coverOf(songId) {
   return coverUrl(songId, auth.token)
@@ -555,13 +508,38 @@ async function runLibraryScan(all) {
   }
 }
 
-function switchSection(key) {
-  section.value = key
+function resetDetailState() {
   selectedArtist.value = null
   selectedAlbum.value = null
   selectedPlaylist.value = null
+}
+
+// 切换二级列表 = 切换路由；同一 section 重复点击时只刷新
+function switchSection(key) {
+  const next = normalizeSection(key)
+  resetDetailState()
+  if (route.params.section !== next) {
+    router.replace({ name: 'Player', params: { section: next } })
+  }
+  if (section.value === next) {
+    refresh()
+    return
+  }
+  section.value = next
   refresh()
 }
+
+// 深链、浏览器前进后退都由路由驱动 section
+watch(
+  () => route.params.section,
+  (value) => {
+    const next = normalizeSection(value)
+    if (next === section.value) return
+    resetDetailState()
+    section.value = next
+    refresh()
+  },
+)
 
 async function refresh() {
   loading.value = true
@@ -766,145 +744,23 @@ onMounted(async () => {
   await loadPlaylists()
   await refresh()
 })
-
-// 离开播放器页时收起移动端全屏浮层，避免下次进入时意外弹出
-onUnmounted(() => {
-  player.fullPlayerOpen = false
-})
 </script>
 
 <style scoped>
+/* 播放器页只承载列表；「正在播放」大视图由 GlobalPlayerDrawer 统一承担 */
 .player-page {
-  --player-surface: rgba(250, 252, 255, 0.74);
-  --player-surface-strong: rgba(255, 255, 255, 0.86);
-  --player-surface-soft: rgba(238, 243, 250, 0.50);
-  --cover-accent: var(--sp-ui-primary);
-  --cover-accent-seam: color-mix(in srgb, var(--sp-ui-primary) 18%, transparent);
-  --cover-accent-seam-soft: color-mix(in srgb, var(--sp-ui-primary) 10%, transparent);
-  --cover-accent-glow: color-mix(in srgb, var(--sp-ui-primary) 13%, transparent);
-  --cover-accent-wash: color-mix(in srgb, var(--sp-ui-primary) 12%, transparent);
-  --cover-accent-wash-soft: color-mix(in srgb, var(--sp-ui-primary) 8%, transparent);
-  --player-seam: var(--cover-accent-seam);
-  --player-seam-soft: var(--cover-accent-seam-soft);
-  --player-stage-wash: color-mix(in srgb, var(--cover-accent-wash) 34%, rgba(245, 248, 252, 0.70));
-  --player-stage-wash-soft: color-mix(in srgb, var(--cover-accent-wash-soft) 42%, rgba(245, 248, 252, 0.18));
-  --player-panel-glow: var(--cover-accent-glow);
-  --player-scrollbar-thumb: rgba(86, 99, 118, 0.24);
-  --player-scrollbar-thumb-hover: color-mix(in srgb, var(--sp-ui-primary) 46%, transparent);
-  --player-scrollbar-track: rgba(255, 255, 255, 0.18);
-  display: grid;
-  align-items: stretch;
-  grid-template-columns: 168px minmax(260px, 600px) minmax(420px, 1fr);
-  gap: 0;
-  height: calc(100vh - 56px - 84px);
-  min-height: calc(100vh - 56px - 84px);
-  margin: 0;
-  background:
-    radial-gradient(980px 440px at 78% -12%, var(--player-panel-glow), transparent 60%),
-    radial-gradient(760px 360px at 10% 100%, rgba(64, 128, 255, 0.07), transparent 58%),
-    var(--sp-ui-card);
-  position: relative;
-  overflow: hidden;
-  border-radius: 0;
-  border: none;
-}
-.player-page.is-dark {
-  --player-surface: rgba(20, 24, 31, 0.72);
-  --player-surface-strong: rgba(30, 34, 43, 0.82);
-  --player-surface-soft: rgba(34, 40, 52, 0.38);
-  --player-seam: var(--cover-accent-seam);
-  --player-seam-soft: var(--cover-accent-seam-soft);
-  --player-stage-wash: color-mix(in srgb, var(--cover-accent-wash) 36%, rgba(18, 22, 30, 0.78));
-  --player-stage-wash-soft: color-mix(in srgb, var(--cover-accent-wash-soft) 42%, rgba(18, 22, 30, 0.22));
-  --player-panel-glow: var(--cover-accent-glow);
-  --player-scrollbar-thumb: rgba(172, 190, 214, 0.24);
-  --player-scrollbar-thumb-hover: color-mix(in srgb, var(--sp-ui-primary) 48%, transparent);
-  --player-scrollbar-track: rgba(255, 255, 255, 0.06);
-}
-.player-page.queue-open {
-  grid-template-columns: 168px minmax(240px, 600px) minmax(600px, 1fr);
-}
-.player-page.no-mini {
-  height: calc(100vh - 56px);
-  min-height: calc(100vh - 56px);
-}
-
-.side-nav {
-  border-right: 1px solid rgba(127, 127, 127, 0.10);
-  padding: 16px 10px;
-  background: linear-gradient(180deg, var(--player-surface-strong), var(--player-surface));
-  overflow: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--player-scrollbar-thumb) transparent;
-}
-.side-nav::-webkit-scrollbar,
-.content::-webkit-scrollbar {
-  width: 8px;
-}
-.side-nav::-webkit-scrollbar-track,
-.content::-webkit-scrollbar-track {
-  background: transparent;
-}
-.side-nav::-webkit-scrollbar-thumb,
-.content::-webkit-scrollbar-thumb {
-  border: 2px solid transparent;
-  border-radius: 999px;
-  background: var(--player-scrollbar-thumb);
-  background-clip: padding-box;
-}
-.side-nav::-webkit-scrollbar-thumb:hover,
-.content::-webkit-scrollbar-thumb:hover {
-  background: var(--player-scrollbar-thumb-hover);
-  background-clip: padding-box;
-}
-.nav-item {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 11px 12px;
-  border-radius: 12px;
-  cursor: pointer;
-  color: var(--sp-ui-text-2);
-  margin-bottom: 4px;
-  transition: all 0.15s ease;
-  user-select: none;
+  flex-direction: column;
+  min-width: 0;
 }
-.nav-item:hover {
-  background: rgba(127, 127, 127, 0.08);
+.player-body {
+  min-width: 0;
 }
-.nav-item.active {
-  background: color-mix(in srgb, var(--sp-ui-primary) 14%, transparent);
-  color: var(--sp-ui-primary);
-  font-weight: 600;
+/* 桌面端的二级导航在系统侧边栏；这里只在移动端出现 */
+.player-tabs {
+  display: none;
 }
 
-.content {
-  padding: 18px 14px 22px 16px;
-  overflow: auto;
-  scrollbar-gutter: stable;
-  scrollbar-width: thin;
-  scrollbar-color: var(--player-scrollbar-thumb) transparent;
-  min-width: 0;
-  max-width: 100%;
-  height: 100%;
-  position: relative;
-  background:
-    linear-gradient(90deg, var(--player-surface-strong) 0%, var(--player-surface) 72%, var(--player-surface-soft) 100%),
-    radial-gradient(520px 280px at 92% 16%, var(--player-panel-glow), transparent 66%);
-  backdrop-filter: blur(20px) saturate(1.06);
-  box-shadow: inset -1px 0 0 rgba(127, 127, 127, 0.08);
-}
-.content::before {
-  content: '';
-  position: absolute;
-  inset: 0 -54px 0 auto;
-  width: 108px;
-  pointer-events: none;
-  z-index: 1;
-  background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0), var(--player-seam-soft) 40%, rgba(255, 255, 255, 0)),
-    radial-gradient(180px 70% at 100% 48%, var(--player-seam), transparent 72%);
-}
 .content-actions {
   position: sticky;
   top: 0;
@@ -912,7 +768,11 @@ onUnmounted(() => {
   padding: 0 0 10px 10px;
   margin: -4px -4px 0 0;
   border-radius: 0 0 0 18px;
-  background: linear-gradient(180deg, var(--player-surface-strong), rgba(255, 255, 255, 0));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--sp-ui-body) 90%, transparent),
+    color-mix(in srgb, var(--sp-ui-body) 0%, transparent)
+  );
   backdrop-filter: blur(16px);
 }
 .content-head {
@@ -932,69 +792,9 @@ onUnmounted(() => {
 .empty-library {
   margin: 24px 0 8px;
   padding: 28px 16px;
-  border: 1px dashed rgba(127, 127, 127, 0.28);
+  border: 1px dashed color-mix(in srgb, var(--sp-ui-text-3) 30%, transparent);
   border-radius: 16px;
-  background: rgba(127, 127, 127, 0.03);
-}
-
-.stage {
-  display: flex;
-  flex-direction: row;
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  position: relative;
-  background:
-    linear-gradient(90deg, var(--player-stage-wash) 0%, var(--player-stage-wash-soft) 11%, rgba(0, 0, 0, 0) 30%),
-    #0b0c10;
-  overflow: hidden;
-}
-.stage::before {
-  content: '';
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 118px;
-  pointer-events: none;
-  z-index: 2;
-  background:
-    linear-gradient(90deg, var(--player-surface-soft), rgba(255, 255, 255, 0)),
-    radial-gradient(180px 72% at 0 48%, var(--player-seam), transparent 72%);
-  mix-blend-mode: screen;
-  opacity: 0.58;
-}
-.player-page.is-dark .stage::before {
-  mix-blend-mode: normal;
-  opacity: 0.76;
-}
-.stage-main {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.queue-drawer {
-  width: 280px;
-  flex: 0 0 280px;
-  border-left: 1px solid var(--sp-ui-border);
-  min-height: 0;
-  overflow: hidden;
-  background: var(--sp-ui-card);
-  color: var(--sp-ui-text-1);
-}
-.queue-slide-enter-active,
-.queue-slide-leave-active {
-  transition: width 0.18s ease, opacity 0.18s ease, flex-basis 0.18s ease;
-}
-.queue-slide-enter-from,
-.queue-slide-leave-to {
-  width: 0 !important;
-  flex-basis: 0 !important;
-  opacity: 0;
-  border-left-width: 0;
+  background: var(--sp-ui-hover);
 }
 
 .card-grid {
@@ -1066,72 +866,43 @@ onUnmounted(() => {
   margin-top: 8px;
 }
 
-@media (max-width: 1280px) {
-  .player-page {
-    grid-template-columns: 156px minmax(240px, 600px) minmax(340px, 1fr);
-  }
-  .player-page.queue-open {
-    grid-template-columns: 156px minmax(220px, 600px) minmax(500px, 1fr);
-  }
-}
-
-@media (max-width: 1100px) {
-  .player-page,
-  .player-page.queue-open {
-    grid-template-columns: 64px minmax(480px, 600px) minmax(300px, 1fr);
-  }
-  .nav-item span {
-    display: none;
-  }
-  .nav-item {
-    justify-content: center;
-    padding: 12px 8px;
-  }
-}
-
-/* ---------- 移动端（≤768px）：顶部横向 Tab + 全宽列表 + 全屏播放器浮层 ---------- */
+/* ---------- 移动端（≤768px）：顶部横向二级 Tab + 全宽列表 ---------- */
 @media (max-width: 768px) {
-  .player-page,
-  .player-page.queue-open {
+  .player-tabs {
     display: flex;
-    flex-direction: column;
-    height: calc(100dvh - 56px - 60px - 52px - env(safe-area-inset-bottom, 0px));
-    min-height: calc(100dvh - 56px - 60px - 52px - env(safe-area-inset-bottom, 0px));
-  }
-  .player-page.no-mini {
-    height: calc(100dvh - 56px - 52px - env(safe-area-inset-bottom, 0px));
-    min-height: calc(100dvh - 56px - 52px - env(safe-area-inset-bottom, 0px));
-  }
-  .side-nav {
-    flex: 0 0 auto;
-    display: flex;
-    flex-direction: row;
-    gap: 2px;
-    padding: 8px 10px;
-    border-right: none;
-    border-bottom: 1px solid rgba(127, 127, 127, 0.10);
+    gap: 6px;
+    align-items: center;
     overflow-x: auto;
     overflow-y: hidden;
+    padding-bottom: 10px;
+    scrollbar-width: none;
   }
-  .nav-item {
-    flex: 0 0 auto;
-    justify-content: center;
-    padding: 7px 12px;
-    margin-bottom: 0;
-    gap: 6px;
-    font-size: 13px;
-    white-space: nowrap;
-  }
-  .nav-item span {
-    display: inline;
-  }
-  .content {
-    flex: 1 1 auto;
-    height: auto;
-    padding: 12px 12px 16px;
-  }
-  .content::before {
+  .player-tabs::-webkit-scrollbar {
     display: none;
+  }
+  .player-tab {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 12px;
+    font-size: 13px;
+    line-height: 1;
+    white-space: nowrap;
+    color: var(--sp-ui-text-2);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+  .player-tab:hover {
+    background: var(--sp-ui-hover);
+  }
+  .player-tab.active {
+    color: var(--sp-ui-primary);
+    background: var(--sp-ui-primary-soft);
+    border-color: color-mix(in srgb, var(--sp-ui-primary) 35%, transparent);
   }
   .content-head {
     margin-bottom: 10px;
@@ -1147,27 +918,5 @@ onUnmounted(() => {
     grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
     gap: 10px;
   }
-}
-
-.mobile-player-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1400;
-  background: var(--sp-ui-body);
-}
-.mobile-queue-sheet {
-  position: fixed;
-  inset: 0;
-  z-index: 1500;
-  background: var(--sp-ui-card);
-}
-.panel-slide-enter-active,
-.panel-slide-leave-active {
-  transition: transform 0.25s ease, opacity 0.25s ease;
-}
-.panel-slide-enter-from,
-.panel-slide-leave-to {
-  transform: translateY(100%);
-  opacity: 0.4;
 }
 </style>
