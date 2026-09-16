@@ -198,9 +198,7 @@ class Song(Base):
     genre = Column(String(255), nullable=True)
     source = Column(String(64), nullable=True)
     source_id = Column(String(128), nullable=True)
-    format = Column(String(16), nullable=True)
     duration = Column(Integer, nullable=True)
-    file_size = Column(Integer, nullable=True)
     cover_path = Column(String(1024), nullable=True)
     lrc_path = Column(String(1024), nullable=True)
     lyrics_provider = Column(String(64), nullable=True)
@@ -228,9 +226,7 @@ class Song(Base):
             "genre": self.genre,
             "source": self.source,
             "source_id": self.source_id,
-            "format": self.format,
             "duration": self.duration,
-            "file_size": self.file_size,
             "cover_path": self.cover_path,
             "lrc_path": self.lrc_path,
             "lyrics_provider": self.lyrics_provider,

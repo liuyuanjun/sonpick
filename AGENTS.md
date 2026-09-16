@@ -164,6 +164,12 @@ music/
 - SQLite 迁移顺序：`init_db()` 依次执行建表、`_ensure_columns`、默认媒体源、SongFile 索引以及路径责任迁移；迁移会将历史 Song 路径/侧车回填到 SongFile 后重建 `songs` 表删除旧路径列。
 - SQLite 单写者纪律：`database.py` 在数据访问层（engine 事件）用进程内 `RLock` 串行化写事务——执行写语句（INSERT/UPDATE/DELETE/REPLACE/CREATE/ALTER/DROP）前取锁，提交/回滚时释放；纯读事务不阻塞。业务代码无需感知此锁，也不要自建写锁绕过它。
 - **SongFile 是物理文件唯一真相源**：所有播放、上传、转码、删除、整理、刮削和标签写入必须通过 `SongFileResolver` 或明确 SongFile 查询选择版本；禁止重新引入 `Song.local_path` / `Song.webdav_path`。
+- **`Song.format` / `Song.file_size` 已删除，禁止再加回来**（v0.15.1-rc13）：这两列只在**扫描入库**与**下载替换**时写入，而转码（`convert_service`）、`keep_both` 新增版本（`download_duplicate_service`）、整理改路径（`library_organize_service`）都只更新 `SongFile` —— 多版本场景下必然失真（一首 FLAC 转码出 MP3 后 `file_size` 仍是 FLAC 的旧值）。格式与体积**只由 `SongFile` 承载**，展示走 `app/services/song_version_summary.py`。删列迁移见 `database.py` 的 `_migrate_song_drop_format_file_size`，**必须排在 `_migrate_song_path_responsibility` 之后**（后者要从旧表读这两列回填 `song_files`）。
+- **曲库统计的体积口径 = `local_size`**：本地**可用**版本体积之和（`local_path` 非空且未标记 unavailable），WebDAV 版本不计入 —— 回答"这套曲库真实占了多少磁盘"。字段刻意不叫 `total_size`，避免被误解成全量；前端概览页 KPI 文案为「本地占用」。
+- **一个 Song 对应 1..N 个 SongFile，展示前必须先定义「取哪个版本」**：
+  - 列表与信息弹窗的「格式 / 大小」= `preferred_version`，按**音质优先**（无损在前）取；规则是 `convert_service.order_playable_files`，**与播放选择共用同一实现**，因此"显示 FLAC"就意味着无损优先模式下真的会播 FLAC；多版本另附 `version_count` 供 UI 标注 `+N`。
+  - 写入/转码/刮削另一条规则是 `SongFileResolver.candidates`（要求本地可写文件、排除远端）。**两条规则语义不同是刻意的**，不要合并；但任何新的"选版本"需求必须复用其中之一，禁止再写第三套。
+  - 列表接口取版本必须**批量**（`song_version_summary.songs_with_summary` 一次 `IN` 查询）；逐条查会把列表拖成 N+1。回归护栏见 `tests/test_song_list_versions.py`（SQL 条数不随歌曲数增长）。
 - **Song 不记录来源**：歌曲与来源的归属只由 `SongFile.library_source_id` 承载。可见性过滤（喜欢/艺术家/专辑/历史/歌单/统计）、批量任务按来源选歌、来源歌曲数统计，统一使用 `app/services/library_visibility.py`（`active_song_query` / `active_song_filter` / `has_version_in_source` / `count_songs_in_source`）；禁止再按 Song 判断来源或重新加回 `Song.library_source_id`。
 - **元数据 L0（展示/刮削成功只认）**：`Song` 文本字段 + 封面 `data/covers/by-hash/{sha}`（`Song.cover_path` 指向它）+ 歌词指针/provenance。侧车 `cover.jpg` / `.lrc` 与内嵌标签是 L1/L2 写穿；格式不支持内嵌（如 WMA）为 `unsupported`，不算刮削失败。详见 `docs/metadata-l0-cover-refactor.md`。
 - `Song.cover_path` / `Song.lrc_path` 是 L0 指针（封面应为 by-hash）；`SongFile.cover_path` / `SongFile.lrc_path` 是版本侧车资源。扫描和选中版本时可回填 L0。
@@ -318,6 +324,28 @@ Naive 的 modal / drawer / popover 会被 teleport 到 `body`，脱离 `.app-lay
 - 圆角：`border-radius: 999px`（等于高度一半的"真胶囊"；CSS 会自动钳制，改高度不用改圆角）。**禁止**用 `border-radius: 50%`——那会变成橄榄形并让弧线侵入内容区。
 - 新增任何"浮在内容之上的底部条"时，改这里的变量，不要逐个页面调 padding。
 
+### 5.8 工具函数的单一入口（格式化 / 媒体常量）
+
+**同一件事只能有一份实现。** 组件里**禁止**再定义 `formatSize` / `formatTime` / `formatDuration` / `toUpperCase()` 之类的本地函数——历史上一度散落 17 处，同一份数据在不同页面显示口径不同（512 字节在下载页显示 `0 KB`、在曲库页显示 `512 B`；任务耗时有的写 `1时2分3秒`、有的写 `3 小时 25 分`）。
+
+| 需求 | 唯一入口 | 说明 |
+|------|----------|------|
+| 字节 → `1.5 MB` | `utils/format.js` `formatFileSize` | 覆盖 B/KB/MB/GB/TB；`{ fallback }` 由调用方定占位符（表格 `-`、统计卡 `0 B`） |
+| 秒 → `mm:ss` | `utils/format.js` `formatClock` | **音频时间轴专用**（进度条 / 歌词） |
+| 秒 → `3 小时 25 分` | `utils/format.js` `formatDurationText` | 给人读的时长；`{ withSeconds: false }` 用于总时长 |
+| 秒 → `3 分钟前` | `utils/format.js` `formatRelativeTime` | `{ coarse: true }` 用于活动流（`刚刚 / 3 小时前 / 2 天前`） |
+| ISO → 本地时刻 | `utils/format.js` `formatDateTime` / `formatTimeOfDay` | 秒与年可开关 |
+| 两个时间点的秒差 | `utils/format.js` `secondsBetween` | 容错统一在这里，业务不要各写 `new Date().getTime()` |
+| 音频扩展名 / 无损判定 / 格式标签 | `utils/media.js` `isAudioFile` / `isLosslessFormat` / `formatLabel` | 与后端 `services/constants.py` 对应 |
+
+配套约束：
+
+- **不要为了"少写代码"合并语义不同的函数**：`formatClock`（时间轴刻度）与 `formatDurationText`（人读时长）刻意分开，靠 if 分支合体只会更难维护。
+- 页面若需绑定固定口径，允许写**只有一行、纯转发**的包装（如 DashboardView 的 `formatSize`），但必须注释说明"逻辑在 utils"，不得往里加实现。
+- 数值入参一律经 `toFiniteNumber` 这类严格转换：`Number(null) === 0`，直接 `Number()` 会把"缺数据"渲染成"0 秒 / 0 字节"。
+- **改 utils 必须同步跑单测**：`pnpm test`（`node --test "src/utils/*.test.js"`）。新增格式化函数必须带用例。
+- ⚠️ `utils/media.js` 的常量与后端 `app/services/constants.py` 是**跨语言的两份**，改一边必须改另一边（同样适用于"无损"语义）。后续建议加 CI 断言，与版本号三处一致的检查放在一起。
+
 ### 5.4 主题与配色（明暗双模）
 
 **唯一真相源：`web/src/theme/tokens.js`**。任何颜色都从这里派生，业务组件**禁止写死色值**。
@@ -340,11 +368,12 @@ isDark ──┬──> buildNaiveOverrides()         → App.vue 的 :theme-ove
 - `web/public/brand/brand.css` 的 `[data-theme="light"]` 分支取值必须与 `tokens.js` 的 `SURFACE.light` 一致，避免两处漂移。
 - 组件内部的局部调色板（如 `PlayerPanel` 的 `--fg`/`--rail`、`PlayerPanel`/`GlobalPlayerDrawer` 的 `--cover-accent*`）可自定义，但必须同时给出暗色与 `.light` 两套。
 
-### 5.3 构建
+### 5.3 构建与单测
 
 ```bash
 cd web
 pnpm install && pnpm build
+pnpm test          # = node --test "src/utils/*.test.js"，工具函数单测
 # 无 pnpm 时先安装/启用项目声明的 pnpm 版本，不建议切换 npm/yarn。
 ```
 
@@ -371,7 +400,7 @@ pnpm install && pnpm build
 3. `app/main.py` → `APP_VERSION`
 4. `CHANGELOG.md` 追加条目
 
-**前端改动额外要求**：发布前必须跑 `cd web && vite build`（必须绿）与 `venv/bin/python -m pytest tests -q`（必须全绿），并按 `docs/ui-smoke-checklist.md` 走一遍人工冒烟（至少覆盖明亮/暗色 × 桌面/移动四象限）。前端没有自动回归网，这张清单是唯一的质量门，不得跳过。
+**前端改动额外要求**：发布前必须跑 `cd web && vite build` 与 `pnpm test`（均须通过）、`venv/bin/python -m pytest tests -q`（必须全绿），并按 `docs/ui-smoke-checklist.md` 走一遍人工冒烟（至少覆盖明亮/暗色 × 桌面/移动四象限）。前端没有 E2E 回归网，`src/utils` 单测 + 人工清单是唯一的质量门，不得跳过。
 
 API 必须继续暴露 `X-App-Version`。  
 用户要求 git 提交时：打 `v{版本号}` tag，并与代码一并推送（远程为 GitHub 时）。
@@ -403,9 +432,25 @@ source venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
+# 测试（两种等价，pytest.ini 已配 pythonpath=.，控制台脚本与 -m 行为一致）
+venv/bin/pytest -q
+venv/bin/python -m pytest tests -q
+
 # 前端（开发）
 cd web && yarn && yarn dev
 ```
+
+⚠️ **venv 不可随项目搬目录**：`venv/bin/*` 里的 shebang、`activate` 的 `VIRTUAL_ENV`、`pyvenv.cfg` 的 `command` 都写死了创建时的绝对路径。项目移动后会出现 `bad interpreter: /旧路径/venv/bin/python3.x`。修法（选一）：
+
+```bash
+# A. 重建（推荐，最干净）
+python3 -m venv venv && venv/bin/pip install -r requirements.txt
+# B. 就地修正路径（无网络时可用）
+grep -rIl "/旧的项目绝对路径/venv" venv/bin | xargs perl -pi -e 's|/旧的项目绝对路径/venv|'"$PWD"'/venv|g'
+perl -pi -e 's|/旧的项目绝对路径/venv|'"$PWD"'/venv|g' venv/pyvenv.cfg
+```
+
+另：项目搬移后 `app/`、`tests/` 下残留的 `__pycache__` 里烧着旧绝对路径，会让报错栈显示成旧路径，建议 `find app tests -name __pycache__ -type d -prune -exec rm -rf {} +` 清一次。
 
 环境变量见 `.env`：`SECRET_KEY`、`STORAGE_PATH`、`DATABASE_PATH`、`DATA_DIR`。
 

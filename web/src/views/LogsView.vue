@@ -53,7 +53,7 @@
                       {{ row.status }}
                     </n-tag>
                   </div>
-                  <n-text depth="3" class="log-time">{{ formatTime(row.created_at) }}</n-text>
+                  <n-text depth="3" class="log-time">{{ formatDateTime(row.created_at, { withYear: true }) }}</n-text>
                 </div>
                 <div class="log-title">{{ row.title || '—' }}</div>
                 <div v-if="row.message" class="log-message">{{ row.message }}</div>
@@ -74,6 +74,7 @@ import { h, onMounted, reactive, ref } from 'vue'
 import { NTag, useDialog, useMessage } from 'naive-ui'
 import api from '@/api/client'
 import { useIsMobile } from '@/composables/useIsMobile'
+import { formatDateTime } from '@/utils/format'
 
 const message = useMessage()
 const dialog = useDialog()
@@ -121,7 +122,7 @@ const columns = [
     title: '时间',
     key: 'created_at',
     width: 180,
-    render: (row) => formatTime(row.created_at),
+    render: (row) => formatDateTime(row.created_at, { withYear: true }),
   },
   {
     title: '操作',
@@ -175,14 +176,7 @@ const columns = [
   },
 ]
 
-function formatTime(v) {
-  if (!v) return '—'
-  try {
-    return new Date(v).toLocaleString()
-  } catch {
-    return v
-  }
-}
+function isDir(row) { return row.is_dir || row.type === 'dir' || row.isdir }
 
 async function load() {
   loading.value = true

@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.15.1-rc13
+
+### 新增
+- **歌曲列表增加「格式」「大小」两列**：我喜欢的 / 全部歌曲 / 最近播放 / 艺术家详情 / 专辑详情 / 歌单详情（六处共用同一张歌曲表）都会显示，多版本歌曲在格式后带 `+N` 角标，hover 列出每个版本的格式/体积/位置。
+- **新增「查看歌曲信息」弹窗**：列表每行一个信息按钮，弹窗展示大封面、元信息（时长/年份/风格/播放次数/可用性/来源平台）、**全部文件版本明细**（格式、体积、本地或 WebDAV、来源名称、可用状态、失效原因）与歌词状态（类型/来源/匹配度/抓取时间）。数据全部取自列表行，不额外请求详情接口。
+
+### 修复
+- **列表的格式/大小不能取 `Song.format` / `Song.file_size`**：这两个列只在**扫描入库**与**下载替换**时写入，而转码（`convert_service`）、`keep_both` 新增版本（`download_duplicate_service`）、整理改路径（`library_organize_service`）都只更新 `SongFile`。也就是说一首 FLAC 转码出 MP3 之后，`Song.file_size` 仍是 FLAC 的旧值；用 `keep_both` 加进新版本后 `Song.format` 可能还停在原值。现统一改为从 `SongFile` 聚合，并在 `AGENTS.md §4.3` 写明这两列**不得用于展示**。
+- **「选哪个文件」曾有三份实现，且排序规则不一致**：`ConvertService.select_playable_files`（播放）、`SongFileResolver.candidates`（写入/转码）各自实现了一套排序，前者按 `id` 升序、后者按 `id` 降序且要求本地优先，同一首歌在两条链路上可能选到不同文件。现把**播放**那条规则抽成纯函数 `convert_service.order_playable_files`，列表的「首选版本」与播放选择共用同一实现 —— 保证「列表显示 FLAC」等于「无损优先模式下真的播 FLAC」。两条规则的**语义差异**（播放允许流式读 WebDAV；写入要求本地可写）保留并在代码注释中写明。
+- **重检单曲后的可用性口径不一致**：`POST /api/songs/{id}/recheck` 原先用 `select_playable_file` 判定 `has_playable_file`，会把刚标记失效的歌曲仍报成"可播放"；现改为"存在可用版本"，与 `/api/songs` 列表口径一致。
+
+### 变更
+- **删除 `Song.format` / `Song.file_size` 两个历史遗留列**：它们只在**扫描入库**与**下载替换**时写入，而转码（`convert_service`）、`keep_both` 新增版本（`download_duplicate_service`）、整理改路径（`library_organize_service`）都只更新 `SongFile` —— 一首 FLAC 转码出 MP3 后 `Song.file_size` 仍是 FLAC 的旧值，多版本场景下必然失真且无修复价值。现物理文件的格式与体积**只由 `SongFile` 承载**：
+  - `Song` 模型与 `SongOut` 去掉两个字段；4 处读取点改为直接用 `SongFile`（`musicdl_service` 入库、`task_worker` 下载日志与日志 detail、`library_extra` 统计）；`library_scan_service` / `download_duplicate_service` 里的写回一并移除。
+  - 新增幂等迁移 `_migrate_song_drop_format_file_size`（表重建范式），**排在 `_migrate_song_path_responsibility` 之后** —— 后者要从旧表读这两列回填 `song_files`；同时把它的 `SELECT` 改为按现存列自适应，避免迁移顺序被打乱时炸掉极老的库。
+- **曲库统计体积改用新口径 `local_size`**：本地**可用**版本体积之和（WebDAV 版本不计入），回答"真实占了多少磁盘"；原先取 `sum(Song.file_size)`，在多版本曲库里是错的。字段由 `total_size` 更名（语义变了就不该沿用旧名），前端概览页 KPI 文案同步为「本地占用 · 本地文件合计（不含 WebDAV）」。
+- **新增 `app/services/song_version_summary.py`**：统一批量产出 `versions` / `available_formats` / `has_playable_file` / `preferred_version`，`/api/songs`、`/api/favorites`、`/api/history`、`/api/artists/{name}/songs`、`/api/albums/songs`、`/api/playlists/{id}/songs` 六处共用，字段名与语义与曲库列表**完全一致**。
+- `SongOut` 新增 `preferred_version`（含 `id`/`format`/`file_size`/`location`/`availability_status`/`version_count`）。
+- 删除 `routers/playlists.py` 与 `routers/library_extra.py` 中各自重复的 `_song_out`（后者已随调用点迁移一并移除），单曲响应统一走 `song_with_summary`。
+- **历史列表去重后批量取版本**：历史里同一首歌会重复出现，若逐条取版本会退化成 N+1。
+- 前端新增 `utils/format.js`；列表列、信息弹窗、版本明细共用同一份体积格式化，不再各写各的。
+- **本地开发环境修复**：项目搬到新路径后 `venv` 内的 shebang / `VIRTUAL_ENV` / `pyvenv.cfg` 仍指向旧绝对路径，`venv/bin/uvicorn`、`pip`、`pytest` 一律报 `bad interpreter`。已就地修正 49 个脚本的路径；新增 `pytest.ini`（`pythonpath = .`）让 `venv/bin/pytest` 与 `venv/bin/python -m pytest` 行为一致（此前控制台脚本会报 `ModuleNotFoundError: No module named 'app'`）；清理 `__pycache__` 中烧死旧路径的字节码。`AGENTS.md §7` 补充重建与就地修正两种做法。
+
+### 测试
+- 新增 `tests/test_song_list_versions.py`（11 项）：覆盖六个列表接口都带摘要、音质优先取值、失效版本跳过与降级、全部失效时不给出首选、**首选版本等于播放链路首个候选**、曲库统计体积口径（只算本地可用版本 / 排除 WebDAV 版本），以及一条 **N+1 护栏**（灌入 30 首双版本歌曲后，列表 SQL 条数必须与 4 首时**完全相等**）。
+- 新增 `tests/test_song_drop_legacy_columns.py`（5 项）：删列迁移的正确性、数据完整性与幂等性。
+- 扩展 `tests/test_playback_selection.py`：新增版本摘要 4 项（含"与播放首选择一致"的交叉验证）。后端测试 54 → **74 项**。
+
+### 重构
+- **前端格式化与媒体常量收口到单一入口**：此前"数字/时间 → 人看的字符串"散落 **17 处**，同一份数据在不同页面口径不同，现统一为两个文件：
+  - `utils/format.js`：`formatFileSize` / `formatClock` / `formatDurationText` / `formatRelativeTime` / `formatDateTime` / `formatTimeOfDay` / `secondsBetween`。合并了 4 份体积格式化（`SearchDownload` 原来把 512 B 显示成 `0 KB`；`Dashboard` 到 TB 而其余只到 MB，超过 1 GB 会显示成 `102400.00 MB`）、3 份日期时间格式化（空值兜底各不相同）与 4 份时长格式化（`1时2分3秒` 与 `3 小时 25 分` 两种写法）。
+  - `utils/media.js`：`isAudioFile` / `isLosslessFormat` / `formatLabel` / `versionLocationLabel` / `availabilityLabel` / `availabilityTagType`。合并了 `LibraryView` 与 `WebDAVView` 逐字相同的音频扩展名正则，以及 6 处 `String(x).toUpperCase()` 格式名转换。
+  - 语义不同的函数**刻意不合并**：`formatClock`（音频时间轴 `mm:ss`）与 `formatDurationText`（人读时长）保持分开；`formatRelativeTime` 的精确/粗粒度两种模式用 `{ coarse: true }` 表达。
+  - 数值入参统一走严格转换：`Number(null) === 0`，原先会把"缺数据"渲染成 `0 秒`／`0 字节`（新实现已修）。
+- 新增 `web/src/utils/format.test.js`（8 项断言组，覆盖各口径与边界），`web/package.json` 增加 `test` 脚本（`node --test "src/utils/*.test.js"`），前端单测从"手动 node 跑单个文件"变为一条命令 14 项；`AGENTS.md §5.3/§6` 将 `pnpm test` 纳入发布前置。
+- 可见的展示口径变化（均为统一后的结果）：下载页 512 B 由 `0 KB` → `512 B`；概览页体积由"≥10 取整"改为固定两位小数（`13 MB` → `12.50 MB`）；任务耗时由 `1时2分3秒` → `1 小时 2 分 3 秒`。
+- `AGENTS.md` 新增 **§5.8 工具函数的单一入口**（含"禁止在组件里写本地格式化函数"与跨语言常量同步要求）。
+
 ## 0.15.1-rc12
 
 ### 修复

@@ -86,9 +86,9 @@
           </n-button>
         </div>
         <div class="progress-row">
-          <span>{{ formatTime(player.currentTime) }}</span>
+          <span>{{ formatClock(player.currentTime) }}</span>
           <n-slider :value="progress" :step="0.1" :tooltip="false" @update:value="seek" />
-          <span>{{ formatTime(player.duration) }}</span>
+          <span>{{ formatClock(player.duration) }}</span>
         </div>
       </div>
 
@@ -142,7 +142,7 @@ import { usePlayerStore } from '@/stores/player'
 import { useThemeStore } from '@/stores/theme'
 import { useIsMobile } from '@/composables/useIsMobile'
 import { useMediaSession } from '@/composables/useMediaSession'
-import { formatTime } from '@/utils/lrc'
+import { formatClock } from '@/utils/format'
 
 const player = usePlayerStore()
 const themeStore = useThemeStore()
@@ -287,11 +287,15 @@ onUnmounted(() => window.removeEventListener('sonpick-seek', onExternalSeek))
 .global-player {
   /* 本组件经 Teleport 挂载到 body，不在 n-config-provider 子树内，
      --n-* 主题变量不可达；颜色一律取 :root 上的 --sp-ui-* 令牌，不写死色值 */
-  --gp-bg: color-mix(in srgb, var(--sp-ui-card-strong) 88%, transparent);
-  --gp-border: var(--sp-ui-border);
+  --gp-bg: color-mix(in srgb, var(--sp-ui-card-strong) 70%, transparent);
+  --gp-border: color-mix(in srgb, var(--sp-ui-border) 70%, transparent);
   --gp-text: var(--sp-ui-text-1);
   --gp-text-3: var(--sp-ui-text-3);
-  --gp-shadow: 0 16px 40px rgba(15, 23, 42, 0.14), 0 4px 12px rgba(15, 23, 42, 0.05);
+  /* 玻璃感 = 外投影拉出悬浮 + 内高光勾出「厚度」 */
+  --gp-shadow:
+    0 18px 44px rgba(15, 23, 42, 0.16),
+    0 6px 16px rgba(15, 23, 42, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
   /* 悬浮胶囊：几何由 :root 的 --gp-* 变量驱动，改高度不用同步改圆角 */
   position: fixed;
   left: 24px;
@@ -312,11 +316,23 @@ onUnmounted(() => window.removeEventListener('sonpick-seek', onExternalSeek))
   background: var(--gp-bg);
   border: 1px solid var(--gp-border);
   color: var(--gp-text);
-  backdrop-filter: blur(20px) saturate(1.4);
+  /* 模糊半径要足够大：糊掉封面花纹才能保住文字对比度；saturate 让透出来的颜色不发灰 */
+  backdrop-filter: blur(28px) saturate(1.7);
+  -webkit-backdrop-filter: blur(28px) saturate(1.7);
   box-shadow: var(--gp-shadow);
 }
 .global-player.dark {
-  --gp-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.32);
+  --gp-bg: color-mix(in srgb, var(--sp-ui-elevated) 68%, transparent);
+  --gp-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.55),
+    0 6px 16px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.10);
+}
+/* 不支持 backdrop-filter 时退回高不透明度，避免文字压在封面花纹上不可读 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .global-player {
+    --gp-bg: color-mix(in srgb, var(--sp-ui-card-strong) 94%, transparent);
+  }
 }
 .gp-left {
   display: flex;

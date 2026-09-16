@@ -74,7 +74,7 @@
                 <div class="result-title">{{ row.song_name || '未知歌曲' }}</div>
                 <div class="result-sub">{{ row.singers || '未知歌手' }} · {{ row.album || '未知专辑' }}</div>
                 <div class="result-tags">
-                  <n-tag size="small" type="info">{{ (row.ext || '-').toUpperCase() }}</n-tag>
+                  <n-tag size="small" type="info">{{ formatLabel(row.ext, '-') }}</n-tag>
                   <n-tag size="small">{{ row.file_size || row.filesize || '-' }}</n-tag>
                   <n-tag size="small" :bordered="false">{{ row.source || '-' }}</n-tag>
                   <n-tag
@@ -157,6 +157,8 @@ import { NButton, NTag, NTooltip, useMessage } from 'naive-ui'
 import api from '@/api/client'
 import { streamSearchMusic } from '@/api/music'
 import { useIsMobile } from '@/composables/useIsMobile'
+import { formatFileSize } from '@/utils/format'
+import { formatLabel } from '@/utils/media'
 
 const message = useMessage()
 const isMobile = useIsMobile()
@@ -207,12 +209,9 @@ const sourceOptions = [
   { label: '全部来源', value: 'all' },
 ]
 
+// 体积与格式标签的实现都在 utils/format.js / utils/media.js
 function formatSize(bytes) {
-  const n = Number(bytes)
-  if (!n || n <= 0) return '-'
-  if (n >= 1024 * 1024 * 1024) return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`
-  if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`
-  return `${(n / 1024).toFixed(0)} KB`
+  return formatFileSize(bytes, { fallback: '-' })
 }
 
 function matchLabel(match) {
@@ -221,7 +220,7 @@ function matchLabel(match) {
 
 function versionText(v) {
   const parts = [v.location === 'local' ? '本地' : '远端']
-  if (v.format) parts.push(v.format.toUpperCase())
+  if (v.format) parts.push(formatLabel(v.format))
   if (v.size_bytes) parts.push(formatSize(v.size_bytes))
   return parts.join(' · ')
 }
@@ -236,7 +235,7 @@ const columns = [
     key: 'ext',
     width: 90,
     render(row) {
-      return h(NTag, { size: 'small', type: 'info' }, { default: () => (row.ext || '-').toUpperCase() })
+      return h(NTag, { size: 'small', type: 'info' }, { default: () => formatLabel(row.ext, '-') })
     },
   },
   {

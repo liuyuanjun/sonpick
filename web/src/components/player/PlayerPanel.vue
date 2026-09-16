@@ -150,8 +150,8 @@
         @update:value="onSeekPercent"
       />
       <div class="time-row">
-        <span>{{ formatTime(player.currentTime) }}</span>
-        <span>{{ formatTime(player.duration) }}</span>
+        <span>{{ formatClock(player.currentTime) }}</span>
+        <span>{{ formatClock(player.duration) }}</span>
       </div>
     </div>
 
@@ -293,14 +293,14 @@
               </n-tag>
               <span class="organize-move-path">{{ move.from_path }}</span>
               <span v-if="move.changed && !move.blocked"> → {{ move.to_path }}</span>
-              <span class="organize-move-meta">{{ move.format }} · {{ formatSongFileSize(move.file_size) }}<template v-if="move.bitrate"> · {{ move.bitrate }}kbps</template></span>
+              <span class="organize-move-meta">{{ move.format }} · {{ formatFileSize(move.file_size) }}<template v-if="move.bitrate"> · {{ move.bitrate }}kbps</template></span>
             </div>
             <n-divider v-if="(organizePreview.conflicts || []).length">路径冲突（请选择保留哪一个）</n-divider>
             <div v-for="(conflict, ci) in (organizePreview.conflicts || [])" :key="'c' + ci" class="organize-conflict">
               <n-radio-group v-model:value="organizeChoices[ci]" size="small">
                 <n-space vertical>
                   <n-radio v-for="cand in conflict.candidates" :key="cand.song_file_id" :value="cand.song_file_id">
-                    保留：{{ cand.from_path }}（{{ cand.format }} · {{ formatSongFileSize(cand.file_size) }}<template v-if="cand.bitrate"> · {{ cand.bitrate }}kbps</template>）
+                    保留：{{ cand.from_path }}（{{ cand.format }} · {{ formatFileSize(cand.file_size) }}<template v-if="cand.bitrate"> · {{ cand.bitrate }}kbps</template>）
                   </n-radio>
                 </n-space>
               </n-radio-group>
@@ -541,7 +541,7 @@ import { usePlayerStore } from '@/stores/player'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useIsMobile } from '@/composables/useIsMobile'
-import { formatTime } from '@/utils/lrc'
+import { formatClock, formatDateTime } from '@/utils/format'
 import { ambientBackground, extractAccentFromImage } from '@/utils/color'
 import { normalizeSongFiles, normalizedScrapeValue, shouldSelectScrapeField } from '@/utils/scrapeApply'
 import PlayerStage from '@/components/player/PlayerStage.vue'
@@ -622,14 +622,6 @@ function normalizedCompareValue(value) {
 function candidateFieldValue(candidate, key) {
   if (key === 'cover') return candidate?.cover_url || ''
   return candidate?.[key] ?? ''
-}
-
-function formatFileSize(bytes) {
-  const value = Number(bytes)
-  if (!Number.isFinite(value) || value < 0) return '大小未知'
-  if (value < 1024) return `${value} B`
-  if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`
-  return `${(value / 1024 ** 2).toFixed(2)} MB`
 }
 
 function scrapeCoverImageUrl(kind) {
@@ -718,7 +710,7 @@ const lyricsTargetLabel = computed(() => {
 const lyricsQueryText = computed(() => {
   const query = lyricsQuery.value
   if (!query) return ''
-  const duration = query.duration ? formatTime(query.duration) : '未知时长'
+  const duration = query.duration ? formatClock(query.duration) : '未知时长'
   return `${query.artist_name || '未知艺术家'} · ${query.album_name || '未知专辑'} · ${duration}`
 })
 
@@ -735,8 +727,7 @@ const lyricsCandidateText = computed(() => {
 })
 
 function formatFetchedAt(value) {
-  if (!value) return ''
-  try { return new Date(value).toLocaleString('zh-CN') } catch { return value }
+  return formatDateTime(value, { withYear: true, fallback: '' })
 }
 
 function lyricsSourceLabel(source) {
@@ -794,14 +785,14 @@ const tagRows = computed(() => {
     { key: 'db_album', label: 'DB 专辑', value: db.album },
     { key: 'db_year', label: 'DB 年份', value: db.year },
     { key: 'db_genre', label: 'DB 风格', value: db.genre },
-    { key: 'db_duration', label: 'DB 时长', value: formatTime(db.duration || 0) },
+    { key: 'db_duration', label: 'DB 时长', value: formatClock(db.duration || 0) },
     { key: 'db_cover', label: 'DB 封面', value: db.cover_path },
     { key: 'tag_title', label: '内嵌标题', value: em.title },
     { key: 'tag_artist', label: '内嵌艺术家', value: em.artist },
     { key: 'tag_album', label: '内嵌专辑', value: em.album },
     { key: 'tag_year', label: '内嵌年份', value: em.year },
     { key: 'tag_genre', label: '内嵌风格', value: em.genre },
-    { key: 'tag_duration', label: '内嵌时长', value: formatTime(em.duration || 0) },
+    { key: 'tag_duration', label: '内嵌时长', value: formatClock(em.duration || 0) },
     { key: 'tag_cover', label: '内嵌封面', value: em.cover_embedded ? `有（${em.cover_size || 0} bytes）` : '无' },
     { key: 'tag_lyrics', label: '内嵌歌词', value: em.lyrics ? `${String(em.lyrics).slice(0, 120)}...` : '' },
     { key: 'file_version', label: '文件版本', value: tagData.value?.file_version_id ? `#${tagData.value.file_version_id}` : '无可用本地版本' },
@@ -811,7 +802,7 @@ const tagRows = computed(() => {
 const scrapeQueryText = computed(() => {
   const q = scrapeQuery.value
   if (!q) return ''
-  return `查询：${q.keyword || ''} / 时长 ${q.duration ? formatTime(q.duration) : '-'}`
+  return `查询：${q.keyword || ''} / 时长 ${q.duration ? formatClock(q.duration) : '-'}`
 })
 
 const candidateColumns = computed(() => [
@@ -820,7 +811,7 @@ const candidateColumns = computed(() => [
   { title: '标题', key: 'title', ellipsis: { tooltip: true } },
   { title: '艺术家', key: 'artist', ellipsis: { tooltip: true } },
   { title: '专辑', key: 'album', ellipsis: { tooltip: true } },
-  { title: '时长', key: 'duration', width: 76, render: (row) => row.duration ? formatTime(row.duration) : '-' },
+  { title: '时长', key: 'duration', width: 76, render: (row) => row.duration ? formatClock(row.duration) : '-' },
   { title: '封面', key: 'cover_url', width: 92, render: (row) => row.has_cover || row.cover_url ? (row.cover_source ? `有/${row.cover_source}` : '有') : '无' },
   { title: '操作', key: 'actions', width: 90, render: (row) => h('button', { class: 'mini-apply-btn', onClick: () => openApplyCandidate(row) }, '采用') },
 ])

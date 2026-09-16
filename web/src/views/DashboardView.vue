@@ -6,7 +6,7 @@
         <h1 class="hero-title">{{ greeting }}</h1>
         <p class="hero-sub">
           曲库 {{ stats.song_count || 0 }} 首 · 总时长 {{ formatDuration(stats.total_duration) }}
-          <span v-if="stats.total_size"> · {{ formatSize(stats.total_size) }}</span>
+          <span v-if="stats.local_size"> · {{ formatSize(stats.local_size) }}</span>
         </p>
         <div class="hero-chips">
           <button type="button" class="chip primary" @click="go('/download')">
@@ -289,6 +289,13 @@ import { coverUrl, fetchHistory, fetchLibraryStats, listTasks } from '@/api/musi
 import { useIsMobile } from '@/composables/useIsMobile'
 import { useAuthStore } from '@/stores/auth'
 import { usePlayerStore } from '@/stores/player'
+import {
+  formatDateTime,
+  formatDurationText,
+  formatFileSize,
+  formatRelativeTime,
+  secondsBetween,
+} from '@/utils/format'
 
 const router = useRouter()
 const message = useMessage()
@@ -312,7 +319,7 @@ const stats = ref({
   favorite_count: 0,
   playlist_count: 0,
   total_duration: 0,
-  total_size: 0,
+  local_size: 0,
   meta_completeness: {},
   sources: [],
   tasks: {},
@@ -375,9 +382,9 @@ const kpiItems = computed(() => [
   },
   {
     key: 'size',
-    label: '体量',
-    value: formatSize(stats.value.total_size || 0),
-    hint: '本地曲目合计',
+    label: '本地占用',
+    value: formatSize(stats.value.local_size || 0),
+    hint: '本地文件合计（不含 WebDAV）',
     icon: AlbumsOutline,
     color: 'var(--sp-accent-teal)',
     bg: 'var(--sp-accent-teal-soft)',
@@ -493,47 +500,22 @@ function markCoverBroken(id) {
   brokenCovers.value = { ...brokenCovers.value, [id]: true }
 }
 
+// 下面两个只绑定本页的展示口径（总时长不带秒、0 显示为 0 B），
+// 逻辑全部在 utils/format.js —— 不要再往里加实现。
 function formatDuration(sec) {
-  const s = Math.max(0, Math.floor(Number(sec) || 0))
-  if (!s) return '0 分钟'
-  const h = Math.floor(s / 3600)
-  const m = Math.floor((s % 3600) / 60)
-  if (h) return `${h} 小时 ${m} 分`
-  if (m) return `${m} 分钟`
-  return `${s} 秒`
+  return formatDurationText(sec, { withSeconds: false, fallback: '0 分钟' })
 }
 
 function formatSize(bytes) {
-  const n = Number(bytes) || 0
-  if (n <= 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let v = n
-  let i = 0
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024
-    i += 1
-  }
-  return `${v >= 10 || i === 0 ? v.toFixed(0) : v.toFixed(1)} ${units[i]}`
+  return formatFileSize(bytes, { fallback: '0 B' })
 }
 
+// 活动流：30 天内用粗粒度相对时间（3 小时前 / 2 天前），更早直接显示日期时刻
 function formatRelative(value) {
-  if (!value) return ''
-  const t = new Date(value).getTime()
-  if (Number.isNaN(t)) return ''
-  const diff = Date.now() - t
-  const sec = Math.round(diff / 1000)
-  if (sec < 60) return '刚刚'
-  const min = Math.floor(sec / 60)
-  if (min < 60) return `${min} 分钟前`
-  const hour = Math.floor(min / 60)
-  if (hour < 24) return `${hour} 小时前`
-  const day = Math.floor(hour / 24)
-  if (day < 30) return `${day} 天前`
-  try {
-    return new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-  } catch {
-    return ''
-  }
+  const sec = secondsBetween(value)
+  if (sec == null) return ''
+  if (sec >= 30 * 86400) return formatDateTime(value, { withSeconds: false })
+  return formatRelativeTime(sec, { coarse: true, fallback: '' })
 }
 
 function playHistory(row) {

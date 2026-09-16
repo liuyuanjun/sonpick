@@ -436,12 +436,7 @@ class LibraryScanService:
                 ):
                     song.lrc_path = lrc
                     changed = True
-                if size and song.file_size != size:
-                    song.file_size = size
-                    changed = True
-                if ext and not song.format:
-                    song.format = ext
-                    changed = True
+                # 格式/体积只存在于 SongFile（Song 已无 format/file_size 列）
                 if any(
                     item.webdav_path for item in self.db.query(SongFile).filter(SongFile.song_id == song.id).all()
                 ):
@@ -566,12 +561,7 @@ class LibraryScanService:
                 if lrc and (not song.lrc_path or song.lrc_path != lrc):
                     song.lrc_path = lrc
                     changed = True
-                if size and song.file_size != size:
-                    song.file_size = size
-                    changed = True
-                if ext and not song.format:
-                    song.format = ext
-                    changed = True
+                # 格式/体积只存在于 SongFile（Song 已无 format/file_size 列）
                 if is_local_file(song_file.local_path):
                     refined = enrich_local_audio(
                         song_file.local_path,

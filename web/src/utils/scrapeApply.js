@@ -1,10 +1,5 @@
-export function formatSongFileSize(bytes) {
-  const value = Number(bytes)
-  if (!Number.isFinite(value) || value < 0) return '大小未知'
-  if (value < 1024) return `${value} B`
-  if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`
-  return `${(value / 1024 ** 2).toFixed(2)} MB`
-}
+import { formatFileSize } from './format.js'
+import { formatLabel, versionLocationLabel } from './media.js'
 
 export function normalizeSongFiles(files) {
   if (!Array.isArray(files)) return []
@@ -15,10 +10,10 @@ export function normalizeSongFiles(files) {
     return {
       ...item,
       writable,
-      displayFormat: String(item.format || '未知格式').toUpperCase(),
+      displayFormat: formatLabel(item.format, '未知格式'),
       displayPath: item.path || localPath || remotePath || '位置未知',
-      displaySource: item.source_name || (remotePath ? 'WebDAV' : '本地'),
-      displaySize: formatSongFileSize(item.file_size),
+      displaySource: item.source_name || versionLocationLabel(item),
+      displaySize: formatFileSize(item.file_size),
       displayStatus: item.write_status || (writable ? '可写入本地文件' : (remotePath ? '远端只读，未写入' : '本地文件不可用')),
     }
   })

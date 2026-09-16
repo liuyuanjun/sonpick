@@ -484,14 +484,15 @@ class MusicDLService:
             if duration and duration > 0:
                 break
 
+        # 物理文件的格式与体积只落在 SongFile（Song 不再保存 format/file_size）
+        audio_format = saved_audio.suffix.lstrip(".").lower()
+        audio_size = saved_audio.stat().st_size
         song = Song(
             title=song_name,
             artist=singers,
             album=getattr(downloaded, "album", None),
             source=source_name,
-            format=saved_audio.suffix.lstrip(".").lower(),
             duration=duration if duration and duration > 0 else None,
-            file_size=saved_audio.stat().st_size,
             cover_path=str(cover_path) if cover_path else None,
             lrc_path=str(saved_lrc) if saved_lrc else None,
             status="local",
@@ -500,12 +501,12 @@ class MusicDLService:
         self.db.flush()
         self.db.add(SongFile(
             song_id=song.id,
-            format=song.format or saved_audio.suffix.lstrip(".").lower(),
+            format=audio_format,
             local_path=str(saved_audio),
             cover_path=str(cover_path) if cover_path else None,
             lrc_path=str(saved_lrc) if saved_lrc else None,
             duration=song.duration,
-            file_size=song.file_size,
+            file_size=audio_size,
         ))
 
         # 本地文件补时长/内嵌封面/标签

@@ -104,7 +104,7 @@
             </div>
             <div class="task-item-foot">
               <n-text depth="3" class="task-message" :title="taskMessage(task)">
-                {{ taskMessage(task) || task.error_message || '-' }} · {{ historicalTimingText(task) }} · {{ formatTime(task.updated_at) }}
+                {{ taskMessage(task) || task.error_message || '-' }} · {{ historicalTimingText(task) }} · {{ formatDateTime(task.updated_at, { withSeconds: false, fallback: '' }) }}
               </n-text>
               <n-button size="tiny" quaternary @click="toggleDetail(task.id)">
                 {{ expandedIds.has(task.id) ? '收起' : '详情' }}
@@ -126,6 +126,7 @@ import { cancelTask, listTasks } from '@/api/music'
 import { useWebSocket } from '@/composables/useWebSocket'
 import TaskDetail from '@/components/TaskDetail.vue'
 import { useIsMobile } from '@/composables/useIsMobile'
+import { formatDateTime, formatDurationText, secondsBetween } from '@/utils/format'
 
 const message = useMessage()
 const isMobile = useIsMobile()
@@ -218,25 +219,9 @@ function taskMessage(task) {
   }
   return task.progress?.message || ''
 }
-function formatTime(value) {
-  if (!value) return ''
-  try {
-    return new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-  } catch { return '' }
-}
 function durationText(startAt, endAt) {
-  if (!startAt) return '-'
-  const start = new Date(startAt).getTime()
-  if (Number.isNaN(start)) return '-'
-  const end = endAt ? new Date(endAt).getTime() : now.value
-  if (Number.isNaN(end)) return '-'
-  const sec = Math.max(0, Math.round((end - start) / 1000))
-  const h = Math.floor(sec / 3600)
-  const m = Math.floor((sec % 3600) / 60)
-  const s = sec % 60
-  if (h) return `${h}时${m}分${s}秒`
-  if (m) return `${m}分${s}秒`
-  return `${s}秒`
+  // endAt 省略时用组件内的 now（每秒 tick），保证"排队等待/执行耗时"会实时跳动
+  return formatDurationText(secondsBetween(startAt, endAt ?? now.value))
 }
 function queueWaitText(task) {
   return durationText(task?.created_at)

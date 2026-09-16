@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { formatSongFileSize, normalizeSongFiles, shouldSelectScrapeField } from './scrapeApply.js'
+import { normalizeSongFiles, shouldSelectScrapeField } from './scrapeApply.js'
 
 test('旧封面不存在且候选封面有效时默认开启', () => {
   assert.equal(shouldSelectScrapeField({
@@ -48,10 +48,6 @@ test('格式化完整歌曲文件列表并保留长路径', () => {
   assert.equal(files[1].displayStatus, '远端只读，未写入')
 })
 
-test('歌曲文件列表支持空值和文件大小格式化', () => {
+test('歌曲文件列表支持空值', () => {
   assert.deepEqual(normalizeSongFiles(null), [])
-  assert.equal(formatSongFileSize(512), '512 B')
-  assert.equal(formatSongFileSize(1536), '1.5 KB')
-  assert.equal(formatSongFileSize(2 * 1024 * 1024), '2.00 MB')
-  assert.equal(formatSongFileSize(undefined), '大小未知')
 })

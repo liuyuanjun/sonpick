@@ -496,6 +496,8 @@ import {
 import { usePlayerStore } from '@/stores/player'
 import { useRoute, useRouter } from 'vue-router'
 import { useIsMobile } from '@/composables/useIsMobile'
+import { formatFileSize } from '@/utils/format'
+import { formatLabel, isAudioFile } from '@/utils/media'
 
 const message = useMessage()
 const player = usePlayerStore()
@@ -598,9 +600,8 @@ const songColumns = computed(() => {
         const artist = row.artist || '未知艺术家'
         const album = row.album ? ` · ${row.album}` : ''
         const versions = row.versions || []
-        const formatTags = versions.length
-          ? versions.map((item) => String(item.format || '').toUpperCase()).filter(Boolean).join(' / ')
-          : (row.format ? String(row.format).toUpperCase() : '')
+        // 格式一律来自 SongFile 版本（Song 已无 format 字段）
+        const formatTags = versions.map((item) => formatLabel(item.format, '')).filter(Boolean).join(' / ')
         return h('div', {
           class: 'song-cell',
           onClick: mobile && row.has_playable_file ? () => play(row) : undefined,
@@ -620,10 +621,10 @@ const songColumns = computed(() => {
       render(row) {
         const versions = (row.versions || [])
         if (!versions.length) {
-          return h('div', { class: 'song-cell-sub' }, row.format ? String(row.format).toUpperCase() : '-')
+          return h('div', { class: 'song-cell-sub' }, '-')
         }
         return h('div', { class: 'song-cell' }, versions.map((item) => {
-          const format = String(item.format || '').toUpperCase()
+          const format = formatLabel(item.format, '')
           const available = item.availability_status !== 'unavailable'
           const path = item.local_path || item.webdav_path || '暂无路径'
           const tip = !available && item.last_error ? `${path} · ${item.last_error}` : path
@@ -657,7 +658,7 @@ const songColumns = computed(() => {
       if (!row.has_playable_file) {
         btns.push(iconBtn(RefreshOutline, '重新检查文件可用性', {}, () => onRecheck(row)))
       }
-      if (!(row.available_formats || [row.format]).map((format) => String(format).toLowerCase()).includes('mp3')) {
+      if (!(row.available_formats || []).map((format) => String(format).toLowerCase()).includes('mp3')) {
         btns.push(iconBtn(SwapHorizontalOutline, '转为 MP3', {}, () => onConvert(row)))
       }
       const hasLocalVersion = (row.versions || []).some(v => v.local_path)
@@ -725,7 +726,7 @@ const browseColumns = computed(() => {
         default: () => tip,
       })
       const btns = []
-      if (!isDir(row) && selectedSource.value?.type === 'webdav' && isAudio(row.name || row.path || '')) {
+      if (!isDir(row) && selectedSource.value?.type === 'webdav' && isAudioFile(row.name || row.path || '')) {
         btns.push(iconBtn(PlayOutline, '播放', { type: 'primary' }, () => playRemote(row)))
       }
       btns.push(iconBtn(TrashOutline, '删除', { type: 'error' }, () => onDeleteBrowseItem(row)))
@@ -757,14 +758,8 @@ function sourcePath(row) { return row.type === 'webdav' ? (row.remote_dir || row
 function linesToList(text) { return String(text || '').split(/\r?\n/).map((s) => s.trim()).filter(Boolean) }
 function listToLines(arr) { return (arr || []).join('\n') }
 function isDir(row) { return row.is_dir || row.type === 'dir' || row.isdir }
-function isAudio(name = '') { return /\.(mp3|flac|m4a|wav|ogg|aac|ape|wma|opus)$/i.test(name) }
-function formatSize(value) {
-  const n = Number(value || 0)
-  if (!n) return '-'
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-  return `${(n / 1024 / 1024).toFixed(1)} MB`
-}
+// 体积与音频判定的实现都在 utils/format.js / utils/media.js
+function formatSize(value) { return formatFileSize(value, { fallback: '-' }) }
 function resetForm(type = 'local') {
   editingId.value = null; editingBuiltin.value = false; form.name = ''; form.type = type; form.enabled = true
   form.root_path = ''; form.scan_dirs_text = ''; form.webdav_url = ''; form.webdav_username = ''; form.webdav_password = ''

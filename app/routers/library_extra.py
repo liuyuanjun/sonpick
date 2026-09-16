@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.services.library_organize_service import LibraryOrganizeService
 from app.models import AppSettings, Favorite, MediaSource, PlayHistory, Playlist, Song, SongFile, Task, iso_utc
+from app.services.song_version_summary import song_with_summary, songs_with_summary
 
 log = logging.getLogger("sonpick.library")
 from app.routers.auth import get_current_user
@@ -53,12 +54,6 @@ def _favorite_ids(db: Session, song_ids: list[int] | None = None) -> set[int]:
             return set()
         q = q.filter(Favorite.song_id.in_(song_ids))
     return {row[0] for row in q.all()}
-
-
-def _song_out(song: Song, fav_ids: set[int] | None = None) -> SongOut:
-    data = song.to_dict()
-    data["is_favorite"] = bool(fav_ids and song.id in fav_ids)
-    return SongOut(**data)
 
 
 @router.get("/songs/{song_id}/cover")
@@ -222,7 +217,7 @@ def record_play(
     db.commit()
     db.refresh(song)
     fav = _favorite_ids(db, [song.id])
-    return _song_out(song, fav)
+    return song_with_summary(db, song, fav)
 
 
 @router.post("/songs/{song_id}/enrich")
@@ -287,7 +282,7 @@ def enrich_song(
         result = run_scrape_job(db, **payload)
         db.refresh(song)
         fav = _favorite_ids(db, [song.id])
-        out = _song_out(song, fav)
+        out = song_with_summary(db, song, fav)
         song_payload = out.model_dump() if hasattr(out, "model_dump") else out.dict()
         return {"async": False, "song": song_payload, "result": result}
     except Exception as e:
@@ -495,7 +490,7 @@ def add_favorite(
         db.add(Favorite(song_id=song_id))
         db.commit()
     db.refresh(song)
-    return _song_out(song, {song_id})
+    return song_with_summary(db, song, {song_id})
 
 
 @router.delete("/songs/{song_id}/favorite", response_model=SongOut)
@@ -512,7 +507,7 @@ def remove_favorite(
         db.delete(fav)
         db.commit()
     db.refresh(song)
-    return _song_out(song, set())
+    return song_with_summary(db, song, set())
 
 
 @router.get("/favorites", response_model=list[SongOut])
@@ -527,7 +522,8 @@ def list_favorites(
         .order_by(Favorite.created_at.desc())
         .all()
     )
-    return [_song_out(song, {song.id}) for _, song in rows]
+    songs = [song for _, song in rows]
+    return songs_with_summary(db, songs, {song.id for song in songs})
 
 
 @router.get("/artists", response_model=list[ArtistOut])
@@ -580,7 +576,7 @@ def list_artist_songs(
             .all()
         )
     fav = _favorite_ids(db, [s.id for s in songs])
-    return [_song_out(s, fav) for s in songs]
+    return songs_with_summary(db, songs, fav)
 
 
 @router.get("/albums", response_model=list[AlbumOut])
@@ -634,7 +630,7 @@ def list_album_songs(
             q = q.filter(Song.artist == a)
     songs = q.order_by(Song.title.asc()).all()
     fav = _favorite_ids(db, [s.id for s in songs])
-    return [_song_out(s, fav) for s in songs]
+    return songs_with_summary(db, songs, fav)
 
 
 @router.get("/history", response_model=list[PlayHistoryOut])
@@ -655,15 +651,23 @@ def list_history(
     songs = active_song_query(db).filter(Song.id.in_(song_ids)).all() if song_ids else []
     song_map = {s.id: s for s in songs}
     fav = _favorite_ids(db, song_ids)
-    result = []
+    # 去重后批量序列化：历史里同一首歌会重复出现，逐条取版本会退化成 N+1
+    unique_songs = []
+    seen_ids: set[int] = set()
     for r in rows:
         song = song_map.get(r.song_id)
+        if song is not None and song.id not in seen_ids:
+            seen_ids.add(song.id)
+            unique_songs.append(song)
+    out_map = {o.id: o for o in songs_with_summary(db, unique_songs, fav)}
+    result = []
+    for r in rows:
         result.append(
             PlayHistoryOut(
                 id=r.id,
                 song_id=r.song_id,
                 played_at=iso_utc(r.played_at),
-                song=_song_out(song, fav) if song else None,
+                song=out_map.get(r.song_id),
             )
         )
     return result
@@ -683,7 +687,19 @@ def library_stats(
     fav_count = db.query(func.count(Favorite.id)).join(Song, Song.id == Favorite.song_id).filter(active_song_filter(db)).scalar() or 0
     pl_count = db.query(func.count(Playlist.id)).scalar() or 0
     total_duration = sum(int(s.duration or 0) for s in songs)
-    total_size = sum(int(s.file_size or 0) for s in songs)
+    # 口径：本地实际占用 = 本地可用版本的体积之和（WebDAV 版本不占本地磁盘，失效版本文件已不在）。
+    # 不能用 Song.file_size —— 那是历史遗留列，多版本场景下只反映"最后一次写入的那个版本"。
+    local_size = (
+        db.query(func.coalesce(func.sum(SongFile.file_size), 0))
+        .join(Song, Song.id == SongFile.song_id)
+        .filter(
+            active_song_filter(db),
+            SongFile.local_path.isnot(None),
+            (SongFile.availability_status.is_(None)) | (SongFile.availability_status != "unavailable"),
+        )
+        .scalar()
+        or 0
+    )
 
     with_dur = sum(1 for s in songs if s.duration and s.duration > 0)
     with_cover = sum(1 for s in songs if s.cover_path)
@@ -717,7 +733,7 @@ def library_stats(
         favorite_count=fav_count,
         playlist_count=pl_count,
         total_duration=total_duration,
-        total_size=total_size,
+        local_size=int(local_size),
         meta_completeness={
             "duration_pct": round(with_dur / song_count * 100, 1),
             "cover_pct": round(with_cover / song_count * 100, 1),
@@ -1043,7 +1059,7 @@ def apply_scrape_candidate(
         },
         "file_result": file_result,
         "error_summary": file_result.get("error_summary") or None,
-        "song": _song_out(song, fav).model_dump(),
+        "song": song_with_summary(db, song, fav).model_dump(),
     }
 
 

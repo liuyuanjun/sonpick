@@ -14,6 +14,7 @@ from app.services.convert_service import LOSSLESS_FORMATS, ConvertService
 from app.services.library_visibility import active_song_query
 from app.services.operation_log_service import write_log
 from app.services.song_file_resolver import NoPlayableSongFileError, SongFileResolver
+from app.services.song_version_summary import song_with_summary, songs_with_summary
 from app.services.webdav_service import WebDAVService
 
 router = APIRouter(prefix="/songs", tags=["library"])
@@ -171,32 +172,20 @@ def list_songs(
     total = query.count()
     songs = query.offset((page - 1) * page_size).limit(page_size).all()
     fav = _favorite_ids(db, [s.id for s in songs])
-    song_ids = [song.id for song in songs]
-    song_files = db.query(SongFile).filter(SongFile.song_id.in_(song_ids)).all() if song_ids else []
-    files_by_song: dict[int, list[SongFile]] = {}
-    for item in song_files:
-        files_by_song.setdefault(item.song_id, []).append(item)
-    result = []
-    for s in songs:
-        data = s.to_dict()
-        data["is_favorite"] = s.id in fav
-        versions = files_by_song.get(s.id, [])
-        # 单源视图：只保留当前源内的版本
-        if source_id is not None:
-            versions = [v for v in versions if v.library_source_id == source_id]
-            if source_type == "local":
-                versions = [v for v in versions if v.local_path and Path(v.local_path).exists()]
-            elif source_type == "webdav":
-                versions = [v for v in versions if v.webdav_path and v.availability_status != "unavailable"]
-        playable_versions = [
-            item for item in versions
-            if (item.local_path or item.webdav_path) and item.availability_status != "unavailable"
-        ]
-        data["versions"] = [item.to_dict() for item in versions]
-        data["available_formats"] = sorted({item.format for item in versions if item.format})
-        data["has_playable_file"] = bool(playable_versions)
-        result.append(SongOut(**data))
-    return SongPageOut(items=result, total=total, page=page, page_size=page_size)
+
+    def source_scoped_versions(files: list[SongFile]) -> list[SongFile]:
+        """单源视图：只保留当前源内的版本（与歌曲可见性筛选保持一致）。"""
+        if source_id is None:
+            return files
+        scoped = [v for v in files if v.library_source_id == source_id]
+        if source_type == "local":
+            return [v for v in scoped if v.local_path and Path(v.local_path).exists()]
+        if source_type == "webdav":
+            return [v for v in scoped if v.webdav_path and v.availability_status != "unavailable"]
+        return scoped
+
+    items = songs_with_summary(db, songs, fav, filter_versions=source_scoped_versions)
+    return SongPageOut(items=items, total=total, page=page, page_size=page_size)
 
 
 @router.post("/{song_id}/recheck", response_model=SongOut)
@@ -243,12 +232,13 @@ def recheck_song(
     db.commit()
     db.refresh(song)
 
-    data = song.to_dict()
-    data["is_favorite"] = song.id in _favorite_ids(db, [song.id])
-    data["versions"] = [item.to_dict() for item in versions]
-    data["available_formats"] = sorted({item.format for item in versions if item.format})
-    data["has_playable_file"] = ConvertService(db).select_playable_file(song, lossless_preferred=False) is not None
-    return SongOut(**data)
+    # 走统一摘要：与列表接口同口径（含 preferred_version），避免重检后这首歌曲的
+    # 格式/大小在 UI 上突然变空。has_playable_file 改为「存在可用版本」的定义，
+    # 与 /songs 列表一致——原先用 select_playable_file 判定时，刚被标记失效的歌曲
+    # 仍会报可播放。
+    out = song_with_summary(db, song, _favorite_ids(db, [song.id]))
+    out.has_playable_file = bool(out.preferred_version)
+    return out
 
 
 @router.get("/{song_id}/stream")

@@ -196,9 +196,7 @@ class SongOut(BaseModel):
     year: Optional[str] = None
     genre: Optional[str] = None
     source: Optional[str]
-    format: Optional[str]
     duration: Optional[int]
-    file_size: Optional[int]
     cover_path: Optional[str]
     lrc_path: Optional[str]
     lyrics_provider: Optional[str] = None
@@ -213,6 +211,8 @@ class SongOut(BaseModel):
     versions: list[dict[str, Any]] = Field(default_factory=list)
     available_formats: list[str] = Field(default_factory=list)
     has_playable_file: bool = False
+    # 音质优先的「首选版本」摘要：列表的格式/大小列取它，多版本时另附 version_count 供 UI 标注
+    preferred_version: Optional[dict[str, Any]] = None
     created_at: Optional[str]
     updated_at: Optional[str]
 
@@ -325,7 +325,8 @@ class LibraryStatsOut(BaseModel):
     favorite_count: int = 0
     playlist_count: int = 0
     total_duration: int = 0
-    total_size: int = 0
+    # 本地实际占用（本地可用版本体积之和）；WebDAV 版本不计入
+    local_size: int = 0
     meta_completeness: dict = Field(default_factory=dict)
     sources: list[dict] = Field(default_factory=list)
     tasks: dict = Field(default_factory=dict)

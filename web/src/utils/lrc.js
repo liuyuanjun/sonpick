@@ -45,10 +45,5 @@ export function findLyricIndex(lines, currentTime) {
   return ans
 }
 
-export function formatTime(sec) {
-  if (sec == null || Number.isNaN(sec)) return '0:00'
-  const s = Math.max(0, Math.floor(sec))
-  const m = Math.floor(s / 60)
-  const r = s % 60
-  return `${m}:${r.toString().padStart(2, '0')}`
-}
+// 时间轴格式化（原 formatTime）已统一到 utils/format.js 的 formatClock()：
+// 歌词解析与格式化本属两件事，混在一个文件里会让别处也来 import lrc 拿格式化函数。

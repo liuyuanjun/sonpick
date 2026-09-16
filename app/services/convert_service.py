@@ -44,6 +44,37 @@ def resolve_lossless_output_dir(raw: str | None, storage_path: str | None) -> st
     return resolve_output_dir(raw, storage_path, "LOSSLESS")
 
 
+def order_playable_files(
+    files: list[SongFile],
+    priorities: dict[int | None, int],
+    lossless_preferred: bool = False,
+) -> list[SongFile]:
+    """**播放选择**的唯一排序规则（``ConvertService.select_playable_files`` 与
+    ``song_version_summary`` 的「首选版本」展示共用）。
+
+    注意：本规则与 ``SongFileResolver.candidates``（写入/转码/刮削用的**可写本地文件**选择）
+    刻意不同——那一条会排除远端、并要求本地文件存在。这里保留失效版本但排在最后，
+    因为播放允许流式读取 WebDAV。列表上的「格式 / 大小」取本规则的第一个，
+    才能保证「显示的就是无损优先模式下会播放的那个文件」。
+    """
+    ordered_formats = (LOSSLESS_FORMATS, {"mp3"}) if lossless_preferred else ({"mp3"}, LOSSLESS_FORMATS)
+    ordered: list[SongFile] = []
+    for formats in ordered_formats:
+        ordered.extend(sorted(
+            (item for item in files if (item.format or "").lower() in formats and item not in ordered),
+            key=lambda item: (
+                item.availability_status == "unavailable",
+                -(item.source_priority + priorities.get(item.library_source_id, 0)),
+                item.id,
+            ),
+        ))
+    ordered.extend(sorted(
+        (item for item in files if item not in ordered),
+        key=lambda item: (item.availability_status == "unavailable", -item.source_priority, item.id),
+    ))
+    return ordered
+
+
 class ConvertService:
     def __init__(self, db: Session):
         self.db = db
@@ -74,18 +105,7 @@ class ConvertService:
             if not playable:
                 return []
 
-        ordered_formats = (LOSSLESS_FORMATS, {"mp3"}) if lossless_preferred else ({"mp3"}, LOSSLESS_FORMATS)
-        ordered: list[SongFile] = []
-        for formats in ordered_formats:
-            ordered.extend(sorted(
-                (item for item in playable if (item.format or "").lower() in formats and item not in ordered),
-                key=lambda item: (item.availability_status == "unavailable", -(item.source_priority + priorities.get(item.library_source_id, 0)), item.id),
-            ))
-        ordered.extend(sorted(
-            (item for item in playable if item not in ordered),
-            key=lambda item: (item.availability_status == "unavailable", -item.source_priority, item.id),
-        ))
-        return ordered
+        return order_playable_files(playable, priorities, lossless_preferred)
 
     def select_playable_file(
         self,

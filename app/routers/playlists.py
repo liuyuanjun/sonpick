@@ -15,14 +15,9 @@ from app.schemas import (
     SongOut,
 )
 from app.services.library_visibility import active_song_query
+from app.services.song_version_summary import songs_with_summary
 
 router = APIRouter(prefix="/playlists", tags=["playlists"])
-
-
-def _song_out(song: Song, favorite_ids: set[int] | None = None) -> SongOut:
-    data = song.to_dict()
-    data["is_favorite"] = bool(favorite_ids and song.id in favorite_ids)
-    return SongOut(**data)
 
 
 def _playlist_out(db: Session, pl: Playlist) -> PlaylistOut:
@@ -134,12 +129,9 @@ def list_playlist_songs(
         f.song_id
         for f in db.query(Favorite).filter(Favorite.song_id.in_(song_ids)).all()
     }
-    result = []
-    for sid in song_ids:
-        song = song_map.get(sid)
-        if song:
-            result.append(_song_out(song, fav_ids))
-    return result
+    # 保持歌单自身的排序，批量序列化（含版本摘要，供列表的格式/大小列与信息弹窗使用）
+    ordered_songs = [song_map[sid] for sid in song_ids if song_map.get(sid)]
+    return songs_with_summary(db, ordered_songs, fav_ids)
 
 
 @router.post("/{playlist_id}/songs", response_model=PlaylistOut)

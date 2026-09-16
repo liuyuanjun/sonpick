@@ -6,16 +6,16 @@
     </div>
     <div class="task-detail-row">
       <n-text depth="3">添加于</n-text>
-      <n-text>{{ formatTime(task.created_at) }}</n-text>
+      <n-text>{{ formatDateTime(task.created_at, { fallback: '-' }) }}</n-text>
     </div>
     <div v-if="task.started_at" class="task-detail-row">
       <n-text depth="3">开始于</n-text>
-      <n-text>{{ formatTime(task.started_at) }}</n-text>
+      <n-text>{{ formatDateTime(task.started_at, { fallback: '-' }) }}</n-text>
     </div>
     <div class="task-detail-row">
       <n-text depth="3">{{ isTerminal ? '结束于' : '最后心跳' }}</n-text>
       <n-text :type="heartbeatStale ? 'warning' : 'default'">
-        {{ formatTime(task.updated_at) }}
+        {{ formatDateTime(task.updated_at, { fallback: '-' }) }}
         <template v-if="!isTerminal">（{{ heartbeatText }}）</template>
       </n-text>
     </div>
@@ -37,7 +37,7 @@
       <n-text depth="3">运行日志（{{ logs.length }} 条）</n-text>
       <div class="task-detail-log-list">
         <div v-for="(log, i) in logs" :key="i" class="task-detail-log-line">
-          <span class="task-detail-log-time">{{ logTime(log.t) }}</span>
+          <span class="task-detail-log-time">{{ formatTimeOfDay(log.t) }}</span>
           <span>{{ log.m }}</span>
         </div>
       </div>
@@ -48,6 +48,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { formatDateTime, formatRelativeTime, formatTimeOfDay } from '@/utils/format'
 
 const props = defineProps({
   task: { type: Object, required: true },
@@ -89,31 +90,10 @@ const heartbeatStale = computed(
 )
 
 const heartbeatText = computed(() => {
-  const ms = heartbeatMs.value
-  if (ms == null) return ''
-  const sec = Math.round(ms / 1000)
-  if (sec < 60) return `${sec} 秒前`
-  const min = Math.floor(sec / 60)
-  if (min < 60) return `${min} 分钟前`
-  const h = Math.floor(min / 60)
-  return `${h} 小时 ${min % 60} 分钟前`
+  const sec = heartbeatMs.value == null ? null : Math.round(heartbeatMs.value / 1000)
+  return formatRelativeTime(sec)
 })
 
-function formatTime(value) {
-  if (!value) return '-'
-  try {
-    return new Date(value).toLocaleString('zh-CN', {
-      month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
-    })
-  } catch { return '-' }
-}
-
-function logTime(value) {
-  if (!value) return ''
-  try {
-    return new Date(value).toLocaleTimeString('zh-CN', { hour12: false })
-  } catch { return '' }
-}
 </script>
 
 <style scoped>

@@ -47,6 +47,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { NButton, NSpace, NTag, useMessage } from 'naive-ui'
 import { listWebdav } from '@/api/music'
 import { usePlayerStore } from '@/stores/player'
+import { isAudioFile } from '@/utils/media'
 
 const route = useRoute()
 const router = useRouter()
@@ -100,10 +101,6 @@ async function loadList() {
   } finally {
     loading.value = false
   }
-}
-
-function isAudio(name = '') {
-  return /\.(mp3|flac|m4a|wav|ogg|aac|ape|wma|opus)$/i.test(name)
 }
 
 function playRemote(row) {
@@ -167,7 +164,7 @@ const columns = [
     render(row) {
       const dir = row.is_dir || row.type === 'dir' || row.isdir
       if (dir) return null
-      if (!isAudio(row.name || row.path || '')) return null
+      if (!isAudioFile(row.name || row.path || '')) return null
       return h(
         NButton,
         { size: 'tiny', onClick: () => playRemote(row) },

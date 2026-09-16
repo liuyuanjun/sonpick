@@ -669,7 +669,7 @@ class TaskWorker:
                             raise RuntimeError("未找到可下载版本，或下载文件落盘失败")
                         # 曲库重复决策：保留两者并入同一逻辑 Song；替换走安全流程
                         dup_action = payload.get("duplicate_action")
-                        log_message = f"下载完成 ({song.format or ''})"
+                        dup_suffix = ""
                         replaced_path = None
                         if dup_action == "replace" and payload.get("replace_song_file_id"):
                             from app.services.download_duplicate_service import apply_replace
@@ -683,13 +683,15 @@ class TaskWorker:
                             )
                             replaced = db.get(SongFile, int(payload["replace_song_file_id"]))
                             replaced_path = replaced.local_path if replaced else None
-                            log_message = f"下载完成并替换已有本地版本 ({song.format or ''})"
+                            dup_suffix = "并替换已有本地版本"
                         elif dup_action == "keep_both" and payload.get("matched_song_id"):
                             from app.services.download_duplicate_service import apply_keep_both
 
                             song = apply_keep_both(db, song, payload.get("matched_song_id"))
-                            log_message = f"下载完成（保留两个版本）({song.format or ''})"
+                            dup_suffix = "（保留两个版本）"
+                        # 格式取自最终落地的 SongFile（Song 已不再保存 format）
                         downloaded_file = SongFileResolver(db).resolve_local(song)
+                        log_message = f"下载完成{dup_suffix} ({downloaded_file.format or ''})"
                         write_log(
                             db,
                             action="download",
@@ -703,7 +705,7 @@ class TaskWorker:
                             detail={
                                 "cover_path": song.cover_path,
                                 "lrc_path": song.lrc_path,
-                                "format": song.format,
+                                "format": downloaded_file.format,
                                 "duplicate_action": dup_action,
                                 "replace_song_file_id": payload.get("replace_song_file_id"),
                             },

@@ -28,6 +28,8 @@
       <div class="song-list-head">
         <span class="col-idx">#</span>
         <span class="col-main">歌曲 / 专辑</span>
+        <span class="col-format">格式</span>
+        <span class="col-size">大小</span>
         <span class="col-time">时长</span>
         <span class="col-actions"></span>
       </div>
@@ -65,7 +67,30 @@
             </div>
           </div>
         </div>
-        <span class="col-time">{{ formatTime(row.duration || 0) }}</span>
+        <span class="col-format">
+          <n-tooltip v-if="row.preferred_version" trigger="hover" :delay="300">
+            <template #trigger>
+              <span class="format-cell">
+                <span class="format-name">{{ formatLabel(row.preferred_version.format) }}</span>
+                <span v-if="row.preferred_version.version_count > 1" class="format-more">
+                  +{{ row.preferred_version.version_count - 1 }}
+                </span>
+              </span>
+            </template>
+            <div class="version-tip">
+              <div v-for="v in row.versions || []" :key="v.id" class="version-tip-row">
+                {{ formatLabel(v.format) }} · {{ formatFileSize(v.file_size) }} ·
+                {{ versionLocation(v) }}
+                <template v-if="v.availability_status === 'unavailable'">（失效）</template>
+              </div>
+            </div>
+          </n-tooltip>
+          <span v-else class="col-muted" title="没有可用文件版本">—</span>
+        </span>
+        <span class="col-size">
+          {{ row.preferred_version ? formatFileSize(row.preferred_version.file_size) : '—' }}
+        </span>
+        <span class="col-time">{{ formatClock(row.duration || 0) }}</span>
         <div class="col-actions">
           <n-button v-if="!isMobile" quaternary circle size="tiny" @click.stop="playAt(row)">
             <n-icon :size="16"><play /></n-icon>
@@ -89,6 +114,15 @@
             @click.stop="onAddOrRemove(row)"
           >
             <n-icon :size="16"><add /></n-icon>
+          </n-button>
+          <n-button
+            quaternary
+            circle
+            :size="isMobile ? 'small' : 'tiny'"
+            aria-label="查看歌曲信息"
+            @click.stop="openInfo(row)"
+          >
+            <n-icon :size="16"><information-circle-outline /></n-icon>
           </n-button>
         </div>
       </div>
@@ -114,6 +148,8 @@
         @update:page="emit('page-change', $event)"
       />
     </div>
+
+    <song-info-modal v-model:show="infoVisible" :song="infoSong" />
   </div>
 </template>
 
@@ -129,12 +165,15 @@ import {
   ChevronBack,
   ChevronForward,
   ShuffleOutline,
+  InformationCircleOutline,
 } from '@vicons/ionicons5'
 import { usePlayerStore } from '@/stores/player'
 import { addFavorite, removeFavorite, coverUrl } from '@/api/music'
 import { useAuthStore } from '@/stores/auth'
 import { useIsMobile } from '@/composables/useIsMobile'
-import { formatTime } from '@/utils/lrc'
+import { formatClock, formatFileSize } from '@/utils/format'
+import { formatLabel, versionLocationLabel } from '@/utils/media'
+import SongInfoModal from '@/components/player/SongInfoModal.vue'
 
 const props = defineProps({
   songs: { type: Array, default: () => [] },
@@ -213,6 +252,19 @@ const visibleSongs = computed(() => {
 
 function subLine(row) {
   return [row.artist, row.album].filter(Boolean).join(' · ')
+}
+
+// 「信息」弹窗：整表共用一个实例，避免每行各挂一个 modal
+const infoVisible = ref(false)
+const infoSong = ref(null)
+
+function openInfo(row) {
+  infoSong.value = row
+  infoVisible.value = true
+}
+
+function versionLocation(v) {
+  return versionLocationLabel(v)
 }
 
 function playAt(row) {
@@ -352,8 +404,8 @@ function onCoverError(e) {
 .song-list-head,
 .song-row {
   display: grid;
-  /* 序号 | 主信息(限宽) | 时长 | 操作 */
-  grid-template-columns: 52px minmax(0, 1fr) 56px 108px;
+  /* 序号 | 主信息(限宽) | 格式 | 大小 | 时长 | 操作 */
+  grid-template-columns: 52px minmax(0, 1fr) 66px 78px 56px 108px;
   gap: 8px;
   align-items: center;
   min-width: 0;
@@ -387,6 +439,57 @@ function onCoverError(e) {
   font-size: 12px;
   color: var(--sp-ui-text-3);
   white-space: nowrap;
+}
+.col-format {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.col-size {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--sp-ui-text-3);
+  white-space: nowrap;
+}
+.col-muted {
+  color: var(--sp-ui-text-3);
+}
+.format-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  cursor: default;
+}
+.format-name {
+  color: var(--sp-ui-text-2);
+  letter-spacing: 0.02em;
+}
+/* 多版本角标：提示「还有别的版本」，明细在 tooltip 与信息弹窗里 */
+.format-more {
+  font-size: 11px;
+  line-height: 1;
+  padding: 1px 3px;
+  border-radius: 4px;
+  color: var(--sp-ui-primary);
+  background: color-mix(in srgb, var(--sp-ui-primary) 14%, transparent);
+}
+.version-tip {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  line-height: 1.5;
+  max-width: 280px;
+}
+.version-tip-row {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .col-actions {
   display: inline-flex;
@@ -499,6 +602,12 @@ function onCoverError(e) {
     padding: 7px 4px;
   }
   .col-idx {
+    display: none;
+  }
+  /* 移动端隐藏格式/大小列：网格只有 3 列，多出的单元格会换行；
+     明细改由「信息」按钮的弹窗承载 */
+  .col-format,
+  .col-size {
     display: none;
   }
   .col-actions {

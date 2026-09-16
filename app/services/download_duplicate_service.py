@@ -163,8 +163,7 @@ def apply_replace(
 
     song = db.get(Song, old_file.song_id)
     if song:
-        song.format = old_file.format
-        song.file_size = old_file.file_size
+        # 格式/体积只保留在 SongFile 上（Song 已无 format/file_size 列）
         if old_file.duration:
             song.duration = old_file.duration
         if lrc_path and not song.lrc_path:

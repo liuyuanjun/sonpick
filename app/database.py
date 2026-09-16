@@ -114,6 +114,7 @@ def init_db():
     _ensure_song_file_indexes(engine)
     _migrate_song_path_responsibility(engine)
     _migrate_song_drop_library_source(engine)
+    _migrate_song_drop_format_file_size(engine)
 
 
 def _ensure_columns(engine: Engine):
@@ -256,9 +257,11 @@ def _migrate_song_path_responsibility(engine: Engine):
         conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
         # 旧库可能尚无 library_source_id 列（取决于历经的版本），查询做自适应
         lib_src_select = ", library_source_id" if "library_source_id" in columns else ""
+        # format / file_size 已在后续迁移中删除；此处按实际存在的列取，缺列时 row.get 返回 None
+        wanted = ["id", "format", "duration", "file_size", "local_path", "webdav_path", "cover_path", "lrc_path"]
+        present = ", ".join(name for name in wanted if name in columns)
         rows = conn.execute(text(
-            f"SELECT id, format, duration, file_size, local_path, webdav_path, cover_path, lrc_path{lib_src_select} "
-            "FROM songs"
+            f"SELECT {present}{lib_src_select} FROM songs"
         )).mappings().all()
         created = 0
         enriched = 0
@@ -395,6 +398,68 @@ def _migrate_song_drop_library_source(engine: Engine):
         conn.execute(text("ALTER TABLE songs__drop_libsrc RENAME TO songs"))
         conn.commit()
         log.info("[migration] songs.library_source_id dropped; source ownership lives on song_files")
+
+
+def _migrate_song_drop_format_file_size(engine: Engine):
+    """一次性、幂等地从 songs 表删除 format / file_size 两列。
+
+    这两列只在**扫描入库**与**下载替换**时写入；转码、keep_both 新增版本、整理改路径都
+    只更新 SongFile，因此多版本场景下必然失真（一首 FLAC 转码出 MP3 后 file_size 仍是 FLAC 的）。
+    物理文件的格式与体积统一由 SongFile 承载（见 song_version_summary）。
+
+    ⚠️ 必须排在 ``_migrate_song_path_responsibility`` **之后**：那个迁移要从旧 songs 表读
+    format/file_size 回填到 song_files，先删列会让极老的库迁移失败。
+    """
+    inspector = inspect(engine)
+    if "songs" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("songs")}
+    legacy_columns = {"format", "file_size"}
+    if not legacy_columns.intersection(columns):
+        return
+
+    definitions = {
+        "id": "id INTEGER PRIMARY KEY AUTOINCREMENT",
+        "title": "title VARCHAR(255) NOT NULL",
+        "artist": "artist VARCHAR(255)",
+        "album": "album VARCHAR(255)",
+        "year": "year VARCHAR(16)",
+        "genre": "genre VARCHAR(255)",
+        "source": "source VARCHAR(64)",
+        "source_id": "source_id VARCHAR(128)",
+        "duration": "duration INTEGER",
+        "cover_path": "cover_path VARCHAR(1024)",
+        "lrc_path": "lrc_path VARCHAR(1024)",
+        "lyrics_provider": "lyrics_provider VARCHAR(64)",
+        "lyrics_source_id": "lyrics_source_id VARCHAR(128)",
+        "lyrics_type": "lyrics_type VARCHAR(16)",
+        "lyrics_score": "lyrics_score INTEGER",
+        "lyrics_fetched_at": "lyrics_fetched_at DATETIME",
+        "lyrics_instrumental": "lyrics_instrumental BOOLEAN DEFAULT 0",
+        "status": "status VARCHAR(16)",
+        "play_count": "play_count INTEGER",
+        "meta_confidence": "meta_confidence INTEGER",
+        "meta_provider": "meta_provider VARCHAR(64)",
+        "scrape_status": "scrape_status VARCHAR(16)",
+        "meta_locked": "meta_locked BOOLEAN",
+        "created_at": "created_at DATETIME",
+        "updated_at": "updated_at DATETIME",
+    }
+    # 只保留当前实际存在的列（旧库可能还没走完前面的迁移）
+    kept = [name for name in definitions if name in columns]
+    with engine.connect() as conn:
+        conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        quoted = ", ".join(kept)
+        conn.execute(text(
+            f"CREATE TABLE songs__drop_fmt_size ({', '.join(definitions[name] for name in kept)})"
+        ))
+        conn.execute(text(
+            f"INSERT INTO songs__drop_fmt_size ({quoted}) SELECT {quoted} FROM songs"
+        ))
+        conn.execute(text("DROP TABLE songs"))
+        conn.execute(text("ALTER TABLE songs__drop_fmt_size RENAME TO songs"))
+        conn.commit()
+        log.info("[migration] songs.format / songs.file_size dropped; format & size live on song_files")
 
 
 def _seed_media_sources(engine: Engine):
