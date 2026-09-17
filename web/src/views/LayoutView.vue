@@ -7,14 +7,11 @@
       :collapsed-width="64"
       :width="220"
       :collapsed="collapsed"
-      show-trigger
       @collapse="collapsed = true"
       @expand="collapsed = false"
     >
-      <div class="logo">
-        <n-icon size="28" color="var(--sp-ui-primary)">
-          <musical-notes />
-        </n-icon>
+      <div class="logo" :class="{ collapsed }">
+        <img src="/brand/logo-mark-sm.png" alt="拾音" class="logo-mark" />
         <span v-if="!collapsed" class="logo-text">拾音 Sonpick</span>
       </div>
       <n-menu
@@ -25,56 +22,60 @@
         :value="activeKey"
         @update:value="onMenu"
       />
+      <!-- 左下功能区：任务中心（常驻高频）+ 主题切换小图标 + 账户抽屉（低频入口收敛处） -->
+      <div class="sider-footer" :class="{ collapsed }">
+        <task-center />
+        <n-dropdown trigger="click" :options="themeOptions" :value="themeStore.mode" @select="themeStore.setMode($event)">
+          <n-button quaternary circle aria-label="主题模式">
+            <template #icon>
+              <n-icon>
+                <moon v-if="themeStore.isDark" />
+                <sunny v-else />
+              </n-icon>
+            </template>
+          </n-button>
+        </n-dropdown>
+        <n-dropdown
+          trigger="click"
+          placement="top-start"
+          :options="accountOptions"
+          @select="onAccountSelect"
+        >
+          <n-button quaternary circle aria-label="账户与系统">
+            <template #icon>
+              <n-icon><person-circle-outline /></n-icon>
+            </template>
+          </n-button>
+        </n-dropdown>
+        <!-- 折叠开关收进左下功能区（替代 Naive 默认底边 trigger，避免与功能条争抢底缘） -->
+        <n-tooltip>
+          <template #trigger>
+            <n-button
+              quaternary
+              circle
+              :aria-label="collapsed ? '展开侧边栏' : '收起侧边栏'"
+              @click="collapsed = !collapsed"
+            >
+              <template #icon>
+                <n-icon>
+                  <chevron-forward v-if="collapsed" />
+                  <chevron-back v-else />
+                </n-icon>
+              </template>
+            </n-button>
+          </template>
+          {{ collapsed ? '展开侧边栏' : '收起侧边栏' }}
+        </n-tooltip>
+      </div>
     </n-layout-sider>
 
     <n-layout>
-      <n-layout-header bordered class="header">
+      <!-- 移动端极简顶栏：仅保留页面标题与任务中心（下载进度需在任意页面可见） -->
+      <n-layout-header v-if="isMobile" bordered class="header">
         <div class="header-left">
           <n-text strong>{{ routeTitle }}</n-text>
         </div>
-        <n-space align="center">
-          <task-center />
-          <n-tooltip>
-            <template #trigger>
-              <n-dropdown
-                trigger="click"
-                :options="themeOptions"
-                :value="themeStore.mode"
-                @select="themeStore.setMode($event)"
-              >
-                <n-button quaternary circle aria-label="主题模式">
-                  <template #icon>
-                    <n-icon>
-                      <moon v-if="themeStore.isDark" />
-                      <sunny v-else />
-                    </n-icon>
-                  </template>
-                </n-button>
-              </n-dropdown>
-            </template>
-            主题：{{ themeModeLabel }}
-          </n-tooltip>
-          <n-tooltip>
-            <template #trigger>
-              <n-button quaternary circle aria-label="修改密码" @click="showPasswordModal = true">
-                <template #icon>
-                  <n-icon><key-outline /></n-icon>
-                </template>
-              </n-button>
-            </template>
-            修改密码
-          </n-tooltip>
-          <n-tooltip>
-            <template #trigger>
-              <n-button quaternary circle aria-label="退出登录" @click="logout">
-                <template #icon>
-                  <n-icon><log-out-outline /></n-icon>
-                </template>
-              </n-button>
-            </template>
-            退出登录
-          </n-tooltip>
-        </n-space>
+        <task-center />
       </n-layout-header>
 
       <n-layout-content class="content" :class="{ 'has-mini-player': player.showPlayer && !!player.current }">
@@ -101,13 +102,7 @@
 
   <global-player />
 
-  <n-modal v-model:show="showPasswordModal" preset="dialog" title="修改密码" positive-text="确认修改" negative-text="取消" :loading="changingPassword" @positive-click="handleChangePassword">
-    <n-space vertical>
-      <n-input v-model:value="pwdForm.old" type="password" show-password-on="click" placeholder="当前密码" />
-      <n-input v-model:value="pwdForm.new" type="password" show-password-on="click" placeholder="新密码（至少 6 位）" />
-      <n-input v-model:value="pwdForm.confirm" type="password" show-password-on="click" placeholder="再次输入新密码" />
-    </n-space>
-  </n-modal>
+  <change-password-modal v-model:show="showPasswordModal" />
 </template>
 
 <script setup>
@@ -127,9 +122,12 @@ import {
   LogOutOutline,
   KeyOutline,
   CheckmarkOutline,
+  ChevronBack,
+  ChevronForward,
   HeartOutline,
   ListOutline,
   PersonOutline,
+  PersonCircleOutline,
   DiscOutline,
   TimeOutline,
 } from '@vicons/ionicons5'
@@ -140,6 +138,7 @@ import { usePlayerStore } from '@/stores/player'
 import GlobalPlayer from '@/components/GlobalPlayer.vue'
 import TaskCenter from '@/components/TaskCenter.vue'
 import GlobalPlayerDrawer from '@/components/player/GlobalPlayerDrawer.vue'
+import ChangePasswordModal from '@/components/ChangePasswordModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -164,9 +163,6 @@ const themeOptions = computed(() =>
           : null,
       ]),
   })),
-)
-const themeModeLabel = computed(
-  () => THEME_MODES.find((item) => item.key === themeStore.mode)?.label || '跟随系统',
 )
 const message = useMessage()
 const collapsed = ref(false)
@@ -212,32 +208,26 @@ function icon(comp) {
   return () => h(NIcon, null, { default: () => h(comp) })
 }
 
+// 扁平菜单：概览置顶作为首页，随后是我的音乐与下载；
+// 曲库 / 日志 / 设置等低频系统入口收进左下账户抽屉，不再分区
 const menuOptions = [
-  {
-    type: 'group',
-    label: '我的音乐',
-    key: 'music-group',
-    children: [
-      { label: '我喜欢的', key: '/player/favorites', icon: icon(HeartOutline) },
-      { label: '歌单', key: '/player/playlists', icon: icon(ListOutline) },
-      { label: '艺术家', key: '/player/artists', icon: icon(PersonOutline) },
-      { label: '专辑', key: '/player/albums', icon: icon(DiscOutline) },
-      { label: '全部歌曲', key: '/player/songs', icon: icon(MusicalNotes) },
-      { label: '最近播放', key: '/player/history', icon: icon(TimeOutline) },
-    ]
-  },
-  {
-    type: 'group',
-    label: '系统管理',
-    key: 'system-group',
-    children: [
-      { label: '概览', key: '/', icon: icon(HomeOutline) },
-      { label: '下载', key: '/download', icon: icon(CloudDownloadOutline) },
-      { label: '曲库', key: '/library', icon: icon(LibraryOutline) },
-      { label: '日志', key: '/logs', icon: icon(DocumentTextOutline) },
-      { label: '设置', key: '/settings', icon: icon(SettingsOutline) },
-    ]
-  }
+  { label: '概览', key: '/', icon: icon(HomeOutline) },
+  { label: '我喜欢的', key: '/player/favorites', icon: icon(HeartOutline) },
+  { label: '歌单', key: '/player/playlists', icon: icon(ListOutline) },
+  { label: '艺术家', key: '/player/artists', icon: icon(PersonOutline) },
+  { label: '专辑', key: '/player/albums', icon: icon(DiscOutline) },
+  { label: '全部歌曲', key: '/player/songs', icon: icon(MusicalNotes) },
+  { label: '最近播放', key: '/player/history', icon: icon(TimeOutline) },
+  { label: '下载', key: '/download', icon: icon(CloudDownloadOutline) },
+]
+
+const accountOptions = [
+  { label: '曲库', key: '/library', icon: icon(LibraryOutline) },
+  { label: '操作日志', key: '/logs', icon: icon(DocumentTextOutline) },
+  { label: '设置', key: '/settings', icon: icon(SettingsOutline) },
+  { type: 'divider', key: 'd1' },
+  { label: '修改密码', key: 'change-password', icon: icon(KeyOutline) },
+  { label: '退出登录', key: 'logout', icon: icon(LogOutOutline) },
 ]
 
 const activeKey = computed(() => {
@@ -264,40 +254,19 @@ function onMenu(key) {
 }
 
 const showPasswordModal = ref(false)
-const changingPassword = ref(false)
-const pwdForm = ref({ old: '', new: '', confirm: '' })
 
-async function handleChangePassword() {
-  if (!pwdForm.value.old || !pwdForm.value.new) {
-    message.warning('请填写完整')
-    return false
+function onAccountSelect(key) {
+  if (key === 'change-password') {
+    showPasswordModal.value = true
+    return
   }
-  if (pwdForm.value.new.length < 6) {
-    message.warning('新密码至少 6 位')
-    return false
+  if (key === 'logout') {
+    auth.logout()
+    message.success('已退出')
+    router.push('/login')
+    return
   }
-  if (pwdForm.value.new !== pwdForm.value.confirm) {
-    message.warning('两次新密码不一致')
-    return false
-  }
-  changingPassword.value = true
-  try {
-    await auth.changePassword(pwdForm.value.old, pwdForm.value.new)
-    message.success('密码已修改')
-    pwdForm.value = { old: '', new: '', confirm: '' }
-  } catch (err) {
-    message.error(err.response?.data?.detail || '修改失败')
-    changingPassword.value = false
-    return false
-  } finally {
-    changingPassword.value = false
-  }
-}
-
-function logout() {
-  auth.logout()
-  message.success('已退出')
-  router.push('/login')
+  router.push(key)
 }
 </script>
 
@@ -308,16 +277,58 @@ function logout() {
   gap: 10px;
   padding: 18px 16px 12px;
 }
+.logo.collapsed {
+  justify-content: center;
+  padding: 18px 0 12px;
+}
+.logo-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: block;
+}
 .logo-text {
   font-weight: 700;
   font-size: 16px;
+}
+/* 左下功能区：贴底常驻，展开态横向一排（折叠开关靠右），折叠态纵向堆叠居中 */
+.sider-footer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 14px calc(10px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid v-bind('themeVars.borderColor');
+  background: v-bind('themeVars.cardColor');
+}
+.sider-footer > :last-child {
+  margin-left: auto;
+}
+.sider-footer.collapsed {
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0 10px;
+}
+.sider-footer.collapsed > :last-child {
+  margin-left: 0;
+  margin-top: 4px;
+}
+/* 功能条绝对定位贴底，给菜单底部留出对应空间避免遮挡末项 */
+:deep(.n-menu) {
+  padding-bottom: 54px;
+}
+:deep(.n-menu.n-menu--collapsed) {
+  padding-bottom: 160px;
 }
 .header {
   height: 56px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
+  padding: 0 12px;
 }
 .content {
   padding: 16px 20px 24px;
@@ -359,9 +370,6 @@ function logout() {
 }
 
 @media (max-width: 768px) {
-  .header {
-    padding: 0 12px;
-  }
   .content {
     padding: 12px 12px calc(52px + env(safe-area-inset-bottom, 0px) + 12px);
   }

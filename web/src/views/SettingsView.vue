@@ -18,6 +18,7 @@
           <n-tab-pane name="general" tab="系统设置" />
           <n-tab-pane name="scrape" tab="刮削源" />
           <n-tab-pane name="lyrics" tab="歌词源" />
+          <n-tab-pane name="account" tab="账户" />
         </n-tabs>
       </n-card>
     </n-gi>
@@ -194,6 +195,39 @@
             </n-space>
           </n-card>
         </template>
+        <template v-else-if="activeSection === 'account'">
+          <!-- 账户区：移动端无侧边栏，主题/密码/退出以这里为唯一入口；桌面端与左下抽屉互为补充 -->
+          <n-card title="账户与偏好">
+            <n-form
+              class="settings-form"
+              :label-placement="isMobile ? 'top' : 'left'"
+              :label-width="isMobile ? 'auto' : 160"
+            >
+              <n-form-item label="主题模式">
+                <n-radio-group
+                  :value="themeStore.mode"
+                  size="small"
+                  @update:value="themeStore.setMode($event)"
+                >
+                  <n-radio-button value="system">跟随系统</n-radio-button>
+                  <n-radio-button value="light">明亮模式</n-radio-button>
+                  <n-radio-button value="dark">暗色模式</n-radio-button>
+                </n-radio-group>
+              </n-form-item>
+              <n-form-item label="登录密码">
+                <n-button secondary @click="showPasswordModal = true">修改密码</n-button>
+              </n-form-item>
+              <n-form-item label="登录状态">
+                <n-popconfirm @positive-click="handleLogout">
+                  <template #trigger>
+                    <n-button secondary type="error">退出登录</n-button>
+                  </template>
+                  确认退出当前登录吗？
+                </n-popconfirm>
+              </n-form-item>
+            </n-form>
+          </n-card>
+        </template>
         <template v-else>
           <n-card title="歌词源">
             <template #header-extra>
@@ -236,16 +270,32 @@
       </n-space>
     </n-gi>
   </n-grid>
+
+  <change-password-modal v-model:show="showPasswordModal" />
 </template>
 
 <script setup>
 import { computed, h, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { NButton, NInput, NSelect, NSwitch, useMessage } from 'naive-ui'
 import api from '@/api/client'
 import { useIsMobile } from '@/composables/useIsMobile'
+import { useAuthStore } from '@/stores/auth'
+import { useThemeStore } from '@/stores/theme'
+import ChangePasswordModal from '@/components/ChangePasswordModal.vue'
 
 const message = useMessage()
 const isMobile = useIsMobile()
+const router = useRouter()
+const auth = useAuthStore()
+const themeStore = useThemeStore()
+const showPasswordModal = ref(false)
+
+function handleLogout() {
+  auth.logout()
+  message.success('已退出')
+  router.push('/login')
+}
 const saving = ref(false)
 const activeSection = ref('general')
 const acoustidApiKey = ref('')
@@ -257,6 +307,7 @@ const menuOptions = [
   { label: '系统设置', key: 'general' },
   { label: '刮削源', key: 'scrape' },
   { label: '歌词源', key: 'lyrics' },
+  { label: '账户', key: 'account' },
 ]
 const regionOptions = [
   { label: '中国大陆', value: 'cn' },

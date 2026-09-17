@@ -35,7 +35,7 @@ import { usePlayerStore } from '@/stores/player'
 import { useThemeStore } from '@/stores/theme'
 import { extractAccentFromImage } from '@/utils/color'
 
-// 全局大播放器抽屉：桌面覆盖 Header + Content（左侧系统边栏保留），移动端全屏浮层。
+// 全局大播放器抽屉：桌面与移动端均为视口全覆盖浮层（沉浸式接管，不再保留侧边栏）。
 // 它是 PlayerPanel / PlayerQueue 的唯一宿主——历史上这两个组件在 PlayerView 与 LayoutView
 // 各挂了一份，导致移动端同时渲染两份面板、两份队列，这里收敛为单一实例。
 const player = usePlayerStore()
@@ -52,8 +52,6 @@ const accentStyle = computed(() => {
   const dark = themeStore.isDark
   return {
     '--cover-accent': `rgb(${r}, ${g}, ${b})`,
-    '--cover-accent-seam': `rgba(${r}, ${g}, ${b}, ${dark ? 0.20 : 0.18})`,
-    '--cover-accent-seam-soft': `rgba(${r}, ${g}, ${b}, ${dark ? 0.12 : 0.10})`,
     '--cover-accent-glow': `rgba(${r}, ${g}, ${b}, ${dark ? 0.18 : 0.13})`,
     '--cover-accent-wash': `rgba(${r}, ${g}, ${b}, ${dark ? 0.18 : 0.12})`,
     '--cover-accent-wash-soft': `rgba(${r}, ${g}, ${b}, ${dark ? 0.10 : 0.08})`,
@@ -150,7 +148,7 @@ onUnmounted(() => {
 
 <style scoped>
 .gp-drawer {
-  position: absolute;
+  position: fixed;
   inset: 0;
   /* AGENTS.md §5.5：全屏播放器覆盖层用 1400 带（低于 Naive 弹层 2000，弹层须能盖在其上） */
   z-index: 1400;
@@ -170,23 +168,9 @@ onUnmounted(() => {
   min-height: 0;
   overflow: hidden;
   background:
-    linear-gradient(90deg, var(--cover-accent-wash) 0%, var(--cover-accent-wash-soft) 11%, rgba(0, 0, 0, 0) 30%),
+    radial-gradient(52% 78% at 12% 50%, var(--cover-accent-wash), rgba(0, 0, 0, 0) 72%),
+    radial-gradient(46% 70% at 88% 42%, var(--cover-accent-wash-soft), rgba(0, 0, 0, 0) 70%),
     var(--sp-ui-body);
-}
-.gp-drawer-stage::before {
-  content: '';
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 118px;
-  pointer-events: none;
-  z-index: 2;
-  background:
-    linear-gradient(90deg, var(--sp-ui-body), rgba(0, 0, 0, 0)),
-    radial-gradient(180px 72% at 0 48%, var(--cover-accent-seam), transparent 72%);
-  opacity: 0.58;
-}
-.gp-drawer.is-dark .gp-drawer-stage::before {
-  opacity: 0.76;
 }
 .gp-stage-main {
   flex: 1 1 auto;
@@ -228,11 +212,8 @@ onUnmounted(() => {
   border-left-width: 0;
 }
 
-/* 移动端：由「内容区内覆盖」改为「视口全屏浮层」 */
+/* 移动端：队列改为抽屉内覆盖层 */
 @media (max-width: 768px) {
-  .gp-drawer {
-    position: fixed;
-  }
   .gp-queue {
     position: absolute;
     inset: 0;

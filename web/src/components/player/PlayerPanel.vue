@@ -113,117 +113,130 @@
       @seek="onLyricSeek"
     />
 
-    <div class="meta-block">
-      <div class="title-row">
-        <div class="title" :title="player.current?.title || '未在播放'">
-          {{ player.current?.title || '未在播放' }}
-        </div>
-        <n-button
-          class="fav-btn"
-          quaternary
-          circle
-          size="small"
-          :type="player.current?.is_favorite ? 'error' : 'default'"
-          :disabled="!player.current"
-          @click="toggleFavorite"
-        >
-          <n-icon size="20">
-            <heart v-if="player.current?.is_favorite" />
-            <heart-outline v-else />
-          </n-icon>
-        </n-button>
-      </div>
-      <div class="artist" :title="player.current?.artist || '选择一首歌曲开始'">
-        {{ player.current?.artist || '选择一首歌曲开始' }}
-      </div>
-      <div v-if="player.current?.album" class="album" :title="player.current.album">
-        {{ player.current.album }}
-      </div>
-    </div>
-
-    <div class="progress">
-      <n-slider
-        :value="progress"
-        :step="0.1"
-        :tooltip="false"
-        :disabled="!player.duration"
-        @update:value="onSeekPercent"
-      />
-      <div class="time-row">
-        <span>{{ formatClock(player.currentTime) }}</span>
-        <span>{{ formatClock(player.duration) }}</span>
-      </div>
-    </div>
-
-    <div class="controls">
-      <n-tooltip>
-        <template #trigger>
+    <div class="panel-bottom">
+      <div class="meta-block">
+        <div class="title-row">
+          <div class="title" :title="player.current?.title || '未在播放'">
+            {{ player.current?.title || '未在播放' }}
+          </div>
           <n-button
+            class="fav-btn"
             quaternary
             circle
             size="small"
-            class="ctrl format-toggle"
-            :class="{ active: player.losslessPreferred }"
-            :type="player.losslessPreferred ? 'primary' : 'default'"
-            @click="player.toggleLosslessPreferred()"
+            :type="player.current?.is_favorite ? 'error' : 'default'"
+            :disabled="!player.current"
+            @click="toggleFavorite"
           >
-            <template #icon>
-              <n-icon :size="15">
-                <diamond-outline v-if="player.losslessPreferred" />
-                <flash-outline v-else />
-              </n-icon>
-            </template>
-          </n-button>
-        </template>
-        {{ player.losslessPreferred ? '无损优先：优先 FLAC' : '速度优先：优先 MP3，缺失时自动回退' }}
-      </n-tooltip>
-      <n-tooltip>
-        <template #trigger>
-          <n-button quaternary circle class="ctrl" @click="player.toggleMode()">
             <n-icon size="20">
-              <shuffle v-if="player.mode === 'shuffle'" />
-              <repeat v-else-if="player.mode === 'loop'" />
-              <reload v-else-if="player.mode === 'single'" />
-              <list v-else />
+              <heart v-if="player.current?.is_favorite" />
+              <heart-outline v-else />
             </n-icon>
           </n-button>
-        </template>
-        {{ player.modeLabel }}
-      </n-tooltip>
+        </div>
+        <div class="artist" :title="player.current?.artist || '选择一首歌曲开始'">
+          {{ player.current?.artist || '选择一首歌曲开始' }}
+        </div>
+        <div v-if="player.current?.album" class="album" :title="player.current.album">
+          {{ player.current.album }}
+        </div>
+      </div>
 
-      <n-button quaternary circle class="ctrl" @click="player.prev()">
-        <n-icon size="26"><play-skip-back /></n-icon>
-      </n-button>
+      <div class="progress">
+        <n-slider
+          :value="progress"
+          :step="0.1"
+          :tooltip="false"
+          :disabled="!player.duration"
+          @update:value="onSeekPercent"
+        />
+        <div class="time-row">
+          <span>{{ formatClock(player.currentTime) }}</span>
+          <span>{{ formatClock(player.duration) }}</span>
+        </div>
+      </div>
 
-      <n-button type="primary" circle class="play-btn" @click="player.togglePlay()">
-        <n-icon size="28">
-          <pause v-if="player.playing" />
-          <play v-else />
-        </n-icon>
-      </n-button>
+      <!-- 三段式控制条：左=音质/模式，中=播放传输，右=队列+音量。宽屏下避免控件散落全宽 -->
+      <div class="controls-bar">
+        <div class="ctl-side ctl-left">
+          <n-tooltip>
+            <template #trigger>
+              <n-button
+                quaternary
+                circle
+                size="small"
+                class="ctrl format-toggle"
+                :class="{ active: player.losslessPreferred }"
+                :type="player.losslessPreferred ? 'primary' : 'default'"
+                @click="player.toggleLosslessPreferred()"
+              >
+                <template #icon>
+                  <n-icon :size="15">
+                    <diamond-outline v-if="player.losslessPreferred" />
+                    <flash-outline v-else />
+                  </n-icon>
+                </template>
+              </n-button>
+            </template>
+            {{ player.losslessPreferred ? '无损优先：优先 FLAC' : '速度优先：优先 MP3，缺失时自动回退' }}
+          </n-tooltip>
+          <n-tooltip>
+            <template #trigger>
+              <n-button quaternary circle class="ctrl" @click="player.toggleMode()">
+                <n-icon size="20">
+                  <shuffle v-if="player.mode === 'shuffle'" />
+                  <repeat v-else-if="player.mode === 'loop'" />
+                  <reload v-else-if="player.mode === 'single'" />
+                  <list v-else />
+                </n-icon>
+              </n-button>
+            </template>
+            {{ player.modeLabel }}
+          </n-tooltip>
+        </div>
 
-      <n-button quaternary circle class="ctrl" @click="player.next()">
-        <n-icon size="26"><play-skip-forward /></n-icon>
-      </n-button>
+        <div class="ctl-center">
+          <n-button quaternary circle class="ctrl" @click="player.prev()">
+            <n-icon size="26"><play-skip-back /></n-icon>
+          </n-button>
 
-      <n-button quaternary circle class="ctrl" @click="player.showQueue = !player.showQueue">
-        <n-icon size="20"><list-outline /></n-icon>
-      </n-button>
-    </div>
+          <n-button type="primary" circle class="play-btn" @click="player.togglePlay()">
+            <n-icon size="28">
+              <pause v-if="player.playing" />
+              <play v-else />
+            </n-icon>
+          </n-button>
 
-    <div class="volume-row">
-      <n-button quaternary circle size="small" @click="player.toggleMute()">
-        <n-icon size="18">
-          <volume-mute v-if="player.muted || player.volume === 0" />
-          <volume-high v-else />
-        </n-icon>
-      </n-button>
-      <n-slider
-        :value="player.muted ? 0 : player.volume * 100"
-        :step="1"
-        :tooltip="false"
-        @update:value="(v) => player.setVolume(v / 100)"
-      />
+          <n-button quaternary circle class="ctrl" @click="player.next()">
+            <n-icon size="26"><play-skip-forward /></n-icon>
+          </n-button>
+        </div>
+
+        <div class="ctl-side ctl-right">
+          <n-tooltip>
+            <template #trigger>
+              <n-button quaternary circle class="ctrl" :aria-label="queueLabel" @click="player.showQueue = !player.showQueue">
+                <n-icon size="20"><list-outline /></n-icon>
+              </n-button>
+            </template>
+            {{ queueLabel }}
+          </n-tooltip>
+          <div class="vol-ctrl">
+            <n-button quaternary circle size="small" @click="player.toggleMute()">
+              <n-icon size="18">
+                <volume-mute v-if="player.muted || player.volume === 0" />
+                <volume-high v-else />
+              </n-icon>
+            </n-button>
+            <n-slider
+              :value="player.muted ? 0 : player.volume * 100"
+              :step="1"
+              :tooltip="false"
+              @update:value="(v) => player.setVolume(v / 100)"
+            />
+          </div>
+        </div>
+      </div>
     </div>
 
     <n-modal v-model:show="tagModalVisible" preset="card" title="歌曲内置标签" style="width: 720px; max-width: 92vw">
@@ -1391,12 +1404,16 @@ async function toggleFavorite() {
 }
 
 .panel-top,
-.meta-block,
-.progress,
-.controls,
-.volume-row {
+.panel-bottom {
   position: relative;
   z-index: 1;
+}
+
+/* 底部信息编组：宽屏下收进居中容器，不再通栏散落 */
+.panel-bottom {
+  flex: 0 0 auto;
+  width: min(100%, 1040px);
+  margin: 0 auto;
 }
 
 .panel-top {
@@ -1535,13 +1552,29 @@ async function toggleFavorite() {
   font-variant-numeric: tabular-nums;
 }
 
-.controls {
-  flex: 0 0 auto;
+.controls-bar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 22px 16px;
+}
+.ctl-side {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 10px;
-  padding: 10px 12px 0;
+  min-width: 0;
+}
+.ctl-left {
+  justify-content: flex-start;
+}
+.ctl-right {
+  justify-content: flex-end;
+}
+.ctl-center {
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 .ctrl {
   color: var(--fg) !important;
@@ -1564,18 +1597,17 @@ async function toggleFavorite() {
   color: var(--play-fg);
 }
 
-.volume-row {
-  flex: 0 0 auto;
+/* 紧凑音量：图标 + 定宽短滑杆，跟随右侧编组（替代原全宽音量行） */
+.vol-ctrl {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 22px 16px;
+  gap: 6px;
 }
-.volume-row :deep(.n-button) {
+.vol-ctrl :deep(.n-button) {
   color: var(--fg-2) !important;
 }
-.volume-row :deep(.n-slider) {
-  flex: 1;
+.vol-ctrl :deep(.n-slider) {
+  width: 110px;
   --n-rail-height: 3px;
   --n-rail-color: var(--rail-soft);
   --n-fill-color: rgba(255, 255, 255, 0.72);
@@ -1583,7 +1615,7 @@ async function toggleFavorite() {
   --n-handle-color: var(--handle);
   --n-handle-size: 10px;
 }
-.player-panel.light .volume-row :deep(.n-slider) {
+.player-panel.light .vol-ctrl :deep(.n-slider) {
   --n-fill-color: var(--accent);
   --n-fill-color-hover: var(--accent);
 }
@@ -1594,7 +1626,7 @@ async function toggleFavorite() {
 
 /* 移动端全屏浮层形态 */
 @media (max-width: 768px) {
-  .volume-row {
+  .vol-ctrl {
     display: none;
   }
   .title {
@@ -1606,8 +1638,8 @@ async function toggleFavorite() {
   .progress {
     padding: 12px 18px 0;
   }
-  .controls {
-    padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  .controls-bar {
+    padding: 10px 12px calc(14px + env(safe-area-inset-bottom, 0px));
   }
 }
 

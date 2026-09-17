@@ -92,7 +92,7 @@
         </span>
         <span class="col-time">{{ formatClock(row.duration || 0) }}</span>
         <div class="col-actions">
-          <n-button v-if="!isMobile" quaternary circle size="tiny" @click.stop="playAt(row)">
+          <n-button v-if="!isMobile" quaternary circle size="tiny" class="hover-only" @click.stop="playAt(row)">
             <n-icon :size="16"><play /></n-icon>
           </n-button>
           <n-button
@@ -100,6 +100,8 @@
             circle
             :size="isMobile ? 'small' : 'tiny'"
             :type="row.is_favorite ? 'error' : 'default'"
+            class="hover-only"
+            :class="{ 'is-fav': row.is_favorite }"
             @click.stop="toggleFav(row)"
           >
             <n-icon :size="16">
@@ -111,6 +113,7 @@
             quaternary
             circle
             :size="isMobile ? 'small' : 'tiny'"
+            class="hover-only"
             @click.stop="onAddOrRemove(row)"
           >
             <n-icon :size="16"><add /></n-icon>
@@ -119,6 +122,7 @@
             quaternary
             circle
             :size="isMobile ? 'small' : 'tiny'"
+            class="hover-only"
             aria-label="查看歌曲信息"
             @click.stop="openInfo(row)"
           >
@@ -326,6 +330,13 @@ function onCoverError(e) {
   min-width: 0;
   max-width: 100%;
 }
+/* 宽屏限宽居中：消除中间 1fr 列被无限拉伸产生的大段空白（Spotify/Apple Music 同款处理） */
+@media (min-width: 1300px) {
+  .song-table {
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+}
 .song-table-empty {
   min-height: 240px;
   justify-content: center;
@@ -340,7 +351,7 @@ function onCoverError(e) {
   flex-wrap: wrap;
 }
 .search-input {
-  width: min(220px, 100%);
+  width: min(260px, 100%);
 }
 .pagination-bar {
   position: sticky;
@@ -469,14 +480,15 @@ function onCoverError(e) {
   color: var(--sp-ui-text-2);
   letter-spacing: 0.02em;
 }
-/* 多版本角标：提示「还有别的版本」，明细在 tooltip 与信息弹窗里 */
+/* 多版本角标：提示「还有别的版本」，明细在 tooltip 与信息弹窗里。
+   中性灰底，避免整列绿色徽标连成色带分散注意力 */
 .format-more {
   font-size: 11px;
   line-height: 1;
   padding: 1px 3px;
   border-radius: 4px;
-  color: var(--sp-ui-primary);
-  background: color-mix(in srgb, var(--sp-ui-primary) 14%, transparent);
+  color: var(--sp-ui-text-3);
+  background: rgba(127, 127, 127, 0.14);
 }
 .version-tip {
   display: flex;
@@ -496,10 +508,16 @@ function onCoverError(e) {
   justify-content: flex-end;
   align-items: center;
   gap: 2px;
-  opacity: 0.7;
   white-space: nowrap;
 }
-.song-row:hover .col-actions {
+/* 行内操作 hover 才浮现（喜欢已激活的常显），降低整列图标的视觉噪音；opacity 切换不占位变化 */
+.col-actions .hover-only {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.song-row:hover .hover-only,
+.song-row:focus-within .hover-only,
+.col-actions .hover-only.is-fav {
   opacity: 1;
 }
 
@@ -612,6 +630,9 @@ function onCoverError(e) {
   }
   .col-actions {
     gap: 6px;
+  }
+  /* 触屏无 hover，行内操作常显 */
+  .col-actions .hover-only {
     opacity: 1;
   }
 }

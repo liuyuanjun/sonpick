@@ -114,6 +114,7 @@
           :padding="0"
           :duration="0"
           :delay="0"
+          style="border-radius: 12px"
         >
           <template #trigger>
             <span
@@ -569,8 +570,8 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  padding: 12px 10px 10px;
-  width: 56px;
+  padding: 12px 6px 10px;
+  width: 46px;
 }
 /* 竖向滑块靠父容器定高：Naive 的 vertical slider 是 height:100% */
 .gp-volume-slider {

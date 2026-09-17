@@ -352,6 +352,57 @@ watch(
   }
 }
 
+/* 宽屏（>1100px）：叠层视图改为「黑胶左、歌词右」居中双栏。
+   窄屏设计把黑胶当作右缘背景装饰（translateX 14% 切半 + 低透明度），
+   宽屏下违和；双栏让黑胶成为正式布局元素。 */
+@media (min-width: 1101px) {
+  .blend-stage {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(36px, 5vw, 80px);
+    padding: 0 24px 14px;
+    box-sizing: border-box;
+  }
+  .blend-bg {
+    position: relative;
+    inset: auto;
+    flex: 0 0 auto;
+    padding: 0;
+  }
+  .blend-stage .vinyl-frame {
+    transform: none;
+    opacity: 1;
+    filter: var(--vinyl-shadow);
+    width: min(92%, 340px);
+    width: min(340px, 64cqh);
+  }
+  .player-panel.light .blend-stage .vinyl-frame {
+    opacity: 1;
+    filter: var(--vinyl-shadow);
+  }
+  .blend-veil {
+    display: none;
+  }
+  .blend-lyrics {
+    flex: 0 1 auto;
+    width: min(520px, 46%);
+    height: 100%;
+    padding: 0;
+    justify-content: center;
+  }
+  .blend-lyrics :deep(.lyrics) {
+    flex: 1;
+    min-height: 0;
+    padding-right: 8px;
+  }
+  /* 封面视图的黑胶在宽屏也放大一档 */
+  .cover-stage .vinyl-frame {
+    width: min(92%, 460px);
+    width: min(94cqw, 82cqh, 480px);
+  }
+}
+
 @media (max-width: 720px) {
   .blend-bg {
     justify-content: center;

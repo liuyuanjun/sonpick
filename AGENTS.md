@@ -56,8 +56,9 @@
 - **播放器外壳只有三层，不得再增挂载点**（详见 §5.6）：
   1. 系统侧边栏「我的音乐」六项 → `/player/<section>` 列表页（`PlayerView` 只渲染列表，不渲染播放面板）；
   2. 底部悬浮胶囊 `GlobalPlayer` → 唯一音频出口；
-  3. 全局大播放器抽屉 `GlobalPlayerDrawer` → `PlayerPanel` 与 `PlayerQueue` 的唯一宿主，桌面覆盖 Header + 内容区（保留侧边栏），移动端视口全屏。
+  3. 全局大播放器抽屉 `GlobalPlayerDrawer` → `PlayerPanel` 与 `PlayerQueue` 的唯一宿主，桌面与移动端均为视口全覆盖浮层（沉浸式接管，含侧边栏）。
 - `player.fullPlayerOpen` 表示「大播放器抽屉打开」；`player.showQueue` 表示「队列展开」，队列渲染在抽屉内部，任意入口打开队列都会同时带出抽屉。
+- **布局约定（v0.15.1-rc15 起）**：桌面端无顶栏；侧边栏菜单扁平不分区（概览 → 我的音乐六项 → 下载），低频入口（曲库/日志/设置/修改密码/退出登录）收进左下账户抽屉，左下功能区常驻任务中心、主题切换与折叠开关（替代 Naive 默认底边 trigger）；移动端保留极简顶栏（标题 + 任务中心），主题/密码/退出入口在设置页「账户」区。修改密码弹窗为共用组件 `components/ChangePasswordModal.vue`，勿再各写一份。
 - 歌词工作台支持查询条件、候选、当前/候选比较、保存和明确清空。
 - 元信息候选采用前会逐项比较；封面显示新旧图片、图片尺寸和旧文件大小；旧封面缺失时默认选择候选封面，已有旧封面时默认保留。
 - 刮削信息与歌词保存/清空会写入同一逻辑歌曲的全部可用本地 `SongFile` 版本及各自侧车；WebDAV 版本只展示并明确标记为远端只读。
@@ -256,7 +257,7 @@ Naive UI 的弹层（modal / drawer / popover / dropdown / tooltip）共用从 *
 | `1–999` | 页面内部局部叠放（sticky 头、浮出操作条） | `PlayerPanel` 歌词操作栏 `z-index:3`、封面占位 `z-index:2` |
 | `1000` | 全局底部播放器 | `GlobalPlayer .global-player` |
 | `1100` | 移动端固定底栏 | `LayoutView .mobile-tabs` |
-| `1400` | 全屏播放器覆盖层（**低于 Naive 弹层 2000**，弹层须能盖在它上面） | `GlobalPlayerDrawer .gp-drawer`（桌面覆盖内容区 / 移动端视口全屏，同一层带） |
+| `1400` | 全屏播放器覆盖层（**低于 Naive 弹层 2000**，弹层须能盖在它上面） | `GlobalPlayerDrawer .gp-drawer`（桌面/移动端均为视口全覆盖，同一层带） |
 | `1500` | 移动端队列抽屉 | 目前**空置**：队列已收敛进 `GlobalPlayerDrawer`，不再单独占层 |
 | `2000+` | 留给 Naive 弹层，**业务代码永不写死 ≥2000** | — |
 
