@@ -138,7 +138,7 @@ watch(
   box-sizing: border-box;
 }
 .vinyl-frame {
-  width: min(92%, 360px);
+  width: min(92%, 520px);
   aspect-ratio: 1;
   display: flex;
   align-items: center;
@@ -149,8 +149,10 @@ watch(
   .stage-body {
     container-type: size;
   }
+  /* 黑胶尺寸以舞台高度为准（≈90% 舞台高）：竖向是宽屏下的约束维度，
+     占满纵向留白、横向自然居中，是封面视图最美观的比例 */
   .cover-stage .vinyl-frame {
-    width: min(94cqw, 88cqh, 380px);
+    width: min(94cqw, 90cqh, 600px);
   }
   .blend-stage .vinyl-frame {
     width: min(100cqw, 100cqh, 520px);
@@ -345,7 +347,7 @@ watch(
 
 @media (max-width: 1100px) {
   .cover-stage .vinyl-frame {
-    width: min(92%, 320px);
+    width: min(92%, 400px);
   }
   .blend-lyrics {
     width: min(72%, 500px);
@@ -374,8 +376,8 @@ watch(
     transform: none;
     opacity: 1;
     filter: var(--vinyl-shadow);
-    width: min(92%, 340px);
-    width: min(340px, 64cqh);
+    width: min(92%, 480px);
+    width: min(480px, 80cqh);
   }
   .player-panel.light .blend-stage .vinyl-frame {
     opacity: 1;
@@ -395,11 +397,6 @@ watch(
     flex: 1;
     min-height: 0;
     padding-right: 8px;
-  }
-  /* 封面视图的黑胶在宽屏也放大一档 */
-  .cover-stage .vinyl-frame {
-    width: min(92%, 460px);
-    width: min(94cqw, 82cqh, 480px);
   }
 }
 

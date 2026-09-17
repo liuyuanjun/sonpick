@@ -366,12 +366,12 @@ const scanSourceIds = ref([])
 const scanningLibrary = ref(false)
 
 const menus = [
-  { key: 'favorites', label: '我喜欢的', icon: Heart },
+  { key: 'favorites', label: '喜欢', icon: Heart },
   { key: 'playlists', label: '歌单', icon: List },
-  { key: 'artists', label: '艺术家', icon: People },
+  { key: 'artists', label: '歌手', icon: People },
   { key: 'albums', label: '专辑', icon: Disc },
   { key: 'songs', label: '歌曲', icon: MusicalNotes },
-  { key: 'history', label: '最近播放', icon: TimeOutline },
+  { key: 'history', label: '最近', icon: TimeOutline },
 ]
 
 const sectionTitle = computed(() => menus.find((m) => m.key === section.value)?.label || '播放器')

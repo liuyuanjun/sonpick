@@ -84,6 +84,75 @@
           <n-button quaternary circle @click="toggleQueue">
             <n-icon size="18"><list /></n-icon>
           </n-button>
+          <!-- 音量：只留一个图标，hover/focus 浮出竖向滑杆 + 静音按钮。
+               放在播放键右侧第三位（左：音质/模式/上一曲，右：下一曲/队列/音量，3+3 对称） -->
+          <n-popover
+            trigger="manual"
+            :show="volumePanelOpen"
+            placement="top"
+            :show-arrow="false"
+            :padding="0"
+            :duration="0"
+            :delay="0"
+            style="border-radius: 12px"
+          >
+            <template #trigger>
+              <span
+                ref="volumeAnchor"
+                class="gp-volume-anchor"
+                @mouseenter="openVolumePanel"
+                @mouseleave="scheduleCloseVolumePanel"
+                @wheel.prevent="onVolumeWheel"
+              >
+                <n-button
+                  quaternary
+                  circle
+                  :aria-label="volumeAriaLabel"
+                  aria-haspopup="true"
+                  :aria-expanded="volumePanelOpen"
+                  @click="player.toggleMute()"
+                  @focus="openVolumePanel"
+                >
+                  <n-icon size="18"><component :is="volumeIcon" /></n-icon>
+                </n-button>
+              </span>
+            </template>
+
+            <!-- 面板被 teleport 到 body：这里只能用 :root 上的 --sp-ui-*（--gp-* 挂在 .global-player 上取不到） -->
+            <div
+              ref="volumePanel"
+              class="gp-volume-panel"
+              @mouseenter="openVolumePanel"
+              @mouseleave="scheduleCloseVolumePanel"
+              @focusin="openVolumePanel"
+              @focusout="onVolumeFocusOut"
+              @keydown.esc.stop="closeVolumePanel"
+            >
+              <span class="gp-volume-value">{{ volumeText }}</span>
+              <!-- Naive 竖向滑块的 height 是 100%，必须由外层容器给高度（:height prop 无效） -->
+              <div class="gp-volume-slider">
+                <n-slider
+                  vertical
+                  :value="volumePercent"
+                  :step="1"
+                  :tooltip="false"
+                  @update:value="setVolumePercent"
+                />
+              </div>
+              <n-button
+                quaternary
+                circle
+                size="small"
+                :aria-label="player.muted ? '取消静音' : '静音'"
+                @click="player.toggleMute()"
+              >
+                <n-icon size="18">
+                  <volume-mute v-if="volumeMuted" />
+                  <volume-medium v-else />
+                </n-icon>
+              </n-button>
+            </div>
+          </n-popover>
         </div>
         <div class="progress-row">
           <span>{{ formatClock(player.currentTime) }}</span>
@@ -105,75 +174,6 @@
       </div>
 
       <div v-if="!isMobile" class="gp-right">
-        <!-- 音量：胶囊内只留一个图标，hover/focus 才浮出竖向滑杆 + 静音按钮（把 100px 宽度还给进度条） -->
-        <n-popover
-          trigger="manual"
-          :show="volumePanelOpen"
-          placement="top"
-          :show-arrow="false"
-          :padding="0"
-          :duration="0"
-          :delay="0"
-          style="border-radius: 12px"
-        >
-          <template #trigger>
-            <span
-              ref="volumeAnchor"
-              class="gp-volume-anchor"
-              @mouseenter="openVolumePanel"
-              @mouseleave="scheduleCloseVolumePanel"
-              @wheel.prevent="onVolumeWheel"
-            >
-              <n-button
-                quaternary
-                circle
-                size="small"
-                :aria-label="volumeAriaLabel"
-                aria-haspopup="true"
-                :aria-expanded="volumePanelOpen"
-                @click="player.toggleMute()"
-                @focus="openVolumePanel"
-              >
-                <n-icon size="18"><component :is="volumeIcon" /></n-icon>
-              </n-button>
-            </span>
-          </template>
-
-          <!-- 面板被 teleport 到 body：这里只能用 :root 上的 --sp-ui-*（--gp-* 挂在 .global-player 上取不到） -->
-          <div
-            ref="volumePanel"
-            class="gp-volume-panel"
-            @mouseenter="openVolumePanel"
-            @mouseleave="scheduleCloseVolumePanel"
-            @focusin="openVolumePanel"
-            @focusout="onVolumeFocusOut"
-            @keydown.esc.stop="closeVolumePanel"
-          >
-            <span class="gp-volume-value">{{ volumeText }}</span>
-            <!-- Naive 竖向滑块的 height 是 100%，必须由外层容器给高度（:height prop 无效） -->
-            <div class="gp-volume-slider">
-              <n-slider
-                vertical
-                :value="volumePercent"
-                :step="1"
-                :tooltip="false"
-                @update:value="setVolumePercent"
-              />
-            </div>
-            <n-button
-              quaternary
-              circle
-              size="small"
-              :aria-label="player.muted ? '取消静音' : '静音'"
-              @click="player.toggleMute()"
-            >
-              <n-icon size="18">
-                <volume-mute v-if="volumeMuted" />
-                <volume-medium v-else />
-              </n-icon>
-            </n-button>
-          </div>
-        </n-popover>
         <n-button quaternary circle @click="goPlayer">
           <n-icon size="18"><expand /></n-icon>
         </n-button>

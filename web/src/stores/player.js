@@ -62,8 +62,8 @@ export const usePlayerStore = defineStore('player', () => {
   const fullPlayerOpen = ref(false)
   // 舞台视图：cover | blend | lyrics（切歌保留）
   const stageView = ref(normalizeStageView(localStorage.getItem('sonpick-stage-view') || legacyStageView()))
-  // 歌词字号（px），默认比原先略大
-  const lyricFontSize = ref(clampLyricFontSize(Number(localStorage.getItem('sonpick-lyric-font-size') ?? 18)))
+  // 歌词字号（px），默认 22（宽屏大播放器下的舒适阅读档位；老用户读本地存档不受影响）
+  const lyricFontSize = ref(clampLyricFontSize(Number(localStorage.getItem('sonpick-lyric-font-size') ?? 22)))
   const showLyrics = computed(() => stageView.value !== 'cover')
 
   const modeLabel = computed(() => MODE_LABELS[mode.value] || MODE_LABELS.loop)

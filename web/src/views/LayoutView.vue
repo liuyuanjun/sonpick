@@ -22,7 +22,8 @@
         :value="activeKey"
         @update:value="onMenu"
       />
-      <!-- 左下功能区：任务中心（常驻高频）+ 主题切换小图标 + 账户抽屉（低频入口收敛处） -->
+      <!-- 左下功能区：任务中心（高频常驻）+ 主题切换 + 设置入口 + 用户入口 + 折叠开关。
+           设置（曲库/日志/设置）与用户（改密码/退出）分两个图标：语义两类，各自一步直达 -->
       <div class="sider-footer" :class="{ collapsed }">
         <task-center />
         <n-dropdown trigger="click" :options="themeOptions" :value="themeStore.mode" @select="themeStore.setMode($event)">
@@ -38,10 +39,22 @@
         <n-dropdown
           trigger="click"
           placement="top-start"
-          :options="accountOptions"
-          @select="onAccountSelect"
+          :options="settingsOptions"
+          @select="onMenu"
         >
-          <n-button quaternary circle aria-label="账户与系统">
+          <n-button quaternary circle aria-label="系统管理">
+            <template #icon>
+              <n-icon><settings-outline /></n-icon>
+            </template>
+          </n-button>
+        </n-dropdown>
+        <n-dropdown
+          trigger="click"
+          placement="top-start"
+          :options="userOptions"
+          @select="onUserSelect"
+        >
+          <n-button quaternary circle aria-label="用户">
             <template #icon>
               <n-icon><person-circle-outline /></n-icon>
             </template>
@@ -192,12 +205,12 @@ const routeTitle = computed(() => {
   if (route.name === 'Player') {
     const sec = route.params.section || 'favorites'
     const secTitles = {
-      favorites: '我喜欢的',
+      favorites: '喜欢',
       playlists: '歌单',
-      artists: '艺术家',
+      artists: '歌手',
       albums: '专辑',
-      songs: '全部歌曲',
-      history: '最近播放'
+      songs: '歌曲',
+      history: '最近'
     }
     return secTitles[sec] || '播放器'
   }
@@ -212,20 +225,22 @@ function icon(comp) {
 // 曲库 / 日志 / 设置等低频系统入口收进左下账户抽屉，不再分区
 const menuOptions = [
   { label: '概览', key: '/', icon: icon(HomeOutline) },
-  { label: '我喜欢的', key: '/player/favorites', icon: icon(HeartOutline) },
+  { label: '喜欢', key: '/player/favorites', icon: icon(HeartOutline) },
   { label: '歌单', key: '/player/playlists', icon: icon(ListOutline) },
-  { label: '艺术家', key: '/player/artists', icon: icon(PersonOutline) },
+  { label: '歌手', key: '/player/artists', icon: icon(PersonOutline) },
   { label: '专辑', key: '/player/albums', icon: icon(DiscOutline) },
-  { label: '全部歌曲', key: '/player/songs', icon: icon(MusicalNotes) },
-  { label: '最近播放', key: '/player/history', icon: icon(TimeOutline) },
+  { label: '歌曲', key: '/player/songs', icon: icon(MusicalNotes) },
+  { label: '最近', key: '/player/history', icon: icon(TimeOutline) },
   { label: '下载', key: '/download', icon: icon(CloudDownloadOutline) },
 ]
 
-const accountOptions = [
+const settingsOptions = [
   { label: '曲库', key: '/library', icon: icon(LibraryOutline) },
   { label: '操作日志', key: '/logs', icon: icon(DocumentTextOutline) },
   { label: '设置', key: '/settings', icon: icon(SettingsOutline) },
-  { type: 'divider', key: 'd1' },
+]
+
+const userOptions = [
   { label: '修改密码', key: 'change-password', icon: icon(KeyOutline) },
   { label: '退出登录', key: 'logout', icon: icon(LogOutOutline) },
 ]
@@ -255,7 +270,7 @@ function onMenu(key) {
 
 const showPasswordModal = ref(false)
 
-function onAccountSelect(key) {
+function onUserSelect(key) {
   if (key === 'change-password') {
     showPasswordModal.value = true
     return
@@ -264,9 +279,7 @@ function onAccountSelect(key) {
     auth.logout()
     message.success('已退出')
     router.push('/login')
-    return
   }
-  router.push(key)
 }
 </script>
 
@@ -321,7 +334,7 @@ function onAccountSelect(key) {
   padding-bottom: 54px;
 }
 :deep(.n-menu.n-menu--collapsed) {
-  padding-bottom: 160px;
+  padding-bottom: 196px;
 }
 .header {
   height: 56px;
