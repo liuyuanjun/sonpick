@@ -105,19 +105,74 @@
       </div>
 
       <div v-if="!isMobile" class="gp-right">
-        <n-button quaternary circle size="small" @click="player.toggleMute()">
-          <n-icon size="18">
-            <volume-mute v-if="player.muted || player.volume === 0" />
-            <volume-medium v-else />
-          </n-icon>
-        </n-button>
-        <n-slider
-          class="gp-volume"
-          :value="player.volume * 100"
-          :step="1"
-          :tooltip="false"
-          @update:value="(v) => player.setVolume(v / 100)"
-        />
+        <!-- 音量：胶囊内只留一个图标，hover/focus 才浮出竖向滑杆 + 静音按钮（把 100px 宽度还给进度条） -->
+        <n-popover
+          trigger="manual"
+          :show="volumePanelOpen"
+          placement="top"
+          :show-arrow="false"
+          :padding="0"
+          :duration="0"
+          :delay="0"
+        >
+          <template #trigger>
+            <span
+              ref="volumeAnchor"
+              class="gp-volume-anchor"
+              @mouseenter="openVolumePanel"
+              @mouseleave="scheduleCloseVolumePanel"
+              @wheel.prevent="onVolumeWheel"
+            >
+              <n-button
+                quaternary
+                circle
+                size="small"
+                :aria-label="volumeAriaLabel"
+                aria-haspopup="true"
+                :aria-expanded="volumePanelOpen"
+                @click="player.toggleMute()"
+                @focus="openVolumePanel"
+              >
+                <n-icon size="18"><component :is="volumeIcon" /></n-icon>
+              </n-button>
+            </span>
+          </template>
+
+          <!-- 面板被 teleport 到 body：这里只能用 :root 上的 --sp-ui-*（--gp-* 挂在 .global-player 上取不到） -->
+          <div
+            ref="volumePanel"
+            class="gp-volume-panel"
+            @mouseenter="openVolumePanel"
+            @mouseleave="scheduleCloseVolumePanel"
+            @focusin="openVolumePanel"
+            @focusout="onVolumeFocusOut"
+            @keydown.esc.stop="closeVolumePanel"
+          >
+            <span class="gp-volume-value">{{ volumeText }}</span>
+            <!-- Naive 竖向滑块的 height 是 100%，必须由外层容器给高度（:height prop 无效） -->
+            <div class="gp-volume-slider">
+              <n-slider
+                vertical
+                :value="volumePercent"
+                :step="1"
+                :tooltip="false"
+                @update:value="setVolumePercent"
+              />
+            </div>
+            <n-button
+              quaternary
+              circle
+              size="small"
+              :aria-label="player.muted ? '取消静音' : '静音'"
+              @click="player.toggleMute()"
+            >
+              <n-icon size="18">
+                <volume-mute v-if="volumeMuted" />
+                <volume-medium v-else />
+              </n-icon>
+            </n-button>
+          </div>
+        </n-popover>
         <n-button quaternary circle @click="goPlayer">
           <n-icon size="18"><expand /></n-icon>
         </n-button>
@@ -134,10 +189,10 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
   Play, Pause, Close, MusicalNotes, PlaySkipBack, PlaySkipForward,
-  Shuffle, Repeat, Reload, List, ListOutline, VolumeMedium, VolumeMute, Expand,
-  DiamondOutline, FlashOutline,
+  Shuffle, Repeat, Reload, List, ListOutline, VolumeHigh, VolumeLow, VolumeMedium, VolumeMute,
+  Expand, DiamondOutline, FlashOutline,
 } from '@vicons/ionicons5'
-import { NSlider, useMessage } from 'naive-ui'
+import { NPopover, NSlider, useMessage } from 'naive-ui'
 import { usePlayerStore } from '@/stores/player'
 import { useThemeStore } from '@/stores/theme'
 import { useIsMobile } from '@/composables/useIsMobile'
@@ -279,16 +334,84 @@ function toggleQueue() {
   if (next) player.fullPlayerOpen = true
 }
 
+// ---------- 音量浮层 ----------
+// 触发：hover 或 focus 打开（键盘也走同一路径）；滚轮直接调音量。
+// 关闭用"悬停意图"延时：指针要从图标移到浮层上，立即关闭会让滑杆根本拖不到。
+const volumePanelOpen = ref(false)
+const volumeAnchor = ref(null)
+const volumePanel = ref(null)
+let volumeCloseTimer = null
+
+const volumePercent = computed(() => Math.round(player.volume * 100))
+const volumeMuted = computed(() => player.muted || player.volume === 0)
+const volumeText = computed(() => (player.muted ? '静音' : `${volumePercent.value}%`))
+const volumeIcon = computed(() => {
+  if (volumeMuted.value) return VolumeMute
+  if (player.volume < 0.34) return VolumeLow
+  if (player.volume < 0.77) return VolumeMedium
+  return VolumeHigh
+})
+const volumeAriaLabel = computed(() =>
+  player.muted ? '已静音，点击取消静音' : `音量 ${volumePercent.value}%，点击静音`)
+
+function cancelVolumeClose() {
+  if (volumeCloseTimer) {
+    clearTimeout(volumeCloseTimer)
+    volumeCloseTimer = null
+  }
+}
+
+function openVolumePanel() {
+  cancelVolumeClose()
+  volumePanelOpen.value = true
+}
+
+function closeVolumePanel() {
+  cancelVolumeClose()
+  volumePanelOpen.value = false
+}
+
+function scheduleCloseVolumePanel() {
+  cancelVolumeClose()
+  volumeCloseTimer = setTimeout(() => {
+    volumePanelOpen.value = false
+    volumeCloseTimer = null
+  }, 160)
+}
+
+/** 焦点移出浮层与图标之外才关闭；内部 Tab 切换保持打开 */
+function onVolumeFocusOut(event) {
+  const next = event.relatedTarget
+  if (next && (volumePanel.value?.contains(next) || volumeAnchor.value?.contains(next))) return
+  closeVolumePanel()
+}
+
+function setVolumePercent(percent) {
+  player.setVolume(Number(percent) / 100)
+}
+
+function onVolumeWheel(event) {
+  const step = event.deltaY < 0 ? 0.05 : -0.05
+  // setVolume 在值 > 0 时会自动取消静音，符合"往上滚就恢复声音"的预期
+  player.setVolume(Math.round((player.volume + step) * 100) / 100)
+  openVolumePanel()
+}
+
 onMounted(() => window.addEventListener('sonpick-seek', onExternalSeek))
-onUnmounted(() => window.removeEventListener('sonpick-seek', onExternalSeek))
+onUnmounted(() => {
+  window.removeEventListener('sonpick-seek', onExternalSeek)
+  cancelVolumeClose()
+})
 </script>
 
 <style scoped>
 .global-player {
   /* 本组件经 Teleport 挂载到 body，不在 n-config-provider 子树内，
      --n-* 主题变量不可达；颜色一律取 :root 上的 --sp-ui-* 令牌，不写死色值 */
-  --gp-bg: color-mix(in srgb, var(--sp-ui-card-strong) 70%, transparent);
-  --gp-border: color-mix(in srgb, var(--sp-ui-border) 70%, transparent);
+  /* 苹果材质玻璃：半透明"材质"填充（亮 35% / 暗 40%，原为 70%）+ 强模糊 + 强 saturate
+     提饱和（vibrancy 鲜亮感，苹果玻璃好看的核心）；靠模糊保文字对比，不写死色值随主题 */
+  --gp-bg: color-mix(in srgb, var(--sp-ui-card-strong) 35%, transparent);
+  --gp-border: color-mix(in srgb, var(--sp-ui-border) 62%, transparent);
   --gp-text: var(--sp-ui-text-1);
   --gp-text-3: var(--sp-ui-text-3);
   /* 玻璃感 = 外投影拉出悬浮 + 内高光勾出「厚度」 */
@@ -316,13 +439,13 @@ onUnmounted(() => window.removeEventListener('sonpick-seek', onExternalSeek))
   background: var(--gp-bg);
   border: 1px solid var(--gp-border);
   color: var(--gp-text);
-  /* 模糊半径要足够大：糊掉封面花纹才能保住文字对比度；saturate 让透出来的颜色不发灰 */
-  backdrop-filter: blur(28px) saturate(1.7);
-  -webkit-backdrop-filter: blur(28px) saturate(1.7);
+  /* 模糊半径要足够大：糊掉封面花纹才能保住文字对比度；saturate 让透出来的颜色不发灰、反而更鲜（苹果 vibrancy） */
+  backdrop-filter: blur(28px) saturate(1.9);
+  -webkit-backdrop-filter: blur(28px) saturate(1.9);
   box-shadow: var(--gp-shadow);
 }
 .global-player.dark {
-  --gp-bg: color-mix(in srgb, var(--sp-ui-elevated) 68%, transparent);
+  --gp-bg: color-mix(in srgb, var(--sp-ui-elevated) 40%, transparent);
   --gp-shadow:
     0 18px 44px rgba(0, 0, 0, 0.55),
     0 6px 16px rgba(0, 0, 0, 0.35),
@@ -436,9 +559,31 @@ onUnmounted(() => window.removeEventListener('sonpick-seek', onExternalSeek))
   align-items: center;
   gap: 2px;
 }
-.gp-volume {
-  width: 100px;
-  flex: 0 0 100px;
+/* 音量浮层：面板被 teleport 到 body，只能用 :root 上的 --sp-ui-* */
+.gp-volume-anchor {
+  display: inline-flex;
+  align-items: center;
+}
+.gp-volume-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 10px 10px;
+  width: 56px;
+}
+/* 竖向滑块靠父容器定高：Naive 的 vertical slider 是 height:100% */
+.gp-volume-slider {
+  height: 96px;
+  display: flex;
+  justify-content: center;
+}
+.gp-volume-value {
+  font-size: 11px;
+  line-height: 1;
+  color: var(--sp-ui-text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .slide-up-enter-active,
 .slide-up-leave-active {
@@ -455,9 +600,6 @@ onUnmounted(() => window.removeEventListener('sonpick-seek', onExternalSeek))
   .global-player {
     grid-template-columns: minmax(130px, 1fr) minmax(0, 1.6fr) auto;
     gap: 12px;
-  }
-  .gp-volume {
-    display: none;
   }
 }
 @media (max-width: 768px) {
