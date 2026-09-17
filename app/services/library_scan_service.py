@@ -32,6 +32,9 @@ from app.services.webdav_service import WebDAVService
 SIDE_COVER_EXTS = (".jpg", ".jpeg", ".png", ".webp")
 SIDE_LRC_EXTS = (".lrc", ".txt")
 
+# 命中排除规则时写入 SongFile.last_error 的固定文案（供前端与自愈逻辑判别）
+EXCLUDED_LAST_ERROR = "path excluded by scan rules"
+
 
 def _now():
     return datetime.now(timezone.utc)
@@ -94,6 +97,28 @@ def _is_excluded(path: str, globs: list[str]) -> bool:
             if fnmatch.fnmatch(p, core):
                 return True
     return False
+
+
+def path_is_excluded(path: str | Path, root: str | Path | None, globs: list[str]) -> bool:
+    """排除规则的单入口判定（扫描入库、扫描自愈、单曲整理共用）。
+
+    - 路径在 ``root`` 内：用 root 相对路径判定（排除规则本身是根相对语义）。
+    - 路径在 ``root`` 外或没有 root：退回**绝对路径的组成部分**判定。回收站等
+      隐藏目录（``.@#local/trash``、``@eaDir``）在任何位置都不该进曲库，因此
+      不能因为"不在根下"就放行 —— 否则历史行、跨源行会漏网。
+    """
+    if not globs:
+        return False
+    p = Path(path)
+    if root is not None:
+        try:
+            rel = os.path.relpath(str(p.resolve()), str(Path(root).resolve()))
+        except (ValueError, OSError):
+            rel = str(p)
+        # `..` 只在文件位于 root 之外时出现；此时改用绝对路径判定而不是直接放行
+        if not rel.startswith(".."):
+            return _is_excluded(rel, globs)
+    return _is_excluded(str(p), globs)
 
 
 # Directory names that must never be treated as artist/album metadata.
@@ -250,6 +275,17 @@ class LibraryScanService:
         return _normalize_globs(
             parse_json_list(getattr(self.cfg, "scan_exclude_globs", None), DEFAULT_SCAN_EXCLUDE)
         )
+
+    def _exclude_context(self) -> tuple[dict[int, tuple[Path | None, list[str]]], list[str]]:
+        """按来源缓存 (root, exclude_globs)，供排除判定复用（避免逐行查来源）。"""
+        ctx: dict[int, tuple[Path | None, list[str]]] = {}
+        for src in self.db.query(MediaSource).all():
+            raw_root = (src.root_path or "").strip()
+            ctx[src.id] = (
+                Path(raw_root).expanduser() if raw_root else None,
+                self._exclude_globs(src),
+            )
+        return ctx, self._exclude_globs(None)
 
     def _find_logical_song(self, meta: dict[str, Optional[str]], duration: int | None) -> Song | None:
         title = (meta.get("title") or "").strip()
@@ -765,14 +801,34 @@ class LibraryScanService:
         return refresh_song_aggregate_assets(self.db, song)
 
     def _heal_stale_paths(self) -> dict[str, int]:
-        """扫描前标记失效 SongFile，并刷新歌曲聚合资源缓存。"""
+        """扫描前标记失效 SongFile，并刷新歌曲聚合资源缓存。
+
+        两类失效：
+        - 物理文件不存在（``file not found during scan self-heal``）
+        - 路径命中来源排除规则（回收站 / 隐藏目录 / @eaDir …）。这类文件通常
+          "物理上还在"，但永远不会被扫描入库，必须先标记、再由
+          :meth:`_purge_excluded_local_versions` 清掉，否则会被播放解析与整理
+          计划当成正常版本。
+        """
         healed = 0
         marked_unavailable = 0
+        excluded_marked = 0
         refreshed_songs = 0
+        excludes, default_globs = self._exclude_context()
         stale_files = self.db.query(SongFile).filter(
             SongFile.local_path.isnot(None),
         ).all()
         for sf in stale_files:
+            root, globs = excludes.get(sf.library_source_id, (None, default_globs))
+            if path_is_excluded(sf.local_path, root, globs):
+                if (sf.availability_status or "") != "unavailable" or sf.last_error != EXCLUDED_LAST_ERROR:
+                    sf.availability_status = "unavailable"
+                    sf.last_error = EXCLUDED_LAST_ERROR
+                    sf.last_checked_at = _now()
+                    sf.updated_at = _now()
+                    self.db.add(sf)
+                excluded_marked += 1
+                continue
             if sf.local_path and Path(sf.local_path).exists():
                 if (sf.availability_status or "") == "unavailable":
                     sf.availability_status = "available"
@@ -793,13 +849,57 @@ class LibraryScanService:
             if self._refresh_song_aggregate_assets(song):
                 refreshed_songs += 1
 
-        if healed or marked_unavailable or refreshed_songs:
+        if healed or marked_unavailable or excluded_marked or refreshed_songs:
             self.db.commit()
         return {
             "healed": healed,
             "marked_unavailable": marked_unavailable,
+            "excluded_marked": excluded_marked,
             "refreshed_songs": refreshed_songs,
         }
+
+    def _purge_excluded_local_versions(self) -> int:
+        """删除落在排除路径下的本地版本行（回收站 / 隐藏目录 / @eaDir …）。
+
+        这类路径永远不会被扫描入库（见 :func:`_is_excluded`），残留的行都是
+        历史遗留（如 rc6 修复排除规则之前入库的回收站文件）：物理文件虽在，
+        却会被播放解析、文件列表和整理计划看见。用户若改回排除规则并重扫，
+        磁盘上的文件会被重新发现，因此删除是安全的。
+        """
+        excludes, default_globs = self._exclude_context()
+        candidates = self.db.query(SongFile).filter(SongFile.local_path.isnot(None)).all()
+        if not candidates:
+            return 0
+
+        removed = 0
+        touched_songs: set[int] = set()
+        for sf in candidates:
+            root, globs = excludes.get(sf.library_source_id, (None, default_globs))
+            if not path_is_excluded(sf.local_path, root, globs):
+                continue
+            touched_songs.add(sf.song_id)
+            self.db.delete(sf)
+            removed += 1
+
+        if not removed:
+            return 0
+        self.db.commit()
+
+        # 侧车聚合与 status 依剩余版本重算，避免指向已删除的版本
+        for song_id in sorted(touched_songs):
+            song = self.db.get(Song, song_id)
+            if not song:
+                continue
+            self._refresh_song_aggregate_assets(song)
+            remaining = self.db.query(SongFile).filter(SongFile.song_id == song_id).all()
+            has_local = any(f.local_path for f in remaining)
+            has_remote = any(f.webdav_path for f in remaining)
+            new_status = "both" if (has_local and has_remote) else "local" if has_local else "remote"
+            if song.status != new_status:
+                song.status = new_status
+                self.db.add(song)
+        self.db.commit()
+        return removed
 
     def _dedupe_dead_songs(self) -> int:
         """删除"全部版本失效且存在活体重复"的旧 Song 行。
@@ -904,6 +1004,8 @@ class LibraryScanService:
         # 扫描前先自愈失效路径，并清理"有活体重复"的死 Song
         _emit("自愈失效路径...", 2)
         heal_stats = self._heal_stale_paths()
+        _emit("清理被排除路径的残留版本...", 3)
+        heal_stats["purged_excluded"] = self._purge_excluded_local_versions()
         _emit("清理重复失效歌曲...", 3)
         heal_stats["deduped_songs"] = self._dedupe_dead_songs()
         _emit("清理冗余不可用版本...", 4)

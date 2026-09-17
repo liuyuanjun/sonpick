@@ -189,8 +189,10 @@ music/
 ### 4.4 服务层
 
 - `library_layout.py`：曲库目录/命名规范（Artist/Album/Title、cover.jpg、artist.jpg、同名 lrc）
+- `library_scan_service.py`：扫描与自愈。**排除判定的唯一入口是 `path_is_excluded(path, root, globs)`**（根内用相对路径，根外退回绝对路径组件匹配）；扫描开始时 `_heal_stale_paths` 标记失效版本，`_purge_excluded_local_versions` 删除命中排除规则的本地版本行（回收站 `.@#local/trash`、隐藏目录、`@eaDir` 等历史遗留不再长期驻留曲库，物理文件不动，改回规则重扫即重新入库）
 - `resolve_song_meta`（`media_meta_service`）：内嵌→侧车→DB→可选网络
 - 整理：`scripts/reorganize_library.py`（默认可独立运行，根=脚本目录；dry-run / `--apply`；可选 `--with-db`）
+- 单曲整理（`library_organize_service`，「刮削信息 → 整理到标准路径」）：目标根必须与批量整理同口径 —— 内置本地曲库（root == 存储目录）走 `_local_base_for_file`，文件留在其当前所在的 `LOSSLESS`/`LOSSY` 存放目录内，**禁止**直接拿 `source.root_path` 当目标根（否则无损文件会被搬出 `Lossless/`）
 
 
 - `MusicDLService`：搜索/下载；`download_one` 签名以源码为准（含 `task_id/keyword/...`），`task_worker` 必须匹配
@@ -245,6 +247,7 @@ music/
 - 主题：`theme` store；`App.vue` 使用 `n-config-provider` + dialog/message provider。颜色规则见 **§5.4 主题与配色**
 - 前端文案：当前仓库以中文硬编码为主；**若新增 React 代码**，全局规则要求走 i18n、禁止硬编码用户可见字符串。现有 Vue 页面保持项目既有风格，不强制一次性 i18n 化
 - **改动即核对组件注册**：模板用了新 Naive 组件（`<n-xxx>`）或 `h(NXxx)`，必须在 `web/src/main.js` 的 `create({ components: [...] })` 里 import 并注册，否则构建产物在运行时对未注册标签渲染为原生未知元素（白屏/样式全丢），**编译不报错**。加组件后顺手 `grep -c "<n-组件名" src/` 确认模板与注册对得上。
+- **改动即核对模板标识符**：模板里的函数/变量必须已在 `<script setup>` 声明或 import。漏了 `import { formatFileSize }` 这类问题 `pnpm build` **同样不报错**，但渲染时抛 `TypeError: _ctx.xxx is not a function`，那一块子树直接渲染失败（表现为「弹窗打开后空白 / 只剩占位文案」）。改完模板跑 `pnpm check:template-refs`（`web/scripts/check-template-refs.mjs`）。
 
 ### 5.5 前端硬规范（避免重复踩坑）
 
@@ -374,7 +377,8 @@ isDark ──┬──> buildNaiveOverrides()         → App.vue 的 :theme-ove
 ```bash
 cd web
 pnpm install && pnpm build
-pnpm test          # = node --test "src/utils/*.test.js"，工具函数单测
+pnpm test                  # = node --test "src/utils/*.test.js"，工具函数单测
+pnpm check:template-refs   # 静态检查模板里未声明 / 未导入的函数调用（编译通过但运行期报错）
 # 无 pnpm 时先安装/启用项目声明的 pnpm 版本，不建议切换 npm/yarn。
 ```
 

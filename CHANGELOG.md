@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### 修复
+- **「整理到标准路径」弹窗空白（功能完全不可用）**：`PlayerPanel.vue` 模板在第 309/316 行调用了 `formatFileSize()`，但 `@/utils/format` 只导入了 `formatClock` / `formatDateTime`。`<script setup>` 下模板标识符解析到 setup 作用域，未声明的函数调用在渲染期抛 `TypeError: _ctx.formatFileSize is not a function`，导致整理计划的整块内容渲染失败 —— 弹窗打开后只剩「正在生成整理计划…」占位文案，与用户看到的「点击后弹窗没有内容」一致（真实浏览器实测复现：报错 1 处，行数 0）。已补上导入；同一函数在刮削候选对比的封面字段（`cover_size`）里也有引用，一并修复。
+- **单曲整理丢失「按格式归档」根目录**：`_organize_song_plan` 直接用 `source.root_path` 当目标根，无损文件整理后会被搬出 `LOSSLESS`/`Lossless` 存放目录（`/app/downloads/Lossless/李志/梵高先生/春末的南方城市.wav` 会被整理成 `/app/downloads/李志/梵高先生/…`）。改为复用批量整理的同一套规则 `_local_base_for_file`：内置本地曲库（root == 存储目录）的文件留在其当前所在的格式目录内整理，不在格式目录下的文件仍回落到根目录。
+- **回收站 / 隐藏目录的历史版本长期驻留曲库**：`_heal_stale_paths` 原先只按「文件是否存在」判定，`.@#local/trash/...` 里的文件物理存在 → 版本永远 available；`_dedupe_stale_local_versions` 又只在「同歌同格式已有可用版本」时才删。现新增 `_purge_excluded_local_versions`：命中来源排除规则的本地版本行在扫描时直接删除（物理文件不动，改回排除规则并重扫即可重新入库），并重算该歌的聚合侧车与 `status`。自愈阶段同时把这类版本标记为 `unavailable`（`last_error="path excluded by scan rules"`），双保险避免被播放解析或整理计划当成正常版本。
+- **排除判定口子**：抽出 `library_scan_service.path_is_excluded(path, root, globs)` 作为唯一入口 —— 路径在 root 内按相对路径匹配，在 root 外退回「绝对路径组成部分」匹配。此前「落在 root 之外就不套用排除」的逻辑会让「来源根目录配成 `Lossless` 子目录」这类历史配置下的回收站文件重新进入整理计划。
+- **整理弹窗不再静默空白**：预览失败时弹窗保留并显示可读原因（附「重试 / 关闭」，原先只弹一条 toast、弹窗停在占位文案）；计划为空时给出明确空态；`preview` 新增 `excluded` 字段列出被扫描排除规则跳过的版本，前端在弹窗内如实展示「已排除 / 不参与整理与冲突判断」。`POST /songs/{id}/organize/preview` 也补上 `ValueError → 400`（本地源目录不可用等情况不再变成 500）。
+- **整理弹窗补样式**：`.organize-move` / `.organize-move-path` / `.organize-conflict` 等类此前没有任何 CSS 规则，行内容挤成一行纯文本流；现按「标签 + 路径（from → to 高亮）+ 格式/体积/码率」两行栅格排版，颜色统一走 `--sp-ui-*`（弹窗 teleport 到 body，取不到面板局部变量）。刮削 / 歌词弹窗文件列表里失效的 `var(--fg-3)` 一并改为 `--sp-ui-text-3`。
+
+### 新增
+- `web/scripts/check-template-refs.mjs` + `pnpm check:template-refs`：静态扫描所有 SFC，报出「模板里以函数调用形式使用、但既未在 `script setup` 声明也未导入」的标识符。`vite build` 对此类问题不报错，是本次弹窗空白的根因类别，加一道可复跑的护栏（当前全量扫描为 0 处）。
+
 ## 0.15.1-rc16
 
 ### 变更

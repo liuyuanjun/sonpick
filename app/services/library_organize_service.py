@@ -41,7 +41,7 @@ from app.services.media_meta_service import (
 )
 from app.services.operation_log_service import write_log
 from app.services.constants import AUDIO_EXTS, IMAGE_EXTS, LRC_EXTS
-from app.services.library_scan_service import _is_excluded, _normalize_globs
+from app.services.library_scan_service import _normalize_globs, path_is_excluded
 from app.services.settings_service import parse_json_list
 from app.services.scrape.query_normalize import clean_artist, clean_title, split_title_artist
 
@@ -1493,8 +1493,12 @@ class LibraryOrganizeService:
                     source = cand
                     break
         root = _source_root_local(source) if source else None
+        # 内置本地曲库（root == 存储目录）需与批量整理同口径：文件留在其当前所在的
+        # 格式目录（无损/有损存放目录）内整理，否则无损文件会被搬出 `Lossless/`。
+        builtin_dirs = self._builtin_format_dirs(source) if source is not None else None
 
         entries: list[dict[str, Any]] = []
+        excluded_entries: list[dict[str, Any]] = []
         excludes = (
             _normalize_globs(parse_json_list(getattr(source, "exclude_globs", None), []))
             if source is not None
@@ -1504,15 +1508,18 @@ class LibraryOrganizeService:
             path = Path(sf.local_path)
             # Skip files whose path falls under an excluded directory (e.g. a
             # recycle bin such as `.@#local/trash`); they must never be organized.
-            if excludes and root is not None:
-                try:
-                    rel = os.path.relpath(str(Path(path).resolve()), str(Path(root).resolve()))
-                except (ValueError, OSError):
-                    rel = str(path)
-                # `..` only appears if the file sits outside root; exclusion rules
-                # are root-relative, so don't apply them to such paths.
-                if not rel.startswith("..") and _is_excluded(rel, excludes):
-                    continue
+            # 但仍要回传，避免前端"计划里少了几行却说不出为什么"。
+            if excludes and path_is_excluded(sf.local_path, root, excludes):
+                excluded_entries.append(
+                    {
+                        "song_file_id": sf.id,
+                        "from_path": sf.local_path,
+                        "format": sf.format,
+                        "file_size": sf.file_size,
+                        "reason": "命中扫描排除规则（回收站 / 隐藏目录）",
+                    }
+                )
+                continue
             entry = {
                 "song_file_id": sf.id,
                 "from_path": sf.local_path,
@@ -1536,9 +1543,10 @@ class LibraryOrganizeService:
                 entries.append(entry)
                 continue
             ext = path.suffix.lower() or ".mp3"
+            base = self._local_base_for_file(None, builtin_dirs, path, root)
             rel_dir = library_relative_dir(artist, song.album)
             stem = track_stem(song.title, path.stem)
-            target = root / rel_dir / f"{stem}{ext}"
+            target = base / rel_dir / f"{stem}{ext}"
             entry["bitrate"] = read_audio_bitrate_kbps(path)
             entry["target_abs"] = target
             entry["to_path"] = _safe_rel(target, root)
@@ -1568,6 +1576,7 @@ class LibraryOrganizeService:
             "album": str(song.album) if song.album else None,
             "title": str(song.title) if song.title else None,
             "entries": entries,
+            "excluded": excluded_entries,
         }
 
     def preview_organize_song(self, song_id: int) -> dict[str, Any]:
@@ -1623,6 +1632,7 @@ class LibraryOrganizeService:
                 for e in entries
             ],
             "conflicts": conflicts,
+            "excluded": plan["excluded"],
             "blocked_count": sum(1 for e in entries if e.get("blocked")),
         }
 

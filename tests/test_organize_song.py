@@ -6,7 +6,10 @@
 - 应用：保留所选版本、删除另一版本，移除后父目录为空则删除空目录。
 - 默认选择（未传 choices）按码率（其次体积）保留。
 - 跨歌曲占用目标路径：标记 blocked，应用时不触碰他人文件。
+- 内置曲库保留「按格式归档」根目录（无损文件不得被搬出 Lossless/）。
+- 排除路径（回收站 / 隐藏目录）的本地版本：不进整理计划，并由扫描清理删除。
 """
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -16,8 +19,18 @@ from sqlalchemy.pool import NullPool
 
 import app.database as database
 from app.database import Base, SessionLocal
-from app.models import MediaSource, Song, SongFile
+from app.models import AppSettings, MediaSource, Song, SongFile
 from app.services.library_organize_service import LibraryOrganizeService
+from app.services.library_scan_service import EXCLUDED_LAST_ERROR, LibraryScanService
+
+DEFAULT_EXCLUDE = [
+    "**/.*",
+    "**/.@*",
+    "**/@eaDir/**",
+    "**/#recycle/**",
+    "**/Thumbs.db",
+    "**/*.tmp",
+]
 
 _ENGINE = create_engine(
     f"sqlite:///{Path(tempfile.mkdtemp()) / 'organize_song_test.db'}",
@@ -233,6 +246,160 @@ class OrganizeSongTests(unittest.TestCase):
         ids = [e["song_file_id"] for e in preview["moves"]]
         self.assertIn(real.id, ids)
         self.assertNotIn(trash.id, ids)
+
+    def _set_settings(self, *, lossless="Lossless", lossy="Lossy") -> None:
+        cfg = self.db.get(AppSettings, 1)
+        if cfg is None:
+            cfg = AppSettings(id=1, storage_path=str(self.root))
+            self.db.add(cfg)
+        cfg.storage_path = str(self.root)
+        cfg.lossless_output_path = lossless
+        cfg.lossy_output_path = lossy
+        self.db.flush()
+
+    def test_lossless_version_keeps_format_dir(self):
+        """内置曲库：无损版本整理后仍留在 Lossless/ 内，不得被搬出格式目录。"""
+        self._set_settings()
+        song = self._make_song(title="春末的南方城市", artist="李志", album="梵高先生")
+        self._make_file(
+            song,
+            self.source,
+            "Lossless/李志/02梵高先生.wav/春末的南方城市.wav",
+            4096,
+            fmt="wav",
+        )
+        self.db.commit()
+
+        preview = LibraryOrganizeService(self.db).preview_organize_song(song.id)
+        move = preview["moves"][0]
+        # 只修专辑目录名，格式目录 Lossless 保留
+        self.assertEqual(move["to_path"], "Lossless/李志/梵高先生/春末的南方城市.wav")
+        self.assertTrue(move["changed"])
+
+        LibraryOrganizeService(self.db).apply_organize_song(song.id)
+        self.assertTrue(
+            (self.root / "Lossless" / "李志" / "梵高先生" / "春末的南方城市.wav").is_file()
+        )
+        # 旧的「02梵高先生.wav」目录被清掉，且没有把文件挪到 root 下
+        self.assertFalse((self.root / "Lossless" / "李志" / "02梵高先生.wav").exists())
+        self.assertFalse((self.root / "李志").exists())
+
+    def test_lossy_version_goes_to_lossy_dir(self):
+        """有损版本沿用其当前所在的 LOSSY/ 目录（配置名不同也应识别）。"""
+        self._set_settings(lossless="Lossless", lossy="LOSSY")
+        song = self._make_song(title="春末的南方城市", artist="李志", album="梵高先生")
+        self._make_file(
+            song, self.source, "LOSSY/李志/02梵高先生.wav/春末的南方城市.mp3", 2048, fmt="mp3"
+        )
+        self.db.commit()
+        preview = LibraryOrganizeService(self.db).preview_organize_song(song.id)
+        self.assertEqual(preview["moves"][0]["to_path"], "LOSSY/李志/梵高先生/春末的南方城市.mp3")
+
+    def test_file_outside_format_dirs_falls_back_to_root(self):
+        self._set_settings()
+        song = self._make_song(title="春末的南方城市", artist="李志", album="梵高先生")
+        self._make_file(
+            song, self.source, "待整理/春末的南方城市.wav", 4096, fmt="wav"
+        )
+        self.db.commit()
+        preview = LibraryOrganizeService(self.db).preview_organize_song(song.id)
+        self.assertEqual(preview["moves"][0]["to_path"], "李志/梵高先生/春末的南方城市.wav")
+
+    def test_excluded_out_of_root_path_skipped_in_preview(self):
+        """来源根目录配成子目录时，回收站里的版本（在根之外）仍应被排除。"""
+        self._set_settings(lossless="Lossless", lossy="Lossy")
+        song = self._make_song(title="春末的南方城市", artist="李志", album="梵高先生")
+        real = self._make_file(
+            song, self.source, "Lossless/李志/梵高先生/春末的南方城市.wav", 4096, fmt="wav"
+        )
+        trash = self._make_file(
+            song,
+            self.source,
+            ".@#local/trash/Standard/李志/02梵高先生.wav/春末的南方城市.mp3",
+            2048,
+            fmt="mp3",
+        )
+        # 模拟「来源根目录 == Lossless」的历史配置：回收站版本落在根之外
+        self.source.root_path = str(self.root / "Lossless")
+        self.source.exclude_globs = json.dumps(DEFAULT_EXCLUDE)
+        self.db.flush()
+        self.db.commit()
+
+        preview = LibraryOrganizeService(self.db).preview_organize_song(song.id)
+        ids = [e["song_file_id"] for e in preview["moves"]]
+        self.assertIn(real.id, ids)
+        self.assertNotIn(trash.id, ids)
+        # 根内的文件留在 Lossless（= 根）内，不再多挂一层 Lossless 前缀
+        self.assertEqual(preview["moves"][0]["to_path"], "李志/梵高先生/春末的南方城市.wav")
+
+
+class ExcludedPathCleanupTests(unittest.TestCase):
+    """排除路径下的历史本地版本：自愈标记 + 扫描清理删除。"""
+
+    def setUp(self):
+        self.db = SessionLocal()
+        self.db.begin()
+        self.root = Path(tempfile.mkdtemp(prefix="sonpick_excl_"))
+        self.source = MediaSource(
+            name="本地曲库",
+            type="local",
+            enabled=True,
+            root_path=str(self.root),
+            exclude_globs=json.dumps(DEFAULT_EXCLUDE),
+        )
+        self.db.add(self.source)
+        self.db.flush()
+
+    def tearDown(self):
+        self.db.rollback()
+        self.db.close()
+
+    def _make(self, song_id, rel_path, fmt):
+        path = self.root / rel_path
+        _write(path, 1024)
+        sf = SongFile(
+            song_id=song_id,
+            format=fmt,
+            local_path=str(path),
+            library_source_id=self.source.id,
+            file_size=1024,
+            availability_status="available",
+        )
+        self.db.add(sf)
+        self.db.flush()
+        return sf
+
+    def test_heal_marks_and_purge_removes_excluded_version(self):
+        song = Song(title="春末的南方城市", artist="李志", album="梵高先生")
+        self.db.add(song)
+        self.db.flush()
+        real = self._make(song.id, "Lossless/李志/梵高先生/春末的南方城市.wav", "wav")
+        trash = self._make(
+            song.id,
+            ".@#local/trash/Standard/李志/02梵高先生.wav/春末的南方城市.mp3",
+            "mp3",
+        )
+        self.db.commit()
+
+        svc = LibraryScanService(self.db)
+        heal = svc._heal_stale_paths()
+        # 模块级测试库可能残留其它用例的回收站行，因此只断言本用例的行
+        self.assertGreaterEqual(heal["excluded_marked"], 1)
+        marked = self.db.get(SongFile, trash.id)
+        self.assertEqual(marked.availability_status, "unavailable")
+        self.assertEqual(marked.last_error, EXCLUDED_LAST_ERROR)
+
+        removed = svc._purge_excluded_local_versions()
+        self.assertGreaterEqual(removed, 1)
+        self.assertIsNone(self.db.get(SongFile, trash.id))
+        # 正常版本完好，物理文件不动
+        kept = self.db.get(SongFile, real.id)
+        self.assertIsNotNone(kept)
+        self.assertEqual(kept.availability_status, "available")
+        self.assertTrue(Path(kept.local_path).is_file())
+        self.assertTrue(
+            (self.root / ".@#local/trash/Standard/李志/02梵高先生.wav/春末的南方城市.mp3").is_file()
+        )
 
 
 class ScanExcludeTests(unittest.TestCase):

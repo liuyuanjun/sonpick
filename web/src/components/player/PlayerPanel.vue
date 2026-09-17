@@ -296,17 +296,42 @@
     <n-modal v-model:show="organizeVisible" preset="card" title="整理到标准路径" style="width: 760px; max-width: 96vw">
       <n-spin :show="organizeLoading && !organizeResult">
         <n-space vertical size="medium">
-          <n-alert v-if="organizePreview && organizePreview.blocked_count" type="warning" :show-icon="false">
-            有 {{ organizePreview.blocked_count }} 个文件的目标路径被其它歌曲占用，将跳过（不会覆盖他人文件）。
+          <n-alert v-if="organizeError" type="error" :show-icon="false">
+            {{ organizeError }}
           </n-alert>
-          <template v-if="organizePreview && !organizeResult">
+          <n-space v-if="organizeError" justify="end">
+            <n-button @click="organizeVisible = false">关闭</n-button>
+            <n-button type="primary" :loading="organizeLoading" @click="openOrganize">重试</n-button>
+          </n-space>
+          <template v-else-if="organizePreview && !organizeResult">
+            <n-alert v-if="organizePreview.blocked_count" type="warning" :show-icon="false">
+              有 {{ organizePreview.blocked_count }} 个文件的目标路径被其它歌曲占用，将跳过（不会覆盖他人文件）。
+            </n-alert>
             <div v-for="(move, mi) in (organizePreview.moves || [])" :key="mi" class="organize-move">
               <n-tag size="small" :type="move.blocked ? 'error' : (move.status === 'missing' || move.status === 'no_source' ? 'default' : (move.changed ? 'warning' : 'success'))">
                 {{ move.blocked ? '跳过(被占用)' : (move.status === 'missing' ? '文件缺失' : move.status === 'no_source' ? '无本地源' : (move.changed ? '移动' : '已就位')) }}
               </n-tag>
-              <span class="organize-move-path">{{ move.from_path }}</span>
-              <span v-if="move.changed && !move.blocked"> → {{ move.to_path }}</span>
-              <span class="organize-move-meta">{{ move.format }} · {{ formatFileSize(move.file_size) }}<template v-if="move.bitrate"> · {{ move.bitrate }}kbps</template></span>
+              <div class="organize-move-body">
+                <div class="organize-move-path" :title="move.from_path">
+                  {{ move.from_path }}
+                  <template v-if="move.changed && !move.blocked"> → <strong class="organize-move-to">{{ move.to_path }}</strong></template>
+                </div>
+                <div class="organize-move-meta">{{ move.format }} · {{ formatFileSize(move.file_size) }}<template v-if="move.bitrate"> · {{ move.bitrate }}kbps</template></div>
+              </div>
+            </div>
+            <n-empty
+              v-if="!(organizePreview.moves || []).length"
+              size="small"
+              :description="(organizePreview.excluded || []).length ? '没有可整理的本地版本' : '没有本地版本记录'"
+            />
+            <div v-if="(organizePreview.excluded || []).length" class="organize-excluded">
+              <n-text depth="3">
+                以下 {{ organizePreview.excluded.length }} 个版本命中扫描排除规则（回收站 / 隐藏目录），不参与整理与冲突判断：
+              </n-text>
+              <div v-for="(item, ei) in organizePreview.excluded" :key="'e' + ei" class="organize-excluded-item">
+                <n-tag size="small" type="default">已排除</n-tag>
+                <span class="organize-move-path" :title="item.from_path">{{ item.from_path }}</span>
+              </div>
             </div>
             <n-divider v-if="(organizePreview.conflicts || []).length">路径冲突（请选择保留哪一个）</n-divider>
             <div v-for="(conflict, ci) in (organizePreview.conflicts || [])" :key="'c' + ci" class="organize-conflict">
@@ -320,7 +345,14 @@
             </div>
             <n-space justify="end">
               <n-button @click="organizeVisible = false">取消</n-button>
-              <n-button type="primary" :loading="organizeLoading" @click="applyOrganize">确认整理</n-button>
+              <n-button
+                type="primary"
+                :loading="organizeLoading"
+                :disabled="!(organizePreview.moves || []).length"
+                @click="applyOrganize"
+              >
+                确认整理
+              </n-button>
             </n-space>
           </template>
           <template v-else-if="organizeResult">
@@ -554,7 +586,7 @@ import { usePlayerStore } from '@/stores/player'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useIsMobile } from '@/composables/useIsMobile'
-import { formatClock, formatDateTime } from '@/utils/format'
+import { formatClock, formatDateTime, formatFileSize } from '@/utils/format'
 import { ambientBackground, extractAccentFromImage } from '@/utils/color'
 import { normalizeSongFiles, normalizedScrapeValue, shouldSelectScrapeField } from '@/utils/scrapeApply'
 import PlayerStage from '@/components/player/PlayerStage.vue'
@@ -592,6 +624,7 @@ const organizeLoading = ref(false)
 const organizePreview = ref(null)
 const organizeChoices = ref([])
 const organizeResult = ref(null)
+const organizeError = ref('')
 
 const canOrganizeCurrent = computed(() => {
   const s = scrapeTargetSong.value
@@ -1089,6 +1122,8 @@ async function openOrganize() {
   organizeVisible.value = true
   organizeLoading.value = true
   organizeResult.value = null
+  organizeError.value = ''
+  organizePreview.value = null
   try {
     const res = await previewOrganizeSong(song.id)
     const data = res?.data || res || {}
@@ -1102,7 +1137,9 @@ async function openOrganize() {
       }).song_file_id,
     )
   } catch (err) {
-    message.error(err.response?.data?.detail || err.message || '预览整理失败')
+    // 弹窗保持打开并显示原因，避免"点开一片空白"
+    organizeError.value = err.response?.data?.detail || err.message || '预览整理失败'
+    message.error(organizeError.value)
   } finally {
     organizeLoading.value = false
   }
@@ -1112,6 +1149,7 @@ async function applyOrganize() {
   const song = scrapeTargetSong.value
   if (!song?.id) return
   organizeLoading.value = true
+  organizeError.value = ''
   try {
     const res = await applyOrganizeSong(song.id, { choices: organizeChoices.value })
     const data = res?.data || res || {}
@@ -1125,7 +1163,8 @@ async function applyOrganize() {
       })
       .catch(() => {})
   } catch (err) {
-    message.error(err.response?.data?.detail || err.message || '整理失败')
+    organizeError.value = err.response?.data?.detail || err.message || '整理失败'
+    message.error(organizeError.value)
   } finally {
     organizeLoading.value = false
   }
@@ -1676,8 +1715,19 @@ async function toggleFavorite() {
 .song-files-list { display: grid; gap: 8px; max-height: 220px; overflow-y: auto; }
 .song-file-item { display: grid; gap: 6px; padding: 9px 10px; border-radius: 8px; background: rgba(128,128,128,.08); }
 .song-file-summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; font-size: 12px; }
-.song-file-summary span { color: var(--fg-3); }
-.song-file-path { overflow: hidden; color: var(--fg-3); font-size: 12px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+.song-file-summary span { color: var(--sp-ui-text-3); }
+.song-file-path { overflow: hidden; color: var(--sp-ui-text-3); font-size: 12px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 整理到标准路径：弹窗内容 teleport 到 body，颜色统一走 --sp-ui-*（AGENTS §5.5） */
+.organize-move, .organize-excluded-item { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border-radius: 8px; background: var(--sp-ui-hover); }
+.organize-move { flex-direction: row; }
+.organize-move-body { flex: 1 1 auto; display: grid; gap: 2px; min-width: 0; }
+.organize-move-path { overflow: hidden; min-width: 0; color: var(--sp-ui-text-2); font-size: 12px; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
+.organize-move-to { color: var(--sp-ui-primary); font-weight: 500; }
+.organize-move-meta { color: var(--sp-ui-text-3); font-size: 11px; }
+.organize-excluded { display: grid; gap: 6px; }
+.organize-excluded-item { padding: 6px 10px; }
+.organize-conflict { padding: 8px 10px; border-radius: 8px; background: var(--sp-ui-hover); }
 @media (max-width: 720px) {
   .lyrics-workbench { grid-template-columns: 1fr; }
   .lyrics-compare { grid-template-columns: 1fr; }
@@ -1685,6 +1735,7 @@ async function toggleFavorite() {
   .lyrics-actions { position: sticky; bottom: 0; z-index: 3; padding: 10px 0; background: var(--bg); }
   .song-files-heading { align-items: flex-start; flex-direction: column; gap: 4px; }
   .song-file-path { white-space: normal; word-break: break-all; }
+  .organize-move-path { white-space: normal; word-break: break-all; }
   .song-files-list { max-height: 260px; }
   .scrape-compare-row { grid-template-columns: minmax(0, 1fr) 48px; }
   .scrape-field-heading, .scrape-value-block { grid-column: 1; }

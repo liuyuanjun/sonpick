@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test \"src/utils/*.test.js\""
+    "test": "node --test \"src/utils/*.test.js\"",
+    "check:template-refs": "node scripts/check-template-refs.mjs src"
   },
   "dependencies": {
     "vue": "^3.4.21",

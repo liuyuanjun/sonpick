@@ -160,13 +160,17 @@ def organize_song_preview(
     """预览把该歌的本地版本整理到标准路径（艺术家/专辑/歌名）。
 
     返回每个本地版本的去向、同歌同格式冲突（需用户选择保留哪一个，含码率/大小）、
-    以及跨歌占用导致的 blocked 项（不自动覆盖他人文件）。专辑或标题不完整时
-    complete=false，调用方应禁用整理。
+    跨歌占用导致的 blocked 项（不自动覆盖他人文件），以及命中扫描排除规则的版本
+    （``excluded``，不会整理）。专辑或标题不完整时 complete=false，调用方应禁用整理。
     """
     song = db.get(Song, song_id)
     if not song:
         raise HTTPException(status_code=404, detail="歌曲不存在")
-    return LibraryOrganizeService(db).preview_organize_song(song_id)
+    try:
+        return LibraryOrganizeService(db).preview_organize_song(song_id)
+    except ValueError as exc:
+        # 本地源目录不可用等环境问题：给出可读原因，而不是 500
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/songs/{song_id}/organize/apply")
