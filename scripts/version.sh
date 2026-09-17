@@ -153,6 +153,14 @@ cmd_set() {
 
   # 5. push（幂等：远端已有 tag 则跳过 tag 推送；tag 缺失或不指向 HEAD 时不推）
   if [ "$push" = "1" ]; then
+    # 安全门：工作区还有未提交/未跟踪文件时拒绝推送——
+    # 未跟踪的新源码文件不进提交会让 tag 指向残缺发布（v0.15.1-rc15 曾因此翻车：
+    # ChangePasswordModal.vue 未跟踪被遗漏，CI 构建必挂，只能 amend + 重打 tag 修复）
+    if [ -n "$(git status --porcelain)" ]; then
+      info "!! 拒绝推送：工作区仍有未提交/未跟踪文件。请先提交、用 --include 显式加入，或清理临时产物："
+      git status --short | sed 's/^/[version]   /'
+      exit 1
+    fi
     local branch
     branch="$(current_branch)"
     git push origin "$branch"
