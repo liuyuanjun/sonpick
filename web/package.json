@@ -1,7 +1,7 @@
 {
   "name": "sonpick-web",
   "private": true,
-  "version": "0.15.1-rc17",
+  "version": "0.15.1-rc18",
   "type": "module",
   "scripts": {
     "dev": "vite",

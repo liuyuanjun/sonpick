@@ -1,7 +1,9 @@
 <template>
   <div class="pmeta">
-    <img v-if="player.cover && !coverBroken" class="mini" :src="player.cover" alt="cover" @error="coverBroken = true" @load="coverBroken = false" />
-    <div v-else class="mini placeholder"><n-icon :size="18"><musical-notes /></n-icon></div>
+    <template v-if="showCover">
+      <img v-if="player.cover && !coverBroken" class="mini" :src="player.cover" alt="cover" @error="coverBroken = true" @load="coverBroken = false" />
+      <div v-else class="mini placeholder"><n-icon :size="18"><musical-notes /></n-icon></div>
+    </template>
     <div class="tx">
       <div class="tt" :title="player.current?.title || '未在播放'">{{ player.current?.title || '未在播放' }}</div>
       <div class="ss" :title="subLine">{{ subLine }}</div>
@@ -60,6 +62,10 @@ import { usePlayerStore } from '@/stores/player'
 import PlaylistPicker from '@/components/PlaylistPicker.vue'
 
 // 正在播放的元信息条：迷你封面 + 标题 + 歌手·专辑 + 喜欢 + 加入歌单。
+// showCover=false 时不渲染迷你封面——叠层卡的大封面就在上方，小封面会重复。
+defineProps({
+  showCover: { type: Boolean, default: true },
+})
 const player = usePlayerStore()
 const message = useMessage()
 const coverBroken = ref(false)

@@ -132,6 +132,9 @@ onBeforeUnmount(() => {
   text-align: center;
   scroll-behavior: smooth;
   box-sizing: border-box;
+  /* 沉浸式歌词自动滚动居中，不显示滚动条（滚轮仍可手动滚） */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   mask-image: linear-gradient(to bottom, transparent 0%, #000 12%, #000 88%, transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 12%, #000 88%, transparent 100%);
   --lyric-fg: rgba(255, 255, 255, 0.42);
@@ -155,6 +158,11 @@ onBeforeUnmount(() => {
 }
 .lyrics.immersive {
   padding: 0 18px;
+}
+.lyrics::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 .pad {
   height: 34%;

@@ -10,7 +10,7 @@
     <div v-if="playerSkin === 'card'" class="body body-card">
       <div class="card">
         <div class="c-art"><player-art :cover="player.cover" :playing="player.playing" /></div>
-        <player-meta />
+        <player-meta :show-cover="false" />
         <player-seek />
         <div class="c-transport">
           <player-utils :show="['quality', 'mode']" />
@@ -78,7 +78,7 @@
     <!-- 纯封面：大封面居中 -->
     <template v-else>
       <div class="body body-art">
-        <div class="art-stage"><player-art :cover="player.cover" :playing="player.playing" /></div>
+        <div class="art-stage"><player-art :cover="player.cover" :playing="player.playing" :record="true" /></div>
         <div v-if="techLine" class="tech">{{ techLine }}</div>
       </div>
       <player-band />
@@ -206,11 +206,9 @@ function onLyricSeek(time) {
   flex-direction: column;
 }
 .c-art {
-  width: min(100%, 300px);
-  margin: 0 auto 18px;
-}
-.c-art :deep(.art-wrap) {
+  /* 封面宽度 = 卡片内容宽度（与下方元信息/进度/传输对齐，不再居中收窄） */
   width: 100%;
+  margin: 0 0 18px;
 }
 .c-transport {
   margin-top: 16px;
@@ -245,9 +243,10 @@ function onLyricSeek(time) {
 
 /* ---- 唱片：巨大旋转唱片挂右上出血，标题/歌手左上，歌词左对齐 ---- */
 /* 出血量按黄金比例：只藏一个「半径 × (1-1/φ) ≈ 0.382」的角帽（≈直径的 19%），大部分盘面可见。
-   尺寸用 vh，窗口缩放时盘面等比跟随。 */
+   半径按「盘面 − 盘面与标签的半径差的三分之一」收小：R' = R − (R − R_label)/3，R_label = R/φ ≈ 0.618R
+   → R' ≈ 0.873R（40vh → 35vh）。尺寸用 vh，窗口缩放时盘面等比跟随。 */
 .vinyl-disc {
-  --disc-r: 40vh;
+  --disc-r: 35vh;
   --disc-cap: calc(var(--disc-r) * 0.382);
   position: absolute;
   top: calc(var(--disc-cap) * -1);
@@ -286,7 +285,9 @@ function onLyricSeek(time) {
   border-radius: 50%;
   background: radial-gradient(circle at 34% 30%, rgba(6, 7, 11, 0.1), rgba(6, 7, 11, 0.34) 78%);
 }
-.vinyl-disc.spin .vd-groove {
+/* 整张唱片（沟槽 + 封面标签 + 中心孔）一起转，才是"唱片在转"；
+   只转沟槽的话标签不动，看着是穿帮的。 */
+.vinyl-disc.spin {
   animation: spin 30s linear infinite;
 }
 @keyframes spin {
@@ -389,7 +390,7 @@ function onLyricSeek(time) {
     padding: 16px 22px 0;
   }
   .vinyl-disc {
-    --disc-r: 75vw;
+    --disc-r: 65vw;
     --disc-cap: calc(var(--disc-r) * 0.382);
   }
   .v-title {
