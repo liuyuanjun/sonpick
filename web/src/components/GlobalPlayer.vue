@@ -409,9 +409,12 @@ onUnmounted(() => {
 .global-player {
   /* 本组件经 Teleport 挂载到 body，不在 n-config-provider 子树内，
      --n-* 主题变量不可达；颜色一律取 :root 上的 --sp-ui-* 令牌，不写死色值 */
-  /* 苹果材质玻璃：半透明"材质"填充（亮 35% / 暗 40%，原为 70%）+ 强模糊 + 强 saturate
-     提饱和（vibrancy 鲜亮感，苹果玻璃好看的核心）；靠模糊保文字对比，不写死色值随主题 */
-  --gp-bg: color-mix(in srgb, var(--sp-ui-card-strong) 35%, transparent);
+  /* 玻璃填充 = 「页面底色」60% 的遮罩，不写死色值，且随主题自动反向：
+     暗色下把背后的亮内容往页面底色（近黑）拉 = 压暗，浅色下往页面底色（近白）拉 = 提亮，
+     两个方向都是在护「本主题文字色」的对比度（暗色白字 / 浅色深字）。
+     勿改回 --sp-ui-elevated / --sp-ui-card-strong：这两个色与页面底色几乎同亮度（暗 #181B22 vs #0B0C10），
+     0%～100% 全程只有约 1.13:1 的差，怎么调都看不出变化，也提供不了任何文字保护。 */
+  --gp-bg: color-mix(in srgb, var(--sp-ui-body) 60%, transparent);
   --gp-border: color-mix(in srgb, var(--sp-ui-border) 62%, transparent);
   --gp-text: var(--sp-ui-text-1);
   --gp-text-3: var(--sp-ui-text-3);
@@ -440,22 +443,24 @@ onUnmounted(() => {
   background: var(--gp-bg);
   border: 1px solid var(--gp-border);
   color: var(--gp-text);
-  /* 模糊半径要足够大：糊掉封面花纹才能保住文字对比度；saturate 让透出来的颜色不发灰、反而更鲜（苹果 vibrancy） */
-  backdrop-filter: blur(28px) saturate(1.9);
-  -webkit-backdrop-filter: blur(28px) saturate(1.9);
+  /* 模糊 16px 是「材质」与「透明」的临界档：足够让背后内容不可解析（保住图底分离、不跟滚动内容抢注意力），
+     又保留颜色与块面感；28px 会把背后完全洗成灰板，8px 则只留噪声且亮封面滚过时最伤白字对比。
+     saturate 1.35 只做轻微提鲜，1.9 会把背后的封面推成荧光色团。 */
+  backdrop-filter: blur(16px) saturate(1.35);
+  -webkit-backdrop-filter: blur(16px) saturate(1.35);
   box-shadow: var(--gp-shadow);
 }
 .global-player.dark {
-  --gp-bg: color-mix(in srgb, var(--sp-ui-elevated) 40%, transparent);
   --gp-shadow:
     0 18px 44px rgba(0, 0, 0, 0.55),
     0 6px 16px rgba(0, 0, 0, 0.35),
     inset 0 1px 0 rgba(255, 255, 255, 0.10);
 }
-/* 不支持 backdrop-filter 时退回高不透明度，避免文字压在封面花纹上不可读 */
+/* 不支持 backdrop-filter 时退回高不透明度，避免文字压在封面花纹上不可读
+   （放在 .dark 之后且同特异性，因此暗色下也能正常覆盖上一条） */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .global-player {
-    --gp-bg: color-mix(in srgb, var(--sp-ui-card-strong) 94%, transparent);
+    --gp-bg: color-mix(in srgb, var(--sp-ui-body) 94%, transparent);
   }
 }
 .gp-left {

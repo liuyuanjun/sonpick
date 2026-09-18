@@ -303,6 +303,8 @@ class PlaylistOut(BaseModel):
     description: Optional[str]
     cover_song_id: Optional[int]
     song_count: int = 0
+    # 仅当 list_playlists 带 song_id 查询时填充：该歌是否已在此歌单
+    contains_song: Optional[bool] = None
     created_at: Optional[str]
     updated_at: Optional[str]
 

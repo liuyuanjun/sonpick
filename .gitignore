@@ -44,3 +44,7 @@ musicdl_outputs/
 
 # AI generated images (临时生图产物)
 generated-images/
+
+# 设计参考截图（第三方 App 截图，仅本地参考，不入库）
+docs/QQMusic.png
+docs/FNMusic.png

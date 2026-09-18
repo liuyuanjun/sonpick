@@ -37,6 +37,34 @@ function legacyStageView() {
   return localStorage.getItem('sonpick-show-lyrics') === '1' ? 'lyrics' : 'cover'
 }
 
+/**
+ * 播放器皮肤（一套完整布局方案），注册表驱动、可扩展，用户可选并持久化。
+ * skin 即布局，不再有单独的"内容视图"切换。每个皮肤自带响应式处理。
+ *   card   叠层卡：左播放卡（封面/元信息/控制）+ 右歌词（默认，飞牛式）
+ *   vinyl  唱片：巨大旋转唱片挂右上出血作背景 + 左侧歌词（保留原窄屏风格）
+ *   lyrics 纯歌词：整幅模糊封面铺底 + 居中歌词
+ *   art    纯封面：大封面居中（无歌词）
+ */
+export const PLAYER_SKINS = [
+  { id: 'card', label: '叠层卡', hasLyrics: true },
+  { id: 'vinyl', label: '唱片', hasLyrics: true },
+  { id: 'lyrics', label: '歌词', hasLyrics: true },
+  { id: 'art', label: '封面', hasLyrics: false },
+]
+const PLAYER_SKIN_IDS = new Set(PLAYER_SKINS.map((s) => s.id))
+const PLAYER_SKIN_MAP = Object.fromEntries(PLAYER_SKINS.map((s) => [s.id, s]))
+export const DEFAULT_PLAYER_SKIN = 'card'
+
+export function normalizePlayerSkin(id) {
+  return PLAYER_SKIN_IDS.has(id) ? id : DEFAULT_PLAYER_SKIN
+}
+
+// 旧 stageView（cover/blend/lyrics）→ 皮肤：有歌词的两种并到叠层卡，纯歌词并到歌词皮肤
+function migrateLegacySkin() {
+  const legacy = normalizeStageView(localStorage.getItem('sonpick-stage-view') || legacyStageView())
+  return legacy === 'lyrics' ? 'lyrics' : DEFAULT_PLAYER_SKIN
+}
+
 export const usePlayerStore = defineStore('player', () => {
   const current = ref(null)
   const src = ref('')
@@ -60,11 +88,12 @@ export const usePlayerStore = defineStore('player', () => {
   const expanded = ref(false)
   // 移动端全屏「正在播放」浮层开关（桌面端不使用）
   const fullPlayerOpen = ref(false)
-  // 舞台视图：cover | blend | lyrics（切歌保留）
-  const stageView = ref(normalizeStageView(localStorage.getItem('sonpick-stage-view') || legacyStageView()))
+  // 舞台皮肤：叠层卡 | 唱片 | 歌词 | 封面（持久化，切歌保留）
+  const playerSkin = ref(normalizePlayerSkin(localStorage.getItem('sonpick-player-skin') || migrateLegacySkin()))
   // 歌词字号（px），默认 22（宽屏大播放器下的舒适阅读档位；老用户读本地存档不受影响）
   const lyricFontSize = ref(clampLyricFontSize(Number(localStorage.getItem('sonpick-lyric-font-size') ?? 22)))
-  const showLyrics = computed(() => stageView.value !== 'cover')
+  const currentSkin = computed(() => PLAYER_SKIN_MAP[playerSkin.value] || PLAYER_SKIN_MAP[DEFAULT_PLAYER_SKIN])
+  const showLyrics = computed(() => currentSkin.value.hasLyrics)
 
   const modeLabel = computed(() => MODE_LABELS[mode.value] || MODE_LABELS.loop)
   const hasPrev = computed(() => queue.value.length > 0)
@@ -317,23 +346,8 @@ export const usePlayerStore = defineStore('player', () => {
     lyricIndex.value = findLyricIndex(lyrics.value, currentTime.value)
   }
 
-  function setStageView(view) {
-    stageView.value = normalizeStageView(view)
-  }
-
-  function cycleStageView() {
-    const order = ['cover', 'blend', 'lyrics']
-    const idx = order.indexOf(stageView.value)
-    stageView.value = order[(idx + 1) % order.length]
-  }
-
-  // 兼容旧调用：true→歌词纯净，false→封面
-  function setShowLyrics(val) {
-    stageView.value = val ? 'lyrics' : 'cover'
-  }
-
-  function toggleShowLyrics() {
-    cycleStageView()
+  function setPlayerSkin(id) {
+    playerSkin.value = normalizePlayerSkin(id)
   }
 
   function setLyricFontSize(size) {
@@ -363,17 +377,17 @@ export const usePlayerStore = defineStore('player', () => {
 
   watch(mode, (v) => localStorage.setItem('sonpick-play-mode', v))
   watch(losslessPreferred, (v) => localStorage.setItem('sonpick-lossless-preferred', v ? '1' : '0'))
-  watch(stageView, (v) => localStorage.setItem('sonpick-stage-view', normalizeStageView(v)))
+  watch(playerSkin, (v) => localStorage.setItem('sonpick-player-skin', normalizePlayerSkin(v)))
   watch(lyricFontSize, (v) => localStorage.setItem('sonpick-lyric-font-size', String(v)))
 
   return {
     current, src, cover, playing, showPlayer, queue, currentIndex, mode, modeLabel,
     losslessPreferred,
     volume, muted, currentTime, duration, lyrics, lyricsMeta, lyricIndex, showQueue, expanded, fullPlayerOpen,
-    stageView, showLyrics, lyricFontSize,
+    playerSkin, currentSkin, showLyrics, lyricFontSize,
     hasPrev, hasNext, play, playList, playShuffledList, enqueue, removeFromQueue, clearQueue, jumpTo,
     next, prev, toggleMode, toggleLosslessPreferred, setVolume, toggleMute, pause, resume, togglePlay, toggle,
-    setProgress, setStageView, cycleStageView, setShowLyrics, toggleShowLyrics, setLyricFontSize, loadLyrics,
+    setProgress, setPlayerSkin, setLyricFontSize, loadLyrics,
     scrapeCurrent, waitScrapeTask, close,
   }
 })

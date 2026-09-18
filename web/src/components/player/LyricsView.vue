@@ -1,7 +1,7 @@
 <template>
   <div
     class="lyrics"
-    :class="{ immersive, light: !isDark }"
+    :class="{ immersive, light: !isDark, 'align-left': alignLeft }"
     :style="rootStyle"
     ref="box"
     @wheel="onUserScroll"
@@ -17,7 +17,7 @@
         v-for="(line, idx) in lines"
         :key="`${idx}-${line.time}`"
         class="line"
-        :class="{ active: idx === activeIndex, near: Math.abs(idx - activeIndex) === 1 }"
+        :class="lineClass(idx)"
         :ref="(el) => setLineRef(el, idx)"
         @click="$emit('seek', line.time)"
       >
@@ -39,8 +39,21 @@ const props = defineProps({
   fontSize: { type: Number, default: 18 },
   emptyTitle: { type: String, default: '暂无歌词' },
   emptyDescription: { type: String, default: '播放带 LRC 的歌曲后会在这里滚动高亮' },
+  // 左对齐（唱片皮肤用，歌词贴着左栏）；默认居中
+  alignLeft: { type: Boolean, default: false },
 })
 defineEmits(['seek'])
+
+// 焦点衰减：当前行提亮放大，邻行按距离变暗（替代原来"非当前行统一 0.42、相邻 0.58"的平铺）
+function lineClass(idx) {
+  if (idx === props.activeIndex) return 'active'
+  if (props.activeIndex < 0) return ''
+  const d = Math.abs(idx - props.activeIndex)
+  if (d === 1) return 'd1'
+  if (d === 2) return 'd2'
+  if (d === 3) return 'd3'
+  return 'd4'
+}
 
 const themeStore = useThemeStore()
 const isDark = computed(() => themeStore.isDark)
@@ -180,14 +193,22 @@ onBeforeUnmount(() => {
 .line:hover {
   color: var(--lyric-hover);
 }
-.line.near {
-  color: var(--lyric-near);
-}
+/* 焦点衰减：按与当前行的距离分层变暗 */
+.line.d1 { opacity: 0.62; }
+.line.d2 { opacity: 0.42; }
+.line.d3 { opacity: 0.26; }
+.line.d4 { opacity: 0.16; }
 .line.active {
   color: var(--lyric-active);
   font-weight: 700;
   font-size: var(--lyric-active-size, 21px);
   transform: scale(1.03);
-  text-shadow: var(--lyric-shadow);
+  text-shadow: var(--lyric-shadow), 0 0 26px var(--accent, rgba(255, 255, 255, 0.28));
+}
+.lyrics.align-left {
+  text-align: left;
+}
+.lyrics.align-left .line {
+  text-align: left;
 }
 </style>

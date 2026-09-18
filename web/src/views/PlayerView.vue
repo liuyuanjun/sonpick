@@ -227,11 +227,12 @@
       </n-form>
     </n-modal>
 
-    <n-modal v-model:show="showAddToPlaylist" preset="dialog" title="加入歌单" positive-text="加入" negative-text="取消" @positive-click="confirmAddToPlaylist">
-      <n-select
-        v-model:value="targetPlaylistId"
-        :options="playlistOptions"
-        placeholder="选择歌单"
+    <n-modal v-model:show="showAddToPlaylist" preset="card" :bordered="false" :closable="false" style="width: auto" content-style="padding: 0">
+      <playlist-picker
+        v-if="pendingSong"
+        :song-ids="[pendingSong.id]"
+        @changed="loadPlaylists"
+        @done="showAddToPlaylist = false"
       />
     </n-modal>
 
@@ -274,6 +275,7 @@
 
 <script setup>
 import BatchLyricsModal from '@/components/BatchLyricsModal.vue'
+import PlaylistPicker from '@/components/PlaylistPicker.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useMessage, useDialog } from 'naive-ui'
 import { useRoute, useRouter } from 'vue-router'
@@ -296,7 +298,6 @@ import { usePlayerStore, normalizePlayerSection } from '@/stores/player'
 import { useIsMobile } from '@/composables/useIsMobile'
 import SongTable from '@/components/player/SongTable.vue'
 import {
-  addSongsToPlaylist,
   coverUrl,
   createPlaylist,
   deletePlaylist,
@@ -357,7 +358,6 @@ const showCreatePlaylist = ref(false)
 const newPlaylistName = ref('')
 const newPlaylistDesc = ref('')
 const showAddToPlaylist = ref(false)
-const targetPlaylistId = ref(null)
 const pendingSong = ref(null)
 
 const showScanModal = ref(false)
@@ -408,7 +408,6 @@ function onMobileAction(key) {
   else if (key === 'lyrics') openBatchLyrics()
   else if (key === 'refresh') refresh()
 }
-const playlistOptions = computed(() => playlists.value.map((p) => ({ label: p.name, value: p.id })))
 const isLibraryEmpty = computed(() => !stats.value || !stats.value.song_count)
 
 function coverOf(songId) {
@@ -703,30 +702,9 @@ function onDeletePlaylist(pl) {
 }
 
 function openAddToPlaylist(song) {
+  // 交给共享的 PlaylistPicker（含已加入勾选、搜索、行内新建），不再用裸 n-select
   pendingSong.value = song
-  targetPlaylistId.value = playlists.value[0]?.id || null
-  if (!playlists.value.length) {
-    loadPlaylists().then(() => {
-      targetPlaylistId.value = playlists.value[0]?.id || null
-    })
-  }
   showAddToPlaylist.value = true
-}
-
-async function confirmAddToPlaylist() {
-  if (!pendingSong.value || !targetPlaylistId.value) {
-    message.warning('请选择歌单')
-    return false
-  }
-  try {
-    await addSongsToPlaylist(targetPlaylistId.value, [pendingSong.value.id])
-    message.success('已加入歌单')
-    await loadPlaylists()
-    return true
-  } catch (err) {
-    message.error(err.response?.data?.detail || '加入失败')
-    return false
-  }
 }
 
 async function onRemoveFromPlaylist(song) {

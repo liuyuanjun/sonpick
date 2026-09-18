@@ -38,8 +38,9 @@ export function fetchAlbumSongs(name, artist) {
   return api.get('/albums/songs', { params: { name, artist } })
 }
 
-export function fetchPlaylists() {
-  return api.get('/playlists')
+export function fetchPlaylists(songId) {
+  // 传 songId 时后端会为每个歌单标注 contains_song（是否已含该歌）
+  return api.get('/playlists', { params: songId ? { song_id: songId } : {} })
 }
 
 export function createPlaylist(payload) {

@@ -20,24 +20,24 @@
           </template>
           收起
         </n-tooltip>
-        <div class="view-switch" role="group" :aria-label="stageViewLabel">
-          <n-tooltip v-for="option in stageViewOptions" :key="option.value">
+        <div class="view-switch" role="group" aria-label="皮肤">
+          <n-tooltip v-for="skin in PLAYER_SKINS" :key="skin.id">
             <template #trigger>
               <n-button
                 class="view-toggle icon-top-btn"
-                :class="{ active: player.stageView === option.value }"
-                :type="player.stageView === option.value ? 'primary' : 'default'"
-                :secondary="player.stageView === option.value"
-                :quaternary="player.stageView !== option.value"
+                :class="{ active: player.playerSkin === skin.id }"
+                :type="player.playerSkin === skin.id ? 'primary' : 'default'"
+                :secondary="player.playerSkin === skin.id"
+                :quaternary="player.playerSkin !== skin.id"
                 circle
                 size="small"
-                :aria-label="option.label"
-                @click="player.setStageView(option.value)"
+                :aria-label="skin.label"
+                @click="player.setPlayerSkin(skin.id)"
               >
-                <n-icon size="18"><component :is="option.icon" /></n-icon>
+                <n-icon size="18"><component :is="skinIcons[skin.id]" /></n-icon>
               </n-button>
             </template>
-            {{ option.label }}
+            {{ skin.label }}
           </n-tooltip>
         </div>
       </div>
@@ -47,197 +47,15 @@
           <span class="font-size-label">{{ player.lyricFontSize }}</span>
           <n-button quaternary size="tiny" class="font-btn" :disabled="player.lyricFontSize >= 28" @click="player.setLyricFontSize(player.lyricFontSize + 1)">A+</n-button>
         </div>
-        <n-tooltip>
-          <template #trigger>
-            <n-button class="icon-top-btn" quaternary circle size="small" :disabled="!player.current" aria-label="标签" @click="openTagModal">
-              <n-icon size="18"><pricetag-outline /></n-icon>
-            </n-button>
-          </template>
-          标签
-        </n-tooltip>
-        <n-tooltip>
-          <template #trigger>
-            <n-button
-              class="scrape-btn icon-top-btn"
-              quaternary
-              circle
-              size="small"
-              :disabled="!player.current || scraping"
-              :loading="scraping"
-              :aria-label="scraping ? (scrapeHint || '检索中') : '刮削信息'"
-              @click="openScrapeModal"
-            >
-              <n-icon v-if="!scraping" size="18"><color-wand-outline /></n-icon>
-            </n-button>
-          </template>
-          {{ scraping ? (scrapeHint || '检索中') : '刮削信息' }}
-        </n-tooltip>
-        <n-tooltip>
-          <template #trigger>
-            <n-button
-              class="icon-top-btn"
-              quaternary
-              circle
-              size="small"
-              :disabled="!player.current || lyricsLoading"
-              :loading="lyricsLoading"
-              :aria-label="lyricsLoading ? (lyricsHint || '检索歌词中') : '获取歌词'"
-              @click="openLyricsModal"
-            >
-              <n-icon v-if="!lyricsLoading" size="18"><document-text-outline /></n-icon>
-            </n-button>
-          </template>
-          {{ lyricsLoading ? (lyricsHint || '检索歌词中') : '获取歌词' }}
-        </n-tooltip>
-        <n-tooltip>
-          <template #trigger>
-            <n-button class="queue-btn icon-top-btn" quaternary circle size="small" :aria-label="queueLabel" @click="player.showQueue = !player.showQueue">
-              <n-icon size="18"><list-outline /></n-icon>
-              <span v-if="player.queue?.length" class="queue-count">{{ player.queue.length }}</span>
-            </n-button>
-          </template>
-          {{ queueLabel }}
-        </n-tooltip>
+        <n-dropdown trigger="click" placement="bottom-end" :options="moreMenuOptions" @select="onMoreSelect">
+          <n-button class="icon-top-btn" quaternary circle size="small" aria-label="更多歌曲操作" :disabled="!player.current">
+            <n-icon size="18"><ellipsis-horizontal /></n-icon>
+          </n-button>
+        </n-dropdown>
       </div>
     </div>
 
-    <player-stage
-      :view="player.stageView"
-      :cover="player.cover"
-      :playing="player.playing"
-      :lines="player.lyrics"
-      :active-index="player.lyricIndex"
-      :font-size="player.lyricFontSize"
-      :instrumental="!!player.lyricsMeta.instrumental"
-      @update:view="player.setStageView($event)"
-      @seek="onLyricSeek"
-    />
-
-    <div class="panel-bottom">
-      <div class="meta-block">
-        <div class="title-row">
-          <div class="title" :title="player.current?.title || '未在播放'">
-            {{ player.current?.title || '未在播放' }}
-          </div>
-          <n-button
-            class="fav-btn"
-            quaternary
-            circle
-            size="small"
-            :type="player.current?.is_favorite ? 'error' : 'default'"
-            :disabled="!player.current"
-            @click="toggleFavorite"
-          >
-            <n-icon size="20">
-              <heart v-if="player.current?.is_favorite" />
-              <heart-outline v-else />
-            </n-icon>
-          </n-button>
-        </div>
-        <div class="artist" :title="player.current?.artist || '选择一首歌曲开始'">
-          {{ player.current?.artist || '选择一首歌曲开始' }}
-        </div>
-        <div v-if="player.current?.album" class="album" :title="player.current.album">
-          {{ player.current.album }}
-        </div>
-      </div>
-
-      <div class="progress">
-        <n-slider
-          :value="progress"
-          :step="0.1"
-          :tooltip="false"
-          :disabled="!player.duration"
-          @update:value="onSeekPercent"
-        />
-        <div class="time-row">
-          <span>{{ formatClock(player.currentTime) }}</span>
-          <span>{{ formatClock(player.duration) }}</span>
-        </div>
-      </div>
-
-      <!-- 三段式控制条：左=音质/模式，中=播放传输，右=队列+音量。宽屏下避免控件散落全宽 -->
-      <div class="controls-bar">
-        <div class="ctl-side ctl-left">
-          <n-tooltip>
-            <template #trigger>
-              <n-button
-                quaternary
-                circle
-                size="small"
-                class="ctrl format-toggle"
-                :class="{ active: player.losslessPreferred }"
-                :type="player.losslessPreferred ? 'primary' : 'default'"
-                @click="player.toggleLosslessPreferred()"
-              >
-                <template #icon>
-                  <n-icon :size="15">
-                    <diamond-outline v-if="player.losslessPreferred" />
-                    <flash-outline v-else />
-                  </n-icon>
-                </template>
-              </n-button>
-            </template>
-            {{ player.losslessPreferred ? '无损优先：优先 FLAC' : '速度优先：优先 MP3，缺失时自动回退' }}
-          </n-tooltip>
-          <n-tooltip>
-            <template #trigger>
-              <n-button quaternary circle class="ctrl" @click="player.toggleMode()">
-                <n-icon size="20">
-                  <shuffle v-if="player.mode === 'shuffle'" />
-                  <repeat v-else-if="player.mode === 'loop'" />
-                  <reload v-else-if="player.mode === 'single'" />
-                  <list v-else />
-                </n-icon>
-              </n-button>
-            </template>
-            {{ player.modeLabel }}
-          </n-tooltip>
-        </div>
-
-        <div class="ctl-center">
-          <n-button quaternary circle class="ctrl" @click="player.prev()">
-            <n-icon size="26"><play-skip-back /></n-icon>
-          </n-button>
-
-          <n-button type="primary" circle class="play-btn" @click="player.togglePlay()">
-            <n-icon size="28">
-              <pause v-if="player.playing" />
-              <play v-else />
-            </n-icon>
-          </n-button>
-
-          <n-button quaternary circle class="ctrl" @click="player.next()">
-            <n-icon size="26"><play-skip-forward /></n-icon>
-          </n-button>
-        </div>
-
-        <div class="ctl-side ctl-right">
-          <n-tooltip>
-            <template #trigger>
-              <n-button quaternary circle class="ctrl" :aria-label="queueLabel" @click="player.showQueue = !player.showQueue">
-                <n-icon size="20"><list-outline /></n-icon>
-              </n-button>
-            </template>
-            {{ queueLabel }}
-          </n-tooltip>
-          <div class="vol-ctrl">
-            <n-button quaternary circle size="small" @click="player.toggleMute()">
-              <n-icon size="18">
-                <volume-mute v-if="player.muted || player.volume === 0" />
-                <volume-high v-else />
-              </n-icon>
-            </n-button>
-            <n-slider
-              :value="player.muted ? 0 : player.volume * 100"
-              :step="1"
-              :tooltip="false"
-              @update:value="(v) => player.setVolume(v / 100)"
-            />
-          </div>
-        </div>
-      </div>
-    </div>
+    <player-skin />
 
     <n-modal v-model:show="tagModalVisible" preset="card" title="歌曲内置标签" style="width: 720px; max-width: 92vw">
       <n-spin :show="tagLoading">
@@ -540,35 +358,20 @@
 
 <script setup>
 import { computed, h, onMounted, ref, watch } from 'vue'
-import { NTag, useDialog, useMessage } from 'naive-ui'
+import { NIcon, NTag, useDialog, useMessage } from 'naive-ui'
 import {
-  MusicalNotes,
-  Heart,
-  HeartOutline,
+  AlbumsOutline,
   ChevronDown,
-  Shuffle,
-  Repeat,
-  Reload,
-  List,
-  ListOutline,
-  DiscOutline,
-  LayersOutline,
-  ReaderOutline,
-  PricetagOutline,
   ColorWandOutline,
+  DiscOutline,
   DocumentTextOutline,
-  PlaySkipBack,
-  PlaySkipForward,
-  Play,
-  Pause,
-  VolumeHigh,
-  VolumeMute,
-  DiamondOutline,
-  FlashOutline,
+  EllipsisHorizontal,
+  ImageOutline,
+  MusicalNotes,
+  PricetagOutline,
+  ReaderOutline,
 } from '@vicons/ionicons5'
 import {
-  addFavorite,
-  removeFavorite,
   applyLyricsCandidate,
   clearLyrics,
   applyScrapeCandidate,
@@ -582,14 +385,14 @@ import {
   applyOrganizeSong,
 } from '@/api/music'
 import api from '@/api/client'
-import { usePlayerStore } from '@/stores/player'
+import { usePlayerStore, PLAYER_SKINS } from '@/stores/player'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useIsMobile } from '@/composables/useIsMobile'
 import { formatClock, formatDateTime, formatFileSize } from '@/utils/format'
 import { ambientBackground, extractAccentFromImage } from '@/utils/color'
 import { normalizeSongFiles, normalizedScrapeValue, shouldSelectScrapeField } from '@/utils/scrapeApply'
-import PlayerStage from '@/components/player/PlayerStage.vue'
+import PlayerSkin from '@/components/player/PlayerSkin.vue'
 import { fetchSongFiles } from '@/api/music'
 
 const player = usePlayerStore()
@@ -811,16 +614,22 @@ function lyricsRowProps(row) {
 }
 
 const isDark = computed(() => themeStore.isDark)
-const stageViewLabel = computed(() => {
-  const map = { cover: '封面', blend: '叠层', lyrics: '歌词' }
-  return map[player.stageView] || '封面'
-})
-const stageViewOptions = [
-  { value: 'cover', label: '封面', icon: DiscOutline },
-  { value: 'blend', label: '叠层', icon: LayersOutline },
-  { value: 'lyrics', label: '歌词', icon: ReaderOutline },
+const skinIcons = {
+  card: AlbumsOutline,
+  vinyl: DiscOutline,
+  lyrics: ReaderOutline,
+  art: ImageOutline,
+}
+const moreMenuOptions = [
+  { label: '标签', key: 'tag', icon: () => h(NIcon, null, { default: () => h(PricetagOutline) }) },
+  { label: '刮削信息', key: 'scrape', icon: () => h(NIcon, null, { default: () => h(ColorWandOutline) }) },
+  { label: '获取歌词', key: 'lyrics', icon: () => h(NIcon, null, { default: () => h(DocumentTextOutline) }) },
 ]
-const queueLabel = computed(() => `队列 ${player.queue?.length || 0}`)
+function onMoreSelect(key) {
+  if (key === 'tag') openTagModal()
+  else if (key === 'scrape') openScrapeModal()
+  else if (key === 'lyrics') openLyricsModal()
+}
 
 const tagRows = computed(() => {
   const db = tagData.value?.db || {}
@@ -861,28 +670,6 @@ const candidateColumns = computed(() => [
   { title: '封面', key: 'cover_url', width: 92, render: (row) => row.has_cover || row.cover_url ? (row.cover_source ? `有/${row.cover_source}` : '有') : '无' },
   { title: '操作', key: 'actions', width: 90, render: (row) => h('button', { class: 'mini-apply-btn', onClick: () => openApplyCandidate(row) }, '采用') },
 ])
-
-const progress = computed(() => {
-  if (!player.duration) return 0
-  return (player.currentTime / player.duration) * 100
-})
-
-function requestSeek(time) {
-  const target = Number(time)
-  if (!Number.isFinite(target) || target < 0) return
-  window.dispatchEvent(new CustomEvent('sonpick-seek', { detail: target }))
-}
-
-function onSeekPercent(value) {
-  const duration = Number(player.duration)
-  const percent = Math.min(100, Math.max(0, Number(value) || 0))
-  if (!Number.isFinite(duration) || duration <= 0) return
-  requestSeek((percent / 100) * duration)
-}
-
-function onLyricSeek(time) {
-  requestSeek(time)
-}
 
 const panelStyle = computed(() => {
   const bg = ambientBackground(accent.value, { dark: isDark.value })
@@ -1337,23 +1124,6 @@ async function applyCandidate() {
 }
 
 
-async function toggleFavorite() {
-  const song = player.current
-  if (!song) return
-  try {
-    if (song.is_favorite) {
-      await removeFavorite(song.id)
-      song.is_favorite = false
-      message.success('已取消喜欢')
-    } else {
-      await addFavorite(song.id)
-      song.is_favorite = true
-      message.success('已加入我喜欢的')
-    }
-  } catch (e) {
-    message.error(e.response?.data?.detail || '操作失败')
-  }
-}
 </script>
 
 <style scoped>
@@ -1443,17 +1213,6 @@ async function toggleFavorite() {
 }
 
 .panel-top,
-.panel-bottom {
-  position: relative;
-  z-index: 1;
-}
-
-/* 底部信息编组：宽屏下收进居中容器，不再通栏散落 */
-.panel-bottom {
-  flex: 0 0 auto;
-  width: min(100%, 1040px);
-  margin: 0 auto;
-}
 
 .panel-top {
   display: flex;
@@ -1489,22 +1248,6 @@ async function toggleFavorite() {
 .icon-top-btn {
   position: relative;
 }
-.queue-count {
-  position: absolute;
-  right: -2px;
-  bottom: -1px;
-  min-width: 14px;
-  height: 14px;
-  padding: 0 3px;
-  border-radius: 999px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 9px;
-  line-height: 14px;
-  font-weight: 700;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
-  box-sizing: border-box;
-}
 .font-size-ctrl {
   display: inline-flex;
   align-items: center;
@@ -1525,162 +1268,6 @@ async function toggleFavorite() {
   letter-spacing: 0.02em;
 }
 
-.meta-block {
-  flex: 0 0 auto;
-  padding: 4px 22px 0;
-  min-width: 0;
-}
-.title-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-.title {
-  flex: 1;
-  min-width: 0;
-  font-size: 24px;
-  font-weight: 750;
-  line-height: 1.25;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  letter-spacing: 0.01em;
-  color: var(--fg);
-}
-.fav-btn {
-  color: var(--fg-2) !important;
-  flex-shrink: 0;
-}
-.artist {
-  margin-top: 8px;
-  font-size: 14px;
-  color: var(--fg-2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.album {
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--fg-3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.progress {
-  flex: 0 0 auto;
-  padding: 14px 22px 0;
-}
-.progress :deep(.n-slider) {
-  --n-rail-height: 3px;
-  --n-rail-color: var(--rail);
-  --n-rail-color-hover: var(--rail);
-  --n-fill-color: var(--accent);
-  --n-fill-color-hover: var(--accent);
-  --n-handle-color: var(--handle);
-  --n-handle-size: 12px;
-}
-.time-row {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 6px;
-  font-size: 12px;
-  color: var(--fg-3);
-  font-variant-numeric: tabular-nums;
-}
-
-.controls-bar {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 22px 16px;
-}
-.ctl-side {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-.ctl-left {
-  justify-content: flex-start;
-}
-.ctl-right {
-  justify-content: flex-end;
-}
-.ctl-center {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-.ctrl {
-  color: var(--fg) !important;
-}
-.format-toggle {
-  padding: 0;
-}
-.format-toggle.active {
-  color: var(--accent, var(--sp-ui-primary)) !important;
-}
-.play-btn {
-  width: 58px;
-  height: 58px;
-  background: var(--play-bg) !important;
-  color: var(--play-fg) !important;
-  box-shadow: var(--play-shadow);
-  border: none !important;
-}
-.play-btn :deep(.n-icon) {
-  color: var(--play-fg);
-}
-
-/* 紧凑音量：图标 + 定宽短滑杆，跟随右侧编组（替代原全宽音量行） */
-.vol-ctrl {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.vol-ctrl :deep(.n-button) {
-  color: var(--fg-2) !important;
-}
-.vol-ctrl :deep(.n-slider) {
-  width: 110px;
-  --n-rail-height: 3px;
-  --n-rail-color: var(--rail-soft);
-  --n-fill-color: rgba(255, 255, 255, 0.72);
-  --n-fill-color-hover: #fff;
-  --n-handle-color: var(--handle);
-  --n-handle-size: 10px;
-}
-.player-panel.light .vol-ctrl :deep(.n-slider) {
-  --n-fill-color: var(--accent);
-  --n-fill-color-hover: var(--accent);
-}
-
-@media (max-width: 1100px) {
-  .title { font-size: 20px; }
-}
-
-/* 移动端全屏浮层形态 */
-@media (max-width: 768px) {
-  .vol-ctrl {
-    display: none;
-  }
-  .title {
-    font-size: 19px;
-  }
-  .meta-block {
-    padding: 4px 18px 0;
-  }
-  .progress {
-    padding: 12px 18px 0;
-  }
-  .controls-bar {
-    padding: 10px 12px calc(14px + env(safe-area-inset-bottom, 0px));
-  }
-}
 
 .tag-grid { display: grid; gap: 8px; }
 .tag-row { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px; align-items: start; }

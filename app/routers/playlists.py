@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
@@ -20,23 +21,36 @@ from app.services.song_version_summary import songs_with_summary
 router = APIRouter(prefix="/playlists", tags=["playlists"])
 
 
-def _playlist_out(db: Session, pl: Playlist) -> PlaylistOut:
+def _playlist_out(db: Session, pl: Playlist, contains_song: Optional[bool] = None) -> PlaylistOut:
     count = (
         db.query(func.count(PlaylistItem.id))
         .filter(PlaylistItem.playlist_id == pl.id)
         .scalar()
         or 0
     )
-    return PlaylistOut(**pl.to_dict(song_count=count))
+    return PlaylistOut(**pl.to_dict(song_count=count), contains_song=contains_song)
 
 
 @router.get("", response_model=list[PlaylistOut])
 def list_playlists(
+    song_id: Optional[int] = None,
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     playlists = db.query(Playlist).order_by(Playlist.updated_at.desc()).all()
-    return [_playlist_out(db, p) for p in playlists]
+    # 带 song_id 时标注每个歌单是否已含该歌（供「加入歌单」弹层显示已加入状态）
+    member_of: set[int] = set()
+    if song_id is not None:
+        member_of = {
+            i.playlist_id
+            for i in db.query(PlaylistItem.playlist_id)
+            .filter(PlaylistItem.song_id == song_id)
+            .all()
+        }
+    return [
+        _playlist_out(db, p, contains_song=(p.id in member_of) if song_id is not None else None)
+        for p in playlists
+    ]
 
 
 @router.post("", response_model=PlaylistOut)
