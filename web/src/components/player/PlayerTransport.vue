@@ -9,7 +9,10 @@
       上一曲
     </n-tooltip>
     <n-button type="primary" circle class="tp-play" :style="{ width: `${size}px`, height: `${size}px` }" :disabled="!player.current" aria-label="播放/暂停" @click="player.togglePlay()">
-      <n-icon :size="Math.round(size * 0.42)"><pause v-if="player.playing" /><play v-else /></n-icon>
+      <n-icon :size="Math.round(size * 0.5)" :class="{ 'is-play': !player.playing }">
+        <pause v-if="player.playing" />
+        <play v-else />
+      </n-icon>
     </n-button>
     <n-tooltip>
       <template #trigger>
@@ -42,12 +45,35 @@ const player = usePlayerStore()
   color: var(--fg);
 }
 .tp-play {
-  background: var(--play-bg) !important;
-  color: var(--play-fg) !important;
-  border: none !important;
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.32);
+  /* 把 Naive 各交互态的颜色都钉到 --play-bg/--play-fg，避免 hover/focus 闪回品牌绿 */
+  --n-color: var(--play-bg);
+  --n-color-hover: var(--play-bg);
+  --n-color-pressed: var(--play-bg);
+  --n-color-focus: var(--play-bg);
+  --n-text-color: var(--play-fg);
+  --n-text-color-hover: var(--play-fg);
+  --n-text-color-pressed: var(--play-fg);
+  --n-text-color-focus: var(--play-fg);
+  --n-border: 0 solid transparent;
+  --n-border-hover: 0 solid transparent;
+  --n-border-pressed: 0 solid transparent;
+  --n-border-focus: 0 solid transparent;
+  --n-ripple-color: transparent;
+  background: var(--play-bg);
+  color: var(--play-fg);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.3);
+}
+/* Naive 的 n-button 用内部两个 span 画描边（primary 类型下是品牌绿），
+   组件上的 border 覆盖管不到它们 —— 不显式灭掉就会在圆上留一圈绿边（看起来还毛糙）。 */
+.tp-play :deep(.n-button__border),
+.tp-play :deep(.n-button__state-border) {
+  display: none;
 }
 .tp-play :deep(.n-icon) {
   color: var(--play-fg);
+}
+/* 播放三角的光学重心偏左，往右轻推一点才是"看起来居中"（暂停的双竖条对称，不用推） */
+.tp-play :deep(.n-icon.is-play) {
+  transform: translateX(2px);
 }
 </style>

@@ -9,7 +9,7 @@
     <!-- 叠层卡：左播放卡 + 右歌词 -->
     <div v-if="playerSkin === 'card'" class="body body-card">
       <div class="card">
-        <div class="c-art"><player-art :cover="player.cover" :playing="player.playing" /></div>
+        <div class="c-art"><player-art :cover="player.cover" :playing="player.playing" :record="true" /></div>
         <player-meta :show-cover="false" />
         <player-seek />
         <div class="c-transport">
@@ -192,15 +192,24 @@ function onLyricSeek(time) {
   display: flex;
 }
 
-/* ---- 叠层卡：卡片 + 歌词作为一组整体限宽居中 ---- */
+/* ---- 叠层卡：卡片 + 歌词 ----
+   布局按「常量」而非「内容」计算，所以歌词怎么变都不会推动卡片：
+     左外边距 = (屏宽 − 卡片宽 − 间隙 − 歌词合适宽) / 2
+     → [卡片 + 合适宽歌词] 这一块近似居中；卡片右侧的剩余空间全部归歌词，
+       略超「合适宽」的单行歌词不必换行/省略，直接往右伸即可（容器只在纵向滚动）。 */
 .body-card {
+  --card-w: 352px;
+  --card-gap: 72px;
+  --lyr-w: 560px;
+  display: flex;
   align-items: center;
-  justify-content: center;
-  gap: clamp(40px, 6vw, 96px);
-  padding: 20px 24px;
+  justify-content: flex-start;
+  gap: var(--card-gap);
+  padding: 20px clamp(24px, 5vw, 64px) 20px
+    max(0px, calc((100% - var(--card-w) - var(--card-gap) - var(--lyr-w)) / 2));
 }
 .card {
-  flex: 0 1 352px;
+  flex: 0 0 var(--card-w);
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -225,9 +234,8 @@ function onLyricSeek(time) {
   margin-bottom: 12px;
 }
 .stage-lrc {
-  flex: 0 1 auto;
-  width: fit-content;
-  max-width: min(620px, 52%);
+  /* 卡片右侧整片都归歌词（flex:1）；宽度由容器决定、与歌词内容无关 → 不会推动卡片 */
+  flex: 1 1 auto;
   min-width: 0;
   align-self: center;
   height: 100%;
@@ -239,6 +247,15 @@ function onLyricSeek(time) {
   flex: 1;
   min-height: 0;
   text-align: left;
+}
+/* 长行**允许换行**（歌词区已加宽，正常长度不会折行，只有超长行才合理折到下一行）；
+   不用省略号——折行比截断好读。
+   选择器写到 .lyrics .line 是为了压过 LyricsView 自己的 .line 规则（同为两段时先后次序不定）。 */
+.stage-lrc :deep(.lyrics .line) {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: break-word;
 }
 
 /* ---- 唱片：巨大旋转唱片挂右上出血，标题/歌手左上，歌词左对齐 ---- */
@@ -361,31 +378,8 @@ function onLyricSeek(time) {
   letter-spacing: 0.03em;
 }
 
-/* 移动端：窄屏收拢 */
+/* 移动端：窄屏收拢（叠层卡在移动端不可用，由 store 收敛掉，故这里不再有它的覆盖样式） */
 @media (max-width: 768px) {
-  .body-card {
-    flex-direction: column;
-    gap: 18px;
-    justify-content: center;
-    padding: 8px 22px;
-  }
-  .card {
-    flex: 0 0 auto;
-    width: min(100%, 340px);
-  }
-  .c-art {
-    width: min(100%, 46vh, 240px);
-  }
-  .stage-lrc {
-    max-width: 100%;
-    width: 100%;
-    flex: 1;
-    min-height: 120px;
-    height: auto;
-  }
-  .stage-lrc :deep(.lyrics) {
-    text-align: center;
-  }
   .body-vinyl {
     padding: 16px 22px 0;
   }

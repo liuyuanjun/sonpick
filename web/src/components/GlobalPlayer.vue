@@ -1,7 +1,7 @@
 <template>
   <teleport to="body">
     <transition name="slide-up">
-    <div v-if="player.showPlayer && player.current" class="global-player" :class="{ dark: themeStore.isDark }">
+    <div v-if="player.showPlayer && player.current" class="global-player" :class="{ dark: themeStore.isDark }" :style="accentStyle">
       <div class="gp-progress-line" aria-hidden="true">
         <div class="fill" :style="{ width: `${progress}%` }"></div>
       </div>
@@ -43,7 +43,6 @@
                 size="small"
                 class="format-toggle"
                 :class="{ active: player.losslessPreferred }"
-                :type="player.losslessPreferred ? 'primary' : 'default'"
                 @click="player.toggleLosslessPreferred()"
               >
                 <template #icon>
@@ -72,8 +71,8 @@
           <n-button quaternary circle @click="player.prev()">
             <n-icon size="20"><play-skip-back /></n-icon>
           </n-button>
-          <n-button type="primary" circle @click="togglePlay">
-            <n-icon size="22">
+          <n-button type="primary" circle class="gp-play" @click="togglePlay">
+            <n-icon size="23" :class="{ 'is-play': !player.playing }">
               <pause v-if="player.playing" />
               <play v-else />
             </n-icon>
@@ -94,7 +93,7 @@
             :padding="0"
             :duration="0"
             :delay="0"
-            style="border-radius: 12px"
+            :style="[accentStyle, { borderRadius: '12px' }]"
           >
             <template #trigger>
               <span
@@ -132,6 +131,7 @@
               <!-- Naive 竖向滑块的 height 是 100%，必须由外层容器给高度（:height prop 无效） -->
               <div class="gp-volume-slider">
                 <n-slider
+                  class="gp-volume-rail"
                   vertical
                   :value="volumePercent"
                   :step="1"
@@ -156,7 +156,7 @@
         </div>
         <div class="progress-row">
           <span>{{ formatClock(player.currentTime) }}</span>
-          <n-slider :value="progress" :step="0.1" :tooltip="false" @update:value="seek" />
+          <n-slider class="gp-progress" :value="progress" :step="0.1" :tooltip="false" @update:value="seek" />
           <span>{{ formatClock(player.duration) }}</span>
         </div>
       </div>
@@ -199,6 +199,7 @@ import { useThemeStore } from '@/stores/theme'
 import { useIsMobile } from '@/composables/useIsMobile'
 import { useMediaSession } from '@/composables/useMediaSession'
 import { formatClock } from '@/utils/format'
+import { extractAccentFromImage } from '@/utils/color'
 
 const player = usePlayerStore()
 const themeStore = useThemeStore()
@@ -206,6 +207,26 @@ const message = useMessage()
 const isMobile = useIsMobile()
 const audio = ref(null)
 const coverBroken = ref(false)
+// 胶囊不在全屏播放器抽屉里，取不到抽屉按封面注入的 --accent，需要自己算一次，
+// 这样「正在播放」的颜色语言（播放键 / 进度 / 音量）与全屏播放器完全一致。
+const accent = ref(null)
+watch(
+  () => player.cover,
+  async (url) => {
+    accent.value = null
+    if (!url) return
+    accent.value = await extractAccentFromImage(url)
+  },
+  { immediate: true },
+)
+const accentStyle = computed(() => {
+  const a = accent.value
+  return {
+    '--accent': a ? a.css : 'var(--sp-ui-primary)',
+    '--play-bg': a ? a.css : 'var(--sp-ui-primary)',
+    '--play-fg': a ? a.on || '#FFFFFF' : 'var(--sp-ui-on-primary)',
+  }
+})
 // 系统媒体命令（线控/媒体键）对接：单击=播放/暂停、双击=下一曲、三击=上一曲
 const mediaSession = useMediaSession(player, audio)
 // 本地进度百分比：直接跟 audio 同步，避免仅依赖 store 时顶部细线不刷新
@@ -557,8 +578,51 @@ onUnmounted(() => {
   display: block;
   height: 100%;
   width: 0%;
-  background: var(--sp-ui-primary);
+  background: var(--accent, var(--sp-ui-primary));
   will-change: width;
+}
+
+/* 播放键 = 封面主题色（与全屏播放器一致）。
+   Naive 的 n-button 用内部两个 span 画描边（primary 类型下是品牌绿），不灭掉会留一圈绿边；
+   各交互态颜色也一并钉住，避免 hover/focus 闪回品牌绿。 */
+.gp-play {
+  /* Naive 把按钮的颜色类变量也写在元素的 inline style 上 → 直接覆盖 background/color 更稳 */
+  background: var(--play-bg) !important;
+  color: var(--play-fg) !important;
+  --n-color: var(--play-bg) !important;
+  --n-color-hover: var(--play-bg) !important;
+  --n-color-pressed: var(--play-bg) !important;
+  --n-color-focus: var(--play-bg) !important;
+  --n-text-color: var(--play-fg) !important;
+  --n-text-color-hover: var(--play-fg) !important;
+  --n-text-color-pressed: var(--play-fg) !important;
+  --n-text-color-focus: var(--play-fg) !important;
+  --n-border: 0 solid transparent;
+  --n-border-hover: 0 solid transparent;
+  --n-border-pressed: 0 solid transparent;
+  --n-border-focus: 0 solid transparent;
+  --n-ripple-color: transparent;
+}
+.gp-play :deep(.n-button__border),
+.gp-play :deep(.n-button__state-border) {
+  display: none;
+}
+/* 播放三角的光学重心偏左，往右轻推一点才是"看起来居中"（暂停的双竖条是对称的，不用推） */
+.gp-play :deep(.n-icon.is-play) {
+  transform: translateX(1.5px);
+}
+
+/* 进度 / 音量滑杆填充 = 主题色。Naive 把滑杆的颜色变量写在元素的 inline style 上，
+   类选择器覆盖不掉，必须 !important（几何变量不是，所以那些不用）。 */
+.gp-progress,
+.gp-volume-rail {
+  --n-fill-color: var(--accent, var(--sp-ui-primary)) !important;
+  --n-fill-color-hover: var(--accent, var(--sp-ui-primary)) !important;
+  --n-handle-color: #fff !important;
+}
+/* 「音质优先」激活态也用主题色（原来走 primary 类型 = 品牌绿，与全屏播放器不一致） */
+.format-toggle.active {
+  color: var(--accent, var(--sp-ui-primary)) !important;
 }
 .gp-mobile-actions {
   display: flex;

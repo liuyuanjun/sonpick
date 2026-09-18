@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { fetchLyrics, recordPlay, streamUrl, coverUrl, scrapeSongs, waitTask } from '@/api/music'
 import { useAuthStore } from '@/stores/auth'
+import { useIsMobile } from '@/composables/useIsMobile'
 import { findLyricIndex, parseLrc } from '@/utils/lrc'
 
 const MODES = ['order', 'loop', 'single', 'shuffle']
@@ -40,13 +41,14 @@ function legacyStageView() {
 /**
  * 播放器皮肤（一套完整布局方案），注册表驱动、可扩展，用户可选并持久化。
  * skin 即布局，不再有单独的"内容视图"切换。每个皮肤自带响应式处理。
- *   card   叠层卡：左播放卡（封面/元信息/控制）+ 右歌词（默认，飞牛式）
+ *   card   叠层卡：左播放卡（封面/元信息/控制）+ 右歌词（默认，飞牛式）— 仅桌面
  *   vinyl  唱片：巨大旋转唱片挂右上出血作背景 + 左侧歌词（保留原窄屏风格）
  *   lyrics 纯歌词：整幅模糊封面铺底 + 居中歌词
  *   art    纯封面：大封面居中（无歌词）
+ * desktopOnly：竖屏手机放不下两栏，叠层卡在移动端隐藏（移动端用封面/歌词这两个单栏皮肤）。
  */
 export const PLAYER_SKINS = [
-  { id: 'card', label: '叠层卡', hasLyrics: true },
+  { id: 'card', label: '叠层卡', hasLyrics: true, desktopOnly: true },
   { id: 'vinyl', label: '唱片', hasLyrics: true },
   { id: 'lyrics', label: '歌词', hasLyrics: true },
   { id: 'art', label: '封面', hasLyrics: false },
@@ -54,6 +56,8 @@ export const PLAYER_SKINS = [
 const PLAYER_SKIN_IDS = new Set(PLAYER_SKINS.map((s) => s.id))
 const PLAYER_SKIN_MAP = Object.fromEntries(PLAYER_SKINS.map((s) => [s.id, s]))
 export const DEFAULT_PLAYER_SKIN = 'card'
+// 移动端兜底皮肤：叠层卡不可用时落到纯歌词（本身带封面模糊底，最接近"封面+歌词"的沉浸感）
+export const DEFAULT_PLAYER_SKIN_MOBILE = 'lyrics'
 
 export function normalizePlayerSkin(id) {
   return PLAYER_SKIN_IDS.has(id) ? id : DEFAULT_PLAYER_SKIN
@@ -92,7 +96,16 @@ export const usePlayerStore = defineStore('player', () => {
   const playerSkin = ref(normalizePlayerSkin(localStorage.getItem('sonpick-player-skin') || migrateLegacySkin()))
   // 歌词字号（px），默认 22（宽屏大播放器下的舒适阅读档位；老用户读本地存档不受影响）
   const lyricFontSize = ref(clampLyricFontSize(Number(localStorage.getItem('sonpick-lyric-font-size') ?? 22)))
-  const currentSkin = computed(() => PLAYER_SKIN_MAP[playerSkin.value] || PLAYER_SKIN_MAP[DEFAULT_PLAYER_SKIN])
+  // 皮肤可用集合按视口收敛：桌面全部；移动端隐藏 desktopOnly 的叠层卡（竖屏放不下两栏）
+  const isMobile = useIsMobile()
+  const availableSkins = computed(() => PLAYER_SKINS.filter((s) => !s.desktopOnly || !isMobile.value))
+  // 实际生效的皮肤：持久化的偏好若在当前视口不可用，落到该视口的默认皮肤（不覆盖用户偏好）
+  const effectiveSkinId = computed(() => {
+    const ids = availableSkins.value.map((s) => s.id)
+    if (ids.includes(playerSkin.value)) return playerSkin.value
+    return isMobile.value ? DEFAULT_PLAYER_SKIN_MOBILE : DEFAULT_PLAYER_SKIN
+  })
+  const currentSkin = computed(() => PLAYER_SKIN_MAP[effectiveSkinId.value] || PLAYER_SKIN_MAP[DEFAULT_PLAYER_SKIN])
   const showLyrics = computed(() => currentSkin.value.hasLyrics)
 
   const modeLabel = computed(() => MODE_LABELS[mode.value] || MODE_LABELS.loop)
@@ -347,7 +360,10 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   function setPlayerSkin(id) {
-    playerSkin.value = normalizePlayerSkin(id)
+    const next = normalizePlayerSkin(id)
+    // 只接受当前视口可用的皮肤（移动端不接受 desktopOnly 的叠层卡）
+    if (!availableSkins.value.some((s) => s.id === next)) return
+    playerSkin.value = next
   }
 
   function setLyricFontSize(size) {
@@ -384,7 +400,7 @@ export const usePlayerStore = defineStore('player', () => {
     current, src, cover, playing, showPlayer, queue, currentIndex, mode, modeLabel,
     losslessPreferred,
     volume, muted, currentTime, duration, lyrics, lyricsMeta, lyricIndex, showQueue, expanded, fullPlayerOpen,
-    playerSkin, currentSkin, showLyrics, lyricFontSize,
+    playerSkin, availableSkins, currentSkin, showLyrics, lyricFontSize,
     hasPrev, hasNext, play, playList, playShuffledList, enqueue, removeFromQueue, clearQueue, jumpTo,
     next, prev, toggleMode, toggleLosslessPreferred, setVolume, toggleMute, pause, resume, togglePlay, toggle,
     setProgress, setPlayerSkin, setLyricFontSize, loadLyrics,

@@ -82,6 +82,9 @@ export function extractAccentFromImage(url, { size = 32, samples = 12 } = {}) {
           soft: `rgba(${boosted.r}, ${boosted.g}, ${boosted.b}, 0.42)`,
           deep: `rgba(${Math.round(boosted.r * 0.35)}, ${Math.round(boosted.g * 0.35)}, ${Math.round(boosted.b * 0.35)}, 0.9)`,
           glow: `rgba(${boosted.r}, ${boosted.g}, ${boosted.b}, 0.55)`,
+          // 叠加在强调色之上的可读前景色（白/深取对比更高者）：主题色明度不固定，
+          // 播放键这类"实心主题色 + 图标"的元素必须用它，不能写死白或黑。
+          on: pickOnColor(boosted.r, boosted.g, boosted.b),
         })
       } catch {
         done(null)
@@ -103,6 +106,23 @@ function boostSat(r, g, b, amount = 1.15) {
     g: Math.round(clamp(avg + (g - avg) * amount, 0, 255)),
     b: Math.round(clamp(avg + (b - avg) * amount, 0, 255)),
   }
+}
+
+/** 相对亮度（WCAG） */
+function relativeLuminance(r, g, b) {
+  const f = (c) => {
+    const v = c / 255
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
+  }
+  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
+}
+
+/** 在给定底色上取对比度更高的前景色（深色文字用与页面底色同族的 #0B0C10） */
+function pickOnColor(r, g, b) {
+  const lum = relativeLuminance(r, g, b)
+  const onWhite = 1.05 / (lum + 0.05)
+  const onDark = (lum + 0.05) / 0.0537
+  return onWhite >= onDark ? '#FFFFFF' : '#0B0C10'
 }
 
 export function ambientBackground(accent, { dark = true } = {}) {

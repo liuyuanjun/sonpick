@@ -7,7 +7,6 @@
           <n-button
             quaternary circle size="small" class="pu-btn quality"
             :class="{ on: player.losslessPreferred }"
-            :type="player.losslessPreferred ? 'primary' : 'default'"
             aria-label="音质优先"
             @click="player.toggleLosslessPreferred()"
           >
@@ -95,27 +94,23 @@ const queueLabel = computed(() => `队列 ${player.queue?.length || 0}`)
   color: var(--fg-2);
 }
 .quality.on {
-  color: var(--accent, var(--sp-ui-primary));
+  color: var(--accent, var(--sp-ui-primary)) !important;
 }
 .pu-vol {
   display: flex;
   align-items: center;
   gap: 4px;
 }
+/* class="pu-slider" 落在 n-slider 根元素上；Naive 把滑杆颜色变量写在 inline style 上，
+   覆盖必须 !important。音量与进度统一用封面主题色，播放状态只有一种颜色语言。 */
 .pu-vol .pu-slider {
   width: 92px;
-}
-.pu-vol .pu-slider :deep(.n-slider) {
   --n-rail-height: 3px;
-  --n-rail-color: var(--rail-soft);
-  --n-fill-color: rgba(255, 255, 255, 0.72);
-  --n-fill-color-hover: #fff;
-  --n-handle-color: #fff;
   --n-handle-size: 10px;
-}
-.player-panel.light .pu-vol .pu-slider :deep(.n-slider) {
-  --n-fill-color: var(--accent, var(--sp-ui-primary));
-  --n-fill-color-hover: var(--accent, var(--sp-ui-primary));
+  --n-rail-color: var(--rail-soft) !important;
+  --n-fill-color: var(--accent, var(--sp-ui-primary)) !important;
+  --n-fill-color-hover: var(--accent, var(--sp-ui-primary)) !important;
+  --n-handle-color: #fff !important;
 }
 .queue {
   position: relative;

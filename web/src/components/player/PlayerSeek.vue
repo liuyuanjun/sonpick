@@ -55,14 +55,18 @@ function onSeek(value) {
 .seek .t:last-child {
   text-align: right;
 }
-.rail :deep(.n-slider) {
+/* 注意两件事：
+   1) class="rail" 落在 n-slider 的根元素上，变量写在这里（写成 .rail .n-slider 不匹配）。
+   2) Naive 把滑杆的**颜色类变量写在元素的 inline style 上**（几何变量不是），
+      普通类选择器覆盖不掉，颜色必须 !important。 */
+.rail {
   --n-rail-height: 4px;
-  --n-rail-color: var(--rail);
-  --n-rail-color-hover: var(--rail);
-  --n-fill-color: var(--accent, var(--sp-ui-primary));
-  --n-fill-color-hover: var(--accent, var(--sp-ui-primary));
-  --n-handle-color: #fff;
   --n-handle-size: 11px;
+  --n-rail-color: var(--rail) !important;
+  --n-rail-color-hover: var(--rail) !important;
+  --n-fill-color: var(--accent, var(--sp-ui-primary)) !important;
+  --n-fill-color-hover: var(--accent, var(--sp-ui-primary)) !important;
+  --n-handle-color: #fff !important;
 }
 .chip {
   flex: none;

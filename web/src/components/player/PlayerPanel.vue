@@ -21,7 +21,7 @@
           收起
         </n-tooltip>
         <div class="view-switch" role="group" aria-label="皮肤">
-          <n-tooltip v-for="skin in PLAYER_SKINS" :key="skin.id">
+          <n-tooltip v-for="skin in player.availableSkins" :key="skin.id">
             <template #trigger>
               <n-button
                 class="view-toggle icon-top-btn"
@@ -385,7 +385,7 @@ import {
   applyOrganizeSong,
 } from '@/api/music'
 import api from '@/api/client'
-import { usePlayerStore, PLAYER_SKINS } from '@/stores/player'
+import { usePlayerStore } from '@/stores/player'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useIsMobile } from '@/composables/useIsMobile'
@@ -679,6 +679,10 @@ const panelStyle = computed(() => {
     '--accent': a ? a.css : 'var(--sp-ui-primary)',
     '--accent-soft': a ? a.soft : 'color-mix(in srgb, var(--sp-ui-primary) 35%, transparent)',
     '--accent-glow': a ? a.glow : 'color-mix(in srgb, var(--sp-ui-primary) 45%, transparent)',
+    // 播放键填充 = 封面主题色，图标用主题色上的可读色：
+    // 「正在播放」这一整块（播放键 / 进度 / 音量）只有一种颜色语言 = 主题色。
+    '--play-bg': a ? a.css : 'var(--sp-ui-primary)',
+    '--play-fg': a ? a.on || '#FFFFFF' : 'var(--sp-ui-on-primary)',
   }
 })
 
@@ -1146,9 +1150,10 @@ async function applyCandidate() {
   --rail: rgba(255, 255, 255, 0.16);
   --rail-soft: rgba(255, 255, 255, 0.12);
   --handle: #fff;
-  --play-bg: #fff;
-  --play-fg: #111;
-  --play-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+  /* 播放键的填充/前景由 panelStyle 按封面主题色注入（见 script）；
+     这里只给无强调色时的兜底（品牌主色 + on-primary） */
+  --play-bg: var(--sp-ui-primary);
+  --play-fg: var(--sp-ui-on-primary);
   --vinyl-shadow: drop-shadow(0 18px 40px rgba(0, 0, 0, 0.42));
   --vinyl-bg-a: #1a1a1a;
   --vinyl-bg-b: #0d0d0d;
@@ -1171,9 +1176,6 @@ async function applyCandidate() {
   --rail: rgba(18, 22, 30, 0.14);
   --rail-soft: rgba(18, 22, 30, 0.10);
   --handle: #fff;
-  --play-bg: var(--accent);
-  --play-fg: #fff;
-  --play-shadow: 0 12px 28px color-mix(in srgb, var(--sp-ui-primary) 28%, transparent);
   --vinyl-shadow: drop-shadow(0 14px 28px rgba(20, 30, 50, 0.14));
   --vinyl-bg-a: #e8ecf2;
   --vinyl-bg-b: #d5dbe6;
