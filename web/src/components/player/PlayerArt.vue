@@ -65,23 +65,35 @@ watch(
      两处必须同源，所以只在这里给兜底值。 */
   inset: calc((1 - var(--disc-ratio, 1.3)) * 50%);
   border-radius: 50%;
+  /* 外投影留在这一层（不自转），沟槽/高光/内阴影画在 .disc::before 上（自转）。
+     box-shadow 与 filter 都在元素自身坐标系里绘制，挂在自转层上会跟着转 ——
+     实测 0°→90° 时投影从下方转到左方（亮色下肉眼可见）。 */
+  box-shadow: 0 28px 64px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+.disc::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
   background:
     conic-gradient(from 205deg at 50% 50%, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 62deg, rgba(255, 255, 255, 0) 296deg, rgba(255, 255, 255, 0.12) 360deg),
     repeating-radial-gradient(circle at center, #1a1b20 0 1.5px, #0c0d10 1.5px 3px);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.1),
-    inset 0 0 70px rgba(0, 0, 0, 0.45),
-    0 28px 64px rgba(0, 0, 0, 0.6);
-  pointer-events: none;
+    inset 0 0 70px rgba(0, 0, 0, 0.45);
 }
-.disc.spin {
+.disc.spin::before {
   animation: spin 22s linear infinite;
 }
 .player-panel.light .disc {
+  box-shadow: 0 20px 44px rgba(20, 30, 50, 0.18);
+}
+.player-panel.light .disc::before {
   background:
     conic-gradient(from 205deg at 50% 50%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 62deg, rgba(255, 255, 255, 0) 296deg, rgba(255, 255, 255, 0.7)),
     repeating-radial-gradient(circle at center, #eaedf4 0 1.5px, #d2d8e4 1.5px 3px);
-  box-shadow: inset 0 0 0 1px rgba(18, 22, 30, 0.08), 0 20px 44px rgba(20, 30, 50, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(18, 22, 30, 0.08);
 }
 
 /* ---- 干净封面（叠层卡） ---- */
@@ -183,6 +195,6 @@ watch(
   background: linear-gradient(115deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0) 40%);
 }
 @media (prefers-reduced-motion: reduce) {
-  .arc, .disc.spin { animation: none; }
+  .arc, .disc.spin::before { animation: none; }
 }
 </style>

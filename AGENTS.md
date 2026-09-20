@@ -272,6 +272,16 @@ Naive 的 modal / drawer / popover 会被 teleport 到 `body`，脱离 `.app-lay
 - 需要主题色的弹层内容，CSS 变量要写在 `documentElement`（已由 theme store 注入 `--sp-ui-*`），不要在页面容器上用 `:style` 注入再指望弹层能取到。
 - 组件样式里**不要写死**会给弹层用的背景/文字色，统一走 `--sp-ui-*`。
 
+#### 自转元素上不要挂投影（`box-shadow` / `filter`）
+
+`box-shadow`、`filter: drop-shadow()` 都是在**元素自身坐标系**里绘制的，会随 `transform` 一起旋转。挂在自带 `animation: spin` 的盘面上（`.vinyl-disc` / `.disc`），投影方向就会跟着盘面绕圈 —— 暗色下几乎看不出，亮色盘面上一眼可见（实测 0°→90° 投影从下方移到左方）。
+
+正确做法：**投影留在不自转的外层，把自转下沉到子层**：
+- 唱片皮肤：`PlayerSkin .vinyl-disc`（外投影 `filter: var(--vinyl-shadow)`，静止）+ `.vinyl-disc.spin > *`（沟槽/盘心/veil 一起转）。
+- 叠层卡 / 封面皮肤：`PlayerArt .disc`（外投影，静止）+ `.disc.spin::before`（沟槽/高光/内阴影，转）。
+
+新增旋转动效时，同时给它留一条 `@media (prefers-reduced-motion: reduce)` 分支（`.arc`、两个盘面都已加）。
+
 #### 覆盖 Naive 组件的颜色必须 `!important`
 
 `n-button` / `n-slider` 之类把**颜色类变量写在元素的 inline style 上**（`Button.mjs` 的 `cssVars` → `style`，滑杆的 `--n-fill-color*` 同理），几何变量（`--n-height` / `--n-border-radius`）才走 CSS。后果：

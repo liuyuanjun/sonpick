@@ -1154,9 +1154,10 @@ async function applyCandidate() {
      这里只给无强调色时的兜底（品牌主色 + on-primary） */
   --play-bg: var(--sp-ui-primary);
   --play-fg: var(--sp-ui-on-primary);
+  /* 唱片皮肤盘面的明暗两套调色板（消费方：PlayerSkin 的 .vinyl-disc / .vd-groove / .vd-face / .vd-veil） */
   --vinyl-shadow: drop-shadow(0 18px 40px rgba(0, 0, 0, 0.42));
-  --vinyl-bg-a: #1a1a1a;
-  --vinyl-bg-b: #0d0d0d;
+  --vinyl-bg-a: #17181d;
+  --vinyl-bg-b: #0c0d10;
   --bg: rgba(10, 11, 15, 0.92);
   --cover-bg: #2a2a2a;
   --blend-veil: linear-gradient(

@@ -283,15 +283,28 @@ function onLyricSeek(time) {
   height: calc(var(--disc-r) * 2);
   z-index: 0;
   pointer-events: none;
+  /* 外投影挂在**不自转**的这一层：box-shadow / filter 都在元素自身坐标系里绘制，
+     挂在自转元素上会跟着一起转（实测 0°→90° 时投影从下方转到左方）。
+     明暗两套外投影由 PlayerPanel 的 --vinyl-shadow 提供。 */
+  filter: var(--vinyl-shadow);
 }
 .vd-groove {
   position: absolute;
   inset: 0;
   border-radius: 50%;
+  /* 沟槽两色取自 PlayerPanel 的 --vinyl-bg-a / --vinyl-bg-b（明暗两套都在那里，别在这里写死色值） */
   background:
     conic-gradient(from 205deg at 50% 50%, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0) 62deg, rgba(255, 255, 255, 0) 296deg, rgba(255, 255, 255, 0.1) 360deg),
-    repeating-radial-gradient(circle at center, #17181d 0 1.6px, #0c0d10 1.6px 3.2px);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), inset 0 0 90px rgba(0, 0, 0, 0.45), 0 40px 90px rgba(0, 0, 0, 0.5);
+    repeating-radial-gradient(circle at center, var(--vinyl-bg-a) 0 1.6px, var(--vinyl-bg-b) 1.6px 3.2px);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), inset 0 0 90px rgba(0, 0, 0, 0.45);
+}
+/* 亮色：白胶 —— 浅灰沟槽 + 内圈浅影，盘心不压暗、改用白环把封面与沟槽分开。
+   与叠层卡 / 封面皮肤的亮色盘（PlayerArt .disc）同一套颜色语言。 */
+.player-panel.light .vd-groove {
+  background:
+    conic-gradient(from 205deg at 50% 50%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 62deg, rgba(255, 255, 255, 0) 296deg, rgba(255, 255, 255, 0.7) 360deg),
+    repeating-radial-gradient(circle at center, var(--vinyl-bg-a) 0 1.6px, var(--vinyl-bg-b) 1.6px 3.2px);
+  box-shadow: inset 0 0 0 1px rgba(18, 22, 30, 0.08), inset 0 0 70px rgba(20, 30, 50, 0.1);
 }
 /* 盘面 = 沟槽环（大尺寸下沟槽真正可读）+ 封面作中心标签 + 缓慢自转。
    标签半径 = 盘面半径 × 1/φ ≈ 0.618（黄金比例大份）：封面是主体、外圈沟槽是唱片暗示。
@@ -313,10 +326,27 @@ function onLyricSeek(time) {
   border-radius: 50%;
   background: radial-gradient(circle at 34% 30%, rgba(6, 7, 11, 0.1), rgba(6, 7, 11, 0.34) 78%);
 }
-/* 整张唱片（沟槽 + 封面标签 + 中心孔）一起转，才是"唱片在转"；
-   只转沟槽的话标签不动，看着是穿帮的。 */
-.vinyl-disc.spin {
+/* 亮色：盘面已经够亮，veil 不再压暗，改成左上一道柔光让白胶有体积感 */
+.player-panel.light .vd-veil {
+  background: radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.32), rgba(20, 30, 50, 0.05) 78%);
+}
+/* 亮色：盘心封面去掉压暗、白环分界（与 --vinyl-bg-a/b 的白胶一套） */
+.player-panel.light .vd-face {
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.9), 0 8px 20px rgba(20, 30, 50, 0.18);
+  filter: saturate(1.02);
+}
+/* 整张唱片（沟槽 + 封面标签 + 柔光）一起转，才是"唱片在转"；
+   只转沟槽的话标签不动，看着是穿帮的。
+   自转下沉到三个子层（父层只负责外投影，见 .vinyl-disc 注释）——
+   父层不自转，投影方向才不会跟着盘面转。 */
+.vinyl-disc.spin > * {
   animation: spin 30s linear infinite;
+}
+/* 唱片皮肤这块盘面是页面上最大的持续动效，尊重系统的「减少动态效果」偏好（PlayerArt 早有同名规则） */
+@media (prefers-reduced-motion: reduce) {
+  .vinyl-disc.spin > * {
+    animation: none;
+  }
 }
 @keyframes spin {
   to { transform: rotate(360deg); }
