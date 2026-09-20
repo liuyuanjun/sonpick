@@ -601,7 +601,8 @@ onUnmounted(() => {
   --n-border-hover: 0 solid transparent;
   --n-border-pressed: 0 solid transparent;
   --n-border-focus: 0 solid transparent;
-  --n-ripple-color: transparent;
+  /* 点击波纹也吃 --n-ripple-color（同为 inline style），少了 !important 按下时会闪一圈品牌绿 */
+  --n-ripple-color: transparent !important;
 }
 .gp-play :deep(.n-button__border),
 .gp-play :deep(.n-button__state-border) {

@@ -272,6 +272,14 @@ Naive 的 modal / drawer / popover 会被 teleport 到 `body`，脱离 `.app-lay
 - 需要主题色的弹层内容，CSS 变量要写在 `documentElement`（已由 theme store 注入 `--sp-ui-*`），不要在页面容器上用 `:style` 注入再指望弹层能取到。
 - 组件样式里**不要写死**会给弹层用的背景/文字色，统一走 `--sp-ui-*`。
 
+#### 覆盖 Naive 组件的颜色必须 `!important`
+
+`n-button` / `n-slider` 之类把**颜色类变量写在元素的 inline style 上**（`Button.mjs` 的 `cssVars` → `style`，滑杆的 `--n-fill-color*` 同理），几何变量（`--n-height` / `--n-border-radius`）才走 CSS。后果：
+
+- 静息态用普通类选择器能盖住（scoped 后优先级更高），**但 `:hover` / `:active` / `:focus` 会在鼠标移上去的瞬间闪回主题色** —— Naive 的 `:hover` 规则与你的类同优先级，而它注入的样式在文档里更靠后。典型症状：「播放键静息跟随封面主色，hover 变回品牌绿」。
+- 因此覆盖颜色（`--n-color*` / `--n-text-color*` / `--n-ripple-color` / `background` / `color`）**一律加 `!important`**；几何变量不必。
+- 现有实现：`GlobalPlayer .gp-play`、`PlayerTransport .tp-play`——同一个按钮在胶囊与大播放器里各有一份，改动必须两处同步。
+
 #### 响应式 / 移动端断点
 
 - 移动端判定统一用 `useIsMobile()`（`web/src/composables/useIsMobile.js`），**禁止**各页面自己写 `window.innerWidth < X` 的裸逻辑；断点阈值改动只改这一个 composable。
@@ -312,6 +320,7 @@ Naive 的 modal / drawer / popover 会被 teleport 到 `body`，脱离 `.app-lay
 - 播放器页 = 列表页。二级导航桌面端在系统侧边栏（`/player/<section>`），移动端在页面顶部横向 Tab（复用 `PlayerView .player-tabs`），**移动端不得删掉这层入口**。
 - 抽屉内的播放面板必须提供「收起」按钮（`PlayerPanel` 的 chevron，条件是 `player.fullPlayerOpen`），桌面端不能出现"打开了关不掉"。
 - 抽屉打开期间：body/滚动容器锁定滚动（`html.sp-overlay-open`）、焦点闭环（Tab 不逃逸）、`Esc` 关闭但**弹窗优先**（`.n-modal/.n-dialog/.n-drawer` 存在时让位）。任何一层都不得再自建全局 `keydown` Escape 监听。
+- `PlayerArt` 的 `record` 模式（叠层卡 / 封面皮肤）会在封面四边各出血 `(盘面比例 − 1)/2 = 15%`，**使用方必须为这段出血留出空间**：叠层卡由 `PlayerSkin .c-art` 用与出血等量的上下留白吸收，使「盘面下缘 → 歌名行顶」= 18px、「盘面上缘 → 卡片上缘」= 0（上侧留白正好抵消出血，所以窗口再矮也不会把盘面裁平）。盘面比例的**唯一来源**是 `PlayerSkin .body-card` 的 `--disc-ratio`（`PlayerArt .disc` 只留同名兜底值），改比例只改这一处。rc19 曾因只写 `width:100%`（封面占满卡宽）而让盘面下缘压住歌名行 35px。
 
 ### 5.7 前端几何变量的单一真相源
 

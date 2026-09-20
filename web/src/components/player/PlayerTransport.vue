@@ -45,22 +45,26 @@ const player = usePlayerStore()
   color: var(--fg);
 }
 .tp-play {
-  /* 把 Naive 各交互态的颜色都钉到 --play-bg/--play-fg，避免 hover/focus 闪回品牌绿 */
-  --n-color: var(--play-bg);
-  --n-color-hover: var(--play-bg);
-  --n-color-pressed: var(--play-bg);
-  --n-color-focus: var(--play-bg);
-  --n-text-color: var(--play-fg);
-  --n-text-color-hover: var(--play-fg);
-  --n-text-color-pressed: var(--play-fg);
-  --n-text-color-focus: var(--play-fg);
+  /* 把 Naive 各交互态的颜色都钉到 --play-bg/--play-fg，避免 hover/focus 闪回品牌绿。
+     注意必须 !important：n-button 把颜色变量写在**元素 inline style** 上（Button.mjs 的 cssVars → style），
+     类选择器（哪怕带 scoped 属性、优先级更高）也压不过 inline 声明 ——
+     少了 !important 就会出现"静息态跟随封面主色、hover 变回品牌绿"的割裂。 */
+  background: var(--play-bg) !important;
+  color: var(--play-fg) !important;
+  --n-color: var(--play-bg) !important;
+  --n-color-hover: var(--play-bg) !important;
+  --n-color-pressed: var(--play-bg) !important;
+  --n-color-focus: var(--play-bg) !important;
+  --n-text-color: var(--play-fg) !important;
+  --n-text-color-hover: var(--play-fg) !important;
+  --n-text-color-pressed: var(--play-fg) !important;
+  --n-text-color-focus: var(--play-fg) !important;
   --n-border: 0 solid transparent;
   --n-border-hover: 0 solid transparent;
   --n-border-pressed: 0 solid transparent;
   --n-border-focus: 0 solid transparent;
-  --n-ripple-color: transparent;
-  background: var(--play-bg);
-  color: var(--play-fg);
+  /* 点击波纹也吃 --n-ripple-color（同为 inline style），少了 !important 按下时会闪一圈品牌绿 */
+  --n-ripple-color: transparent !important;
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.3);
 }
 /* Naive 的 n-button 用内部两个 span 画描边（primary 类型下是品牌绿），

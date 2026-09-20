@@ -201,6 +201,10 @@ function onLyricSeek(time) {
   --card-w: 352px;
   --card-gap: 72px;
   --lyr-w: 560px;
+  /* 叠层卡唱片的唯一几何常量：盘面直径 = 封面 × 1.3（PlayerArt 的 record 模式）。
+     .c-art 用它算「上下留白 = 出血量」、PlayerArt 的 .disc 用它算 inset，两处必须同源，
+     所以只在这里声明一次（PlayerArt 里只留同名兜底值）。 */
+  --disc-ratio: 1.3;
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -215,9 +219,16 @@ function onLyricSeek(time) {
   flex-direction: column;
 }
 .c-art {
-  /* 封面宽度 = 卡片内容宽度（与下方元信息/进度/传输对齐，不再居中收窄） */
+  /* 叠层卡的封面区就是一张唱片：封面占满卡片内容宽度，盘面（封面 × --disc-ratio）相对封面
+     四边各出血 (比例 − 1) / 2 = 15%，上下留出与出血**等量**的空白把它兜住：
+       · 盘面下缘 → 歌名行顶 = 18px（与旧版「封面→歌名行」的间距一致，不被压住）
+       · 盘面上缘 → 卡片上缘 = 0（留白正好抵消上侧出血，所以窗口再矮也不会把盘面裁平）
+     留白走百分比 → 始终按卡片宽度换算，与卡片宽度解耦。
+     ⚠️ 别退回「art-wrap 占满卡宽 + 盘面 inset:-15%」的写法：那样盘面下缘会越过 18px 间距
+     压住歌名行 35px（rc19 的实际 bug），上缘也会跑到卡片外面。 */
   width: 100%;
-  margin: 0 0 18px;
+  margin-top: calc((var(--disc-ratio) - 1) * 50%);
+  margin-bottom: calc((var(--disc-ratio) - 1) * 50% + 18px);
 }
 .c-transport {
   margin-top: 16px;

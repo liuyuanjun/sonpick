@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.15.1-rc20
+
+### 修复
+- **叠层卡：唱片盘面压住歌名行**（rc19 引入）：rc18 把封面改成占满卡片内容宽度后，封面区仍是「art-wrap 占满卡宽 + 盘面 `inset:-15%`」的写法，盘面（直径 = 封面 × 1.3 = 458px）向下出血 53px，越过封面与歌名行之间仅 18px 的间距，**压住歌名行 35px**（沟槽与主题色播放弧线穿过文字）。现改为在封面区上下各留出与出血等量的空白（`margin: calc((var(--disc-ratio) - 1) * 50%)`）：盘面完整可见、封面尺寸不变，盘面下缘距歌名行 18px，盘面上缘与卡片上缘齐平（留白正好抵消上侧出血，窗口矮到 640px 也不会把盘面裁平）。盘面比例收敛为单一来源 `--disc-ratio`（`PlayerSkin` 声明、`PlayerArt` 兜底），避免两处各写一份 1.3。
+  实测（真实浏览器 1440×900 → 1280×640 共 7 组视口 / 明暗双模）：压住歌名行 35px → 0px，卡片 510.8 → 616.4px。
+- **叠层卡 / 胶囊的播放键 hover 变回品牌绿（含点击波纹）**：上一版只给静息态上了 `--play-bg`，漏了交互态。Naive 的 `n-button` 把颜色类变量写在**元素 inline style** 上（`Button.mjs` 的 `cssVars → style`），普通类选择器（scoped 后优先级更高也一样）盖不住，于是「静息跟随封面主色、鼠标一移上去闪回品牌绿」，点下去还会弹一圈品牌绿波纹（实测 `box-shadow: rgb(24,160,88)`）。现 `PlayerTransport .tp-play` 与 `GlobalPlayer .gp-play` 同口径：颜色覆盖一律 `!important`（`--n-color-hover/-pressed/-focus`、`background`/`color`、`--n-ripple-color`）。实测 hover/active 均等于封面主色、波纹已透明。
+- `PlayerArt` 的 `record` 模式补上「调用方必须为盘面出血留空间」的说明，比例改为可注入的 `--disc-ratio`（几何单一来源）。
+
 ## 0.15.1-rc19
 
 ### 修复

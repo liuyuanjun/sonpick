@@ -32,10 +32,12 @@ import { NIcon } from 'naive-ui'
 import { MusicalNotes } from '@vicons/ionicons5'
 
 // 封面主体。两种形态：
-//   record=false（叠层卡）：方形封面 + 柔和光晕 + 两道细环 + accent 播放弧（干净卡片）
-//   record=true （封面皮肤）：方形封面 + 后方一张**清晰可读的沟槽唱片**（直径 = 封面 × 1.3，
-//     封面四周能看到约 15% 的盘面/沟槽）+ accent 播放弧。播放时盘面缓慢自转，封面不动。
+//   record=true （叠层卡 / 封面皮肤）：方形封面 + 后方一张**清晰可读的沟槽唱片**
+//     （盘面直径 = 封面 × --disc-ratio，默认 1.3）+ accent 播放弧。播放时盘面缓慢自转，封面不动。
+//   record=false（历史形态）：方形封面 + 柔和光晕 + 两道细环 + accent 播放弧
 // 尺寸纯 CSS：本组件占满父级宽度的正方形（aspect-ratio），父级用 width/clamp/cqh 控制大小。
+// 注意：盘面是**相对本组件宽度**出血的，父级必须为这段出血留出空间，
+// 否则盘面会压住相邻内容（叠层卡曾因此压住歌曲名行，见 PlayerSkin 的 .c-art）。
 const props = defineProps({
   cover: { type: String, default: '' },
   playing: { type: Boolean, default: false },
@@ -58,8 +60,10 @@ watch(
 /* ---- 组合唱片（封面皮肤） ---- */
 .disc {
   position: absolute;
-  /* 盘面直径 = 封面 × 1.3 → 封面四边各露出 15% 的盘面 */
-  inset: -15%;
+  /* 盘面直径 = 封面 × --disc-ratio（默认 1.3 → 封面四边各露出 15% 的盘面）。
+     比例由外层皮肤注入（叠层卡要用它反算「盘面 = 卡宽」时的封面尺寸），
+     两处必须同源，所以只在这里给兜底值。 */
+  inset: calc((1 - var(--disc-ratio, 1.3)) * 50%);
   border-radius: 50%;
   background:
     conic-gradient(from 205deg at 50% 50%, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 62deg, rgba(255, 255, 255, 0) 296deg, rgba(255, 255, 255, 0.12) 360deg),
