@@ -142,7 +142,7 @@ music/
 |------|------|------|
 | `/api/auth` | `auth.py` | 登录、JWT |
 | `/api/settings` | `settings.py` | 系统/WebDAV 相关设置 |
-| `/api/search` | `search.py` | 搜索；`/search/stream` 为 SSE 流式搜索（progress/heartbeat/result 事件） |
+| `/api/search` | `search.py` | 搜索（轻量：只取元数据，每源 1 请求、源间并发）；`POST /search/resolve` 单曲格式验证（下载确认弹窗用） |
 | `/api/download` | `download.py` | 创建下载任务 |
 | `/api/songs` | `library.py` | 曲库、播放、转码、上传、删除 |
 | `/api/webdav` | `webdav.py` | 列表、流式播放 |
@@ -195,7 +195,8 @@ music/
 - 单曲整理（`library_organize_service`，「刮削信息 → 整理到标准路径」）：目标根必须与批量整理同口径 —— 内置本地曲库（root == 存储目录）走 `_local_base_for_file`，文件留在其当前所在的 `LOSSLESS`/`LOSSY` 存放目录内，**禁止**直接拿 `source.root_path` 当目标根（否则无损文件会被搬出 `Lossless/`）
 
 
-- `MusicDLService`：搜索/下载；`download_one` 签名以源码为准（含 `task_id/keyword/...`），`task_worker` 必须匹配
+- `MusicDLService`：下载（按格式落盘）；`download_one` 只消费「已解析出 download_url 的 SongInfo」（`picked`），签名以源码为准，`task_worker` 必须匹配
+- `light_search_service.py`：轻量搜索 + 下载时解析的唯一入口（`LightSearchService`）。搜索只取元数据（复用 musicdl 的搜索 URL 构造/官方解析，跳过其逐条 URL 解析），源间并发 + 10min 内存 TTL 缓存（空结果不缓存）；`resolve_formats` 对锁定单曲定向验证三档格式（lossless/high/standard，每档 1 接口 + 1 探测、档间并行），按 (ext, 体积) 去重、标签按实际 ext/码率诚实命名；`resolve_for_download` 按档位逐级回退，全空再兜底第三方接口。复用了 musicdl 私有方法（钉版依赖），上游升级时 `tests/test_light_search.py` 的契约测试会失败
 - `WebDAVService`：
   - list/stream/upload **共用** URL 根拆分逻辑，禁止再写死 `/music`
   - 上传为套件：音频 + 可选封面/歌词（同 stem）
@@ -587,7 +588,7 @@ ssh qnap 'curl -sS http://127.0.0.1:8301/health'
 - `app/routers/`：薄路由层，约定 `except HTTPException: raise` + 兜底 `HTTPException(400, f"动作失败: {type(e).__name__}: {e}")`
 - 关键服务备注：
   - `task_worker.py`：后台任务（线程池 max_workers=2，**线程不是进程**）
-  - `musicdl_service.py`：搜索/下载，按格式落盘（`_format_base_dir`）
+  - `musicdl_service.py`：下载，按格式落盘（`_format_base_dir`）；搜索在 `light_search_service.py`（见 §4.4）
   - `library_organize_service.py`：曲库整理（preview/apply × local/webdav）
   - `library_scan_service.py` / `library_scan.py`：扫描入库；排除规则 `_is_excluded`（核心 `**/.*`/`**/.@*`/`**/@eaDir/**`/`**/#recycle/**`/`**/Thumbs.db`/`**/*.tmp`）匹配路径**任意组成部分**，支持任意深度与 `X/**` 目录树；单曲整理 `_organize_song_plan` 同样套用该排除，回收站等目录下的文件不会进入扫描/整理计划
   - `scrape/`：元数据刮削管线（MusicBrainz → 网易/QQ/咪咕）

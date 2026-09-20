@@ -20,17 +20,13 @@ log = logging.getLogger("sonpick.scrape")
 def _search_qq_via_musicdl(keyword: str, *, limit: int = 8, timeout: float = 20.0, db=None) -> list[dict[str, Any]]:
     """QQ via existing musicdl single-source path (no full scrape stack)."""
     try:
-        from app.services.musicdl_service import MusicDLService
-
-        svc = MusicDLService(db)
+        from app.services.light_search_service import LightSearchService
 
         def _work():
-            return svc.search(
-                keyword,
-                music_sources=["QQMusicClient"],
-                search_size_per_source=limit,
-                require_download_url=False,
-            ) or []
+            items, _ = LightSearchService(db).search(
+                keyword, ["QQMusicClient"], size_per_source=limit
+            )
+            return items
 
         try:
             items = run_with_hard_timeout(_work, max(5.0, float(timeout)), label="smart_cn QQ 搜索")
@@ -44,14 +40,16 @@ def _search_qq_via_musicdl(keyword: str, *, limit: int = 8, timeout: float = 20.
             album = getattr(it, "album", None) or getattr(it, "album_name", None)
             cover = getattr(it, "cover_url", None) or getattr(it, "album_pic", None) or getattr(it, "pic", None)
             duration = None
-            for key in ("duration", "interval", "song_play_time"):
+            for key in ("duration_s", "duration", "interval", "song_play_time"):
                 val = getattr(it, key, None)
                 if val is None:
                     continue
                 try:
                     if isinstance(val, str) and ":" in val:
-                        a, b = val.split(":", 1)
-                        duration = int(a) * 60 + int(float(b))
+                        parts = [int(float(x)) for x in val.split(":")]
+                        duration = 0
+                        for x in parts:
+                            duration = duration * 60 + x
                     else:
                         n = int(float(val))
                         duration = int(round(n / 1000)) if n > 10000 else n
@@ -59,7 +57,7 @@ def _search_qq_via_musicdl(keyword: str, *, limit: int = 8, timeout: float = 20.
                 except Exception:
                     continue
             row = {
-                "id": getattr(it, "song_id", None) or getattr(it, "id", None) or getattr(it, "mid", None),
+                "id": getattr(it, "identifier", None) or getattr(it, "song_id", None) or getattr(it, "id", None) or getattr(it, "mid", None),
                 "title": title,
                 "artist": artist,
                 "album": album,

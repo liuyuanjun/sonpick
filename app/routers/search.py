@@ -1,78 +1,71 @@
-import json
-import queue
-import threading
-import time
-from typing import Callable, Optional
-
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.database import SessionLocal, get_db
+from app.database import get_db
 from app.routers.auth import get_current_user
-from app.routers.tasks import _auth_user
-from app.schemas import LibraryMatchOut, SearchPageOut, SearchResultItem
+from app.schemas import (
+    LibraryMatchOut,
+    ResolveOut,
+    ResolveRequest,
+    ResolvedFormatOut,
+    SearchFormatOut,
+    SearchPageOut,
+    SearchResultItem,
+)
 from app.services.library_match_service import match_search_results
-from app.services.execution import submit as executor_submit
-from app.services.musicdl_service import (
+from app.services.light_search_service import (
     DEFAULT_DOWNLOAD_SOURCES,
     SOURCE_LABELS,
-    MusicDLService,
-    SearchCancelled,
+    LightSearchService,
 )
 
 router = APIRouter(prefix="/search", tags=["search"])
 
-_HEARTBEAT_SECONDS = 5
+
+def _to_result_item(item) -> SearchResultItem:
+    size = getattr(item, "file_size_bytes", None)
+    formats = [
+        SearchFormatOut(**f) for f in (getattr(item, "formats_meta", None) or []) if isinstance(f, dict)
+    ]
+    return SearchResultItem(
+        song_name=item.song_name or "",
+        singers=getattr(item, "singers", None),
+        album=getattr(item, "album", None),
+        ext=getattr(item, "ext", None),
+        filesize=str(size) if size is not None else None,
+        file_size=str(size) if size is not None else None,
+        duration=getattr(item, "duration", None),
+        source=getattr(item, "_sonpick_source", None) or getattr(item, "source", None),
+        song_id=str(getattr(item, "identifier", "") or "") or None,
+        vip_only=bool(getattr(item, "vip_only", False)),
+        formats=formats,
+    )
 
 
-def _build_search_page(
-    q: str,
-    page: int,
-    page_size: int,
-    source: str,
-    db: Session,
-    on_event: Optional[Callable[[dict], None]] = None,
-    cancelled=None,
-) -> SearchPageOut:
-    """执行搜索并组装分页结果；on_event 非空时逐源推送进度事件。"""
-    service = MusicDLService(db)
+@router.get("", response_model=SearchPageOut)
+def search(
+    q: str = Query(..., min_length=1),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    source: str = Query("all"),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """轻量搜索：每源一次请求，不解析下载地址（在 /search/resolve 按需验证）。"""
     requested_source = (source or "all").strip()
     music_sources = None if requested_source == "all" else [requested_source]
     if music_sources and requested_source not in DEFAULT_DOWNLOAD_SOURCES:
         raise HTTPException(status_code=422, detail="不支持的音乐源")
-    source_label = SOURCE_LABELS.get(requested_source, requested_source)
     try:
-        items = service.search(
-            q,
-            music_sources=music_sources,
-            on_event=on_event,
-            cancelled=cancelled,
-        )
-    except SearchCancelled:
-        raise
+        items, errors = LightSearchService(db).search(q, music_sources=music_sources)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"{source_label} 搜索失败：{exc}") from exc
+        raise HTTPException(status_code=502, detail=f"搜索失败：{exc}") from exc
+    if not items and errors:
+        raise HTTPException(status_code=502, detail="音乐源搜索失败：" + "；".join(errors))
     total = len(items)
     start = (page - 1) * page_size
-    end = start + page_size
-    page_items = items[start:end]
-    out_items = []
-    for item in page_items:
-        size = getattr(item, "file_size", None) or getattr(item, "filesize", None)
-        out_items.append(
-            SearchResultItem(
-                song_name=item.song_name or "",
-                singers=getattr(item, "singers", None),
-                album=getattr(item, "album", None),
-                ext=getattr(item, "ext", None),
-                filesize=str(size) if size is not None else None,
-                file_size=str(size) if size is not None else None,
-                duration=getattr(item, "duration", None),
-                source=getattr(item, "source", None),
-                song_id=str(getattr(item, "song_id", "") or "") or None,
-            )
-        )
+    page_items = items[start:start + page_size]
+    out_items = [_to_result_item(it) for it in page_items]
     # 与本地曲库批量比对（Song + SongFile），一次性组装，避免 N+1
     matches = match_search_results(db, [
         {
@@ -87,112 +80,26 @@ def _build_search_page(
     for it, match in zip(out_items, matches):
         if match:
             it.library_match = LibraryMatchOut(**match)
-    return SearchPageOut(
-        items=out_items,
-        total=total,
-        page=page,
-        page_size=page_size,
-    )
+    return SearchPageOut(items=out_items, total=total, page=page, page_size=page_size)
 
 
-def _sse(payload: dict) -> str:
-    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+@router.post("/resolve", response_model=ResolveOut)
+def resolve(req: ResolveRequest, user: str = Depends(get_current_user), db: Session = Depends(get_db)):
+    """单曲格式验证：对锁定的一首歌并行验证三档格式（官方接口 + 链接探测）。
 
-
-@router.get("", response_model=SearchPageOut)
-def search(
-    q: str = Query(..., min_length=1),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-    source: str = Query("all"),
-    user: str = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    try:
-        return _build_search_page(q, page, page_size, source, db)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/stream")
-def search_stream(
-    request: Request,
-    q: str = Query(..., min_length=1),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-    source: str = Query("all"),
-    token: Optional[str] = Query(None, description="JWT；EventSource 无法设 Header 时用 query"),
-):
-    """SSE 搜索：逐源推送 progress/heartbeat 事件，最终以 result/error 收尾。
-
-    搜索在后台线程执行并持有独立 DB 会话；客户端断开后通过 cancelled
-    事件在重试边界取消后续尝试（进行中的 HTTP 请求无法强杀）。
+    返回「已验证可下」的格式列表；为空表示官方渠道当前无可下格式
+    （版权/VIP 限制），前端据此拦截下载而不是放任任务失败。
     """
-    auth = request.headers.get("authorization") or request.headers.get("Authorization") or ""
-    bearer = None
-    if auth.lower().startswith("bearer "):
-        bearer = auth.split(" ", 1)[1].strip()
-    _auth_user(credentials_token=bearer, query_token=token)
-
-    events: queue.Queue = queue.Queue()
-    cancelled = threading.Event()
-    done = object()
-
-    def run_search():
-        db = SessionLocal()
-        try:
-            page_out = _build_search_page(
-                q, page, page_size, source, db,
-                on_event=events.put,
-                cancelled=cancelled,
-            )
-            events.put({"type": "result", "data": page_out.model_dump(mode="json")})
-        except SearchCancelled:
-            pass
-        except HTTPException as exc:
-            events.put({"type": "error", "message": str(exc.detail)})
-        except Exception as exc:
-            events.put({"type": "error", "message": f"搜索失败：{exc}"})
-        finally:
-            db.close()
-            events.put(done)
-
-    def event_gen():
-        # 搜索提交到受控执行内核（search lane，并发上限见 execution.DEFAULT_LANE_LIMITS），
-        # 不再使用无上限的裸线程；取消语义不变（cancelled 在重试边界生效）。
-        executor_submit(run_search, lane="search")
-        started = time.monotonic()
-        pending: list[str] = []
-        try:
-            while True:
-                try:
-                    ev = events.get(timeout=_HEARTBEAT_SECONDS)
-                except queue.Empty:
-                    yield _sse({
-                        "type": "heartbeat",
-                        "elapsed": int(time.monotonic() - started),
-                        "pending": list(pending),
-                    })
-                    continue
-                if ev is done:
-                    yield "event: end\ndata: {}\n\n"
-                    break
-                if ev.get("type") == "progress":
-                    label = ev.get("label")
-                    status = ev.get("status")
-                    if status in ("start", "retry"):
-                        if label and label not in pending:
-                            pending.append(label)
-                    elif status in ("done", "fail") and label in pending:
-                        pending.remove(label)
-                yield _sse(ev)
-        finally:
-            cancelled.set()
-
-    return StreamingResponse(
-        event_gen(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    service = LightSearchService(db)
+    item = service.find_item(req.q, req.source, req.song_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="未找到该歌曲，请重新搜索后再试")
+    formats = service.resolve_formats(item)
+    return ResolveOut(
+        song_name=item.song_name or "",
+        singers=getattr(item, "singers", None),
+        album=getattr(item, "album", None),
+        duration=getattr(item, "duration", None),
+        formats=[ResolvedFormatOut(**f) for f in formats],
+        default_tier=formats[0]["tier"] if formats else None,
     )

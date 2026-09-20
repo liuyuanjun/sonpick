@@ -132,9 +132,13 @@ class LibraryScanResponse(BaseModel):
 
 
 class DownloadRequest(BaseModel):
-    keyword: str
+    keyword: str = ""
     prefer: str = "any"
     source: str = "all"
+    # 单曲锁定下载：搜索页点下载时带上，worker 按 song_id 锁定该曲解析
+    song_id: Optional[str] = None
+    # 音质档位（light_search_service.TIERS 之一或 best）；单曲锁定与批量共用
+    format: Optional[str] = None
     # 曲库重复决策：None 保持旧行为（直接作为新歌曲下载）
     duplicate_action: Optional[str] = Field(default=None, pattern="^(keep_both|replace)$")
     replace_song_file_id: Optional[int] = None
@@ -166,6 +170,14 @@ class LibraryMatchOut(BaseModel):
     versions: list[LibraryMatchVersionOut] = Field(default_factory=list)
 
 
+class SearchFormatOut(BaseModel):
+    """平台可得格式（搜索响应自带，未验证可下）。"""
+    ext: str
+    size_bytes: Optional[int] = None
+    quality: str  # lossless | high | standard
+    label: Optional[str] = None
+
+
 class SearchResultItem(BaseModel):
     song_name: str
     singers: Optional[str] = None
@@ -176,9 +188,36 @@ class SearchResultItem(BaseModel):
     ext: Optional[str] = None
     source: Optional[str] = None
     song_id: Optional[str] = None
+    vip_only: bool = False
+    formats: list[SearchFormatOut] = Field(default_factory=list)
     download_url: Optional[str] = None
     raw: Optional[dict] = None
     library_match: Optional[LibraryMatchOut] = None
+
+
+class ResolveRequest(BaseModel):
+    """单曲格式验证请求：q 用于在后端缓存中定位该曲的搜索上下文。"""
+    q: str
+    source: str
+    song_id: str
+
+
+class ResolvedFormatOut(BaseModel):
+    """已验证可下载的格式（接口请求 + 链接探测通过）。"""
+    tier: str  # lossless | high | standard
+    label: str
+    ext: Optional[str] = None
+    file_size_bytes: Optional[int] = None
+    file_size: Optional[str] = None
+
+
+class ResolveOut(BaseModel):
+    song_name: str
+    singers: Optional[str] = None
+    album: Optional[str] = None
+    duration: Optional[str] = None
+    formats: list[ResolvedFormatOut] = Field(default_factory=list)
+    default_tier: Optional[str] = None
 
 
 class SearchPageOut(BaseModel):

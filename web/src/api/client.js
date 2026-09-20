@@ -37,14 +37,3 @@ export function taskEventsUrl(taskId, token) {
   const q = token ? `?token=${encodeURIComponent(token)}` : ''
   return `/api/tasks/${taskId}/events${q}`
 }
-
-export function searchEventsUrl({ q, page = 1, pageSize = 20, source = 'all', token = '' }) {
-  const params = new URLSearchParams({
-    q,
-    page: String(page),
-    page_size: String(pageSize),
-    source,
-  })
-  if (token) params.set('token', token)
-  return `/api/search/stream?${params.toString()}`
-}

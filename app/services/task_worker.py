@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal, get_engine
 from app.models import AppSettings, Song, SongFile, Task, iso_utc
 from app.services.musicdl_service import MusicDLService
+from app.services.light_search_service import PREFER_TO_TIER, LightSearchService
 from app.services.operation_log_service import write_log
 from app.services.song_file_resolver import SongFileResolver
 from app.services.webdav_service import WebDAVService
@@ -600,6 +601,7 @@ class TaskWorker:
                 return
 
             music = MusicDLService(db, emit=self.emit)
+            light = LightSearchService(db)
 
             if task.type in ("search_download", "batch_download"):
                 keywords = payload.get("keywords") or [payload.get("keyword")]
@@ -620,8 +622,25 @@ class TaskWorker:
 
                     pct = int(idx / total * 100)
                     self.emit(task_id, f"搜索: {kw}", pct)
+                    item = None
+                    resolved = None
                     try:
-                        results = music.search(kw, prefer=prefer, music_sources=music_sources)
+                        # 单曲锁定（搜索页下载）：按 song_id 定位该曲；
+                        # 批量/关键词下载：轻量搜索取第一命中。
+                        song_id = payload.get("song_id")
+                        tier = payload.get("format") or PREFER_TO_TIER.get(prefer, "best")
+                        if song_id:
+                            item = light.find_item(kw, selected_source, song_id)
+                            if item is None:
+                                raise RuntimeError("未找到该歌曲（搜索结果可能已变化），请重新搜索后再试")
+                        else:
+                            items, search_errors = light.search(kw, music_sources=music_sources)
+                            if not items and search_errors:
+                                raise RuntimeError("音乐源搜索失败：" + "；".join(search_errors))
+                            item = items[0] if items else None
+                        if item is not None:
+                            self.emit(task_id, "验证可下载格式…", pct)
+                            resolved = light.resolve_for_download(item, tier)
                     except Exception as e:
                         self.emit(task_id, f"搜索失败: {e}", pct)
                         write_log(
@@ -636,7 +655,7 @@ class TaskWorker:
                         )
                         continue
 
-                    if not results:
+                    if item is None:
                         self.emit(task_id, f"未找到: {kw}", pct)
                         write_log(
                             db,
@@ -650,7 +669,6 @@ class TaskWorker:
                         )
                         continue
 
-                    item = results[0]
                     song_name = getattr(item, "song_name", None) or kw
                     singers = getattr(item, "singers", None) or ""
                     self.emit(task_id, f"下载: {song_name} - {singers}", pct)
@@ -663,7 +681,7 @@ class TaskWorker:
                             prefer=prefer,
                             output_dir=storage,
                             music_sources=music_sources,
-                            picked=item,
+                            picked=resolved,
                         )
                         if song is None:
                             raise RuntimeError("未找到可下载版本，或下载文件落盘失败")

@@ -2,7 +2,7 @@ import logging
 import re
 import shutil
 import time
-from concurrent.futures import TimeoutError as FuturesTimeout, as_completed
+from concurrent.futures import TimeoutError as FuturesTimeout
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -16,7 +16,7 @@ from app.services.convert_service import (
     resolve_lossless_output_dir,
     resolve_lossy_output_dir,
 )
-from app.services.execution import run_with_hard_timeout, submit as executor_submit
+from app.services.execution import run_with_hard_timeout
 from app.services.library_layout import (
     library_relative_dir,
     preferred_album_cover_path,
@@ -42,43 +42,19 @@ PREFER_FORMATS = {
     "any": [],
 }
 
-DEFAULT_DOWNLOAD_SOURCES = [
-    "QQMusicClient",
-    "NeteaseMusicClient",
-    "MiguMusicClient",
-]
-SOURCE_LABELS = {
-    "QQMusicClient": "QQ 音乐",
-    "NeteaseMusicClient": "网易云音乐",
-    "MiguMusicClient": "咪咕音乐",
-}
-SEARCH_RETRY_COUNT = 2
-SEARCH_RETRY_DELAY_SECONDS = 2
-# 单源单次搜索硬超时：musicdl 搜索时会为每条结果逐个探测第三方下载链接 API
-#（每个 10s 超时），结果越多越慢。保留硬超时避免线程永久阻塞，但 QQ 音乐
-# 的多轮链接探测在网络较慢时可超过 45 秒，因此放宽到 5 分钟。
-SEARCH_TIMEOUT_SECONDS = 300
-# 搜索页每源结果数：20 条时链接探测要几分钟，必然超时；10 条兼顾体验与耗时。
-DEFAULT_SEARCH_SIZE_PER_SOURCE = 10
+# 下载源清单/标签的唯一权威在 light_search_service；此处仅为兼容既有 import 转发
+from app.services.light_search_service import (  # noqa: E402
+    DEFAULT_DOWNLOAD_SOURCES,
+    DEFAULT_SEARCH_SIZE_PER_SOURCE,
+    SOURCE_LABELS,
+    LightSearchService,
+)
+
 DEFAULT_SCRAPE_SOURCES = [
     "NeteaseMusicClient",
     "QQMusicClient",
     "MiguMusicClient",
 ]
-
-
-class SearchCancelled(Exception):
-    """SSE 搜索在客户端断开后被主动取消。"""
-
-
-def _safe_emit(on_event, **payload):
-    """向调用方推送搜索进度事件；回调异常不影响搜索本身。"""
-    if not on_event:
-        return
-    try:
-        on_event(payload)
-    except Exception:
-        pass
 
 
 class MusicDLService:
@@ -122,210 +98,6 @@ class MusicDLService:
         self.client = self._new_client(work_dir, sources, search_size_per_source)
         self._client_sources = sources
 
-    def _flatten_search_results(self, results) -> list:
-        items: list = []
-        if isinstance(results, dict):
-            # keep source order when possible
-            order = list(getattr(self, "_client_sources", []) or [])
-            keys = order + [k for k in results.keys() if k not in order]
-            for k in keys:
-                v = results.get(k)
-                if isinstance(v, list):
-                    for it in v:
-                        try:
-                            setattr(it, "_sonpick_source", k)
-                        except Exception:
-                            pass
-                        items.append(it)
-                elif v is not None:
-                    items.append(v)
-        elif isinstance(results, list):
-            items = results
-        return items
-
-    @staticmethod
-    def _flatten_single_source(results, src: str) -> list:
-        items: list = []
-        if isinstance(results, dict):
-            for k, v in results.items():
-                if isinstance(v, list):
-                    for it in v:
-                        try:
-                            setattr(it, "_sonpick_source", k)
-                        except Exception:
-                            pass
-                        items.append(it)
-                elif v is not None:
-                    items.append(v)
-        elif isinstance(results, list):
-            items = list(results)
-        for it in items:
-            try:
-                if not getattr(it, "_sonpick_source", None):
-                    setattr(it, "_sonpick_source", src)
-            except Exception:
-                pass
-        return items
-
-    def _search_one_source(
-        self,
-        keyword: str,
-        src: str,
-        work_dir: Path,
-        search_size_per_source: int,
-        on_event: Callable[[dict], None] | None = None,
-        cancelled=None,
-    ) -> tuple[list, str | None]:
-        """搜索单个源（含重试与硬超时），返回 (items, error)。
-
-        on_event 用于 SSE 进度推送：status 为 start / retry / done / fail。
-        cancelled（threading.Event）置位时在尝试边界抛出 SearchCancelled。
-        """
-        label = SOURCE_LABELS.get(src, src)
-        last_error: Exception | None = None
-        for attempt in range(SEARCH_RETRY_COUNT):
-            if cancelled is not None and cancelled.is_set():
-                raise SearchCancelled()
-            _safe_emit(
-                on_event,
-                type="progress",
-                source=src,
-                label=label,
-                status="start" if attempt == 0 else "retry",
-                message=f"正在请求 {label}…" if attempt == 0 else f"{label} 第 {attempt + 1} 次尝试…",
-            )
-            try:
-                client = self._new_client(work_dir, [src], search_size_per_source)
-                # musicdl 无法注入超时 → 走统一硬超时（超时线程弃置为僵尸，不占共享池）
-                results = run_with_hard_timeout(
-                    lambda: client.search(keyword=keyword),
-                    SEARCH_TIMEOUT_SECONDS,
-                    label=f"{label} 搜索",
-                )
-                items = self._flatten_single_source(results, src)
-                _safe_emit(
-                    on_event,
-                    type="progress",
-                    source=src,
-                    label=label,
-                    status="done",
-                    message=f"{label} 返回 {len(items)} 条结果",
-                )
-                return items, None
-            except FuturesTimeout:
-                last_error = RuntimeError(f"搜索超时（>{SEARCH_TIMEOUT_SECONDS}s）")
-            except Exception as exc:
-                last_error = exc
-            if attempt + 1 < SEARCH_RETRY_COUNT:
-                _safe_emit(
-                    on_event,
-                    type="progress",
-                    source=src,
-                    label=label,
-                    status="retry",
-                    message=f"{label} {last_error}，{SEARCH_RETRY_DELAY_SECONDS}s 后重试…",
-                )
-                time.sleep(SEARCH_RETRY_DELAY_SECONDS)
-        _safe_emit(
-            on_event,
-            type="progress",
-            source=src,
-            label=label,
-            status="fail",
-            message=f"{label} 搜索失败：{last_error}",
-        )
-        return [], f"{label}: {last_error}"
-
-    def _search_sources(
-        self,
-        keyword: str,
-        *,
-        music_sources: list[str] | None,
-        work_dir: Path,
-        search_size_per_source: int = DEFAULT_SEARCH_SIZE_PER_SOURCE,
-        on_event: Callable[[dict], None] | None = None,
-        cancelled=None,
-    ) -> tuple[list, list[str]]:
-        """并发搜索各源并合并结果：单个源挂起/失败不影响其他源，
-
-        总耗时 ≈ 最慢的源而非各源之和。返回 (items, errors)。
-        事件按完成先后推送，但结果仍按来源声明顺序合并，保证分页稳定。
-        """
-        sources = list(music_sources or DEFAULT_DOWNLOAD_SOURCES)
-        if not sources:
-            sources = list(DEFAULT_DOWNLOAD_SOURCES)
-        per_source: dict[str, tuple[list, str | None]] = {}
-        futures = {
-            executor_submit(
-                self._search_one_source,
-                keyword,
-                src,
-                work_dir,
-                search_size_per_source,
-                on_event,
-                cancelled,
-                lane="search",
-            ): src
-            for src in sources
-        }
-        for fut in as_completed(futures):
-            src = futures[fut]
-            try:
-                per_source[src] = fut.result()
-            except SearchCancelled:
-                raise
-            except Exception as exc:
-                per_source[src] = ([], f"{SOURCE_LABELS.get(src, src)}: {exc}")
-        items: list = []
-        errors: list[str] = []
-        for src in sources:
-            found, error = per_source.get(src, ([], None))
-            items.extend(found)
-            if error:
-                errors.append(error)
-        return items, errors
-
-    def search(
-        self,
-        keyword: str,
-        prefer: str = "any",
-        *,
-        music_sources: list[str] | None = None,
-        search_size_per_source: int = DEFAULT_SEARCH_SIZE_PER_SOURCE,
-        require_download_url: bool = True,
-        on_event: Callable[[dict], None] | None = None,
-        cancelled=None,
-    ):
-        items, errors = self._search_sources(
-            keyword,
-            music_sources=music_sources,
-            work_dir=Path("/tmp/musicdl_search"),
-            search_size_per_source=search_size_per_source,
-            on_event=on_event,
-            cancelled=cancelled,
-        )
-        if not items and errors:
-            raise RuntimeError("音乐源搜索失败：" + "；".join(errors))
-        if require_download_url:
-            items = [it for it in items if getattr(it, "with_valid_download_url", False)]
-        # optional prefer format filter kept light; caller may re-filter
-        if prefer and prefer != "any":
-            prefer_exts = PREFER_FORMATS.get(prefer, [])
-            if prefer_exts:
-                ranked = []
-                for it in items:
-                    ft = str(getattr(it, "file_type", "") or getattr(it, "ext", "") or "").lower()
-                    score = 0
-                    for i, ext in enumerate(prefer_exts):
-                        if ext in ft:
-                            score = 100 - i
-                            break
-                    ranked.append((score, it))
-                ranked.sort(key=lambda x: x[0], reverse=True)
-                items = [it for _, it in ranked]
-        return items
-
-
     def download_one(
         self,
         task_id: int,
@@ -338,19 +110,13 @@ class MusicDLService:
         music_sources: list[str] | None = None,
         picked=None,
     ):
-        if picked is None:
-            items, errors = self._search_sources(
-                keyword,
-                music_sources=music_sources,
-                work_dir=output_dir / ".musicdl_work",
-                search_size_per_source=DEFAULT_SEARCH_SIZE_PER_SOURCE,
-            )
-            if not items and errors:
-                raise RuntimeError("下载前搜索失败：" + "；".join(errors))
-            picked = self._pick_item(items, prefer)
+        """下载单个已解析条目。picked 必须已完成下载地址解析
 
-        if not picked:
-            self.emit(task_id, f"未找到: {keyword}", 0)
+        （由 LightSearchService.resolve_for_download 产出）——搜索与解析已上移到
+        调用方（task_worker），本方法只负责落盘与归档。
+        """
+        if picked is None or not getattr(picked, "with_valid_download_url", False):
+            self.emit(task_id, f"未找到可下载版本: {keyword}", 0)
             return None
 
         # 下载用 client 与该条目的来源保持一致
@@ -359,6 +125,10 @@ class MusicDLService:
             output_dir / ".musicdl_work",
             music_sources=[src] if src in DEFAULT_DOWNLOAD_SOURCES else music_sources,
         )
+        # 轻量解析产物不带 work_dir（base.search 才会赋），musicdl 下载落盘需要它
+        work_dir = output_dir / ".musicdl_work" / str(src or "unknown")
+        work_dir.mkdir(parents=True, exist_ok=True)
+        picked.work_dir = str(work_dir)
 
         ext = (getattr(picked, "ext", "") or "").upper()
         self.emit(task_id, f"命中 [{ext}] {picked.song_name} - {picked.singers}", 0)
@@ -369,19 +139,6 @@ class MusicDLService:
             return None
         moved = self._move_files(downloaded_items[0], song_name, singers, output_dir, task_id)
         return moved
-
-    def _pick_item(self, items, prefer: str):
-        prefer = prefer.lower().strip()
-        wanted = PREFER_FORMATS.get(prefer, [])
-        valid = [it for it in items if getattr(it, "with_valid_download_url", False)]
-        if not valid:
-            return None
-        for ext in wanted:
-            for item in valid:
-                item_ext = (getattr(item, "ext", "") or "").lower().lstrip(".")
-                if item_ext == ext:
-                    return item
-        return valid[0]
 
     def _normalize(self, text: str) -> str:
         return re.sub(r"[\\/:*?\"<>|]", "_", text).strip()
@@ -570,106 +327,6 @@ class MusicDLService:
         else:
             song, singer = line, ""
         return song.strip(), singer.strip()
-
-    def enrich_song_metadata(self, song: Song) -> dict:
-        """Search QQ Music for the song and return missing metadata.
-
-        Returns a dict with keys that were filled:
-            {album, duration, cover_path, lrc_path}
-        Only keys where the song was missing data and musicdl found a match are included.
-        Empty dict means nothing was enriched.
-        """
-        # Determine what's missing
-        needs_album = not (song.album and song.album.strip())
-        needs_duration = not song.duration or song.duration <= 0
-        has_local_cover = bool(song.cover_path and is_local_file(song.cover_path))
-        needs_cover = not has_local_cover
-        has_local_lrc = bool(song.lrc_path and Path(song.lrc_path).is_file())
-        needs_lyrics = not has_local_lrc
-
-        # If nothing is missing, skip
-        if not (needs_album or needs_duration or needs_cover or needs_lyrics):
-            return {}
-
-        # Build search keyword
-        keyword = f"{song.title} {song.artist}".strip() if song.artist else song.title
-        if not keyword:
-            return {}
-
-        # Init client on demand
-        if not self.client:
-            self._init_client(Path("/tmp/musicdl_enrich"))
-
-        # Search
-        try:
-            results = self.client.search(keyword=keyword)
-        except Exception:
-            return {}
-
-        items = self._flatten_search_results(results)
-        if not items:
-            return {}
-
-        # Match best result
-        best = self._match_best(items, song.title, song.artist, duration=song.duration)
-        if not best:
-            return {}
-
-        enriched = {}
-
-        # Fill album
-        if needs_album:
-            album = getattr(best, "album", None)
-            if album and str(album).strip():
-                song.album = str(album).strip()
-                enriched["album"] = song.album
-
-        # Fill duration
-        if needs_duration:
-            dur = getattr(best, "duration_s", None)
-            if dur is None:
-                dur_str = getattr(best, "duration", None)
-                if dur_str and str(dur_str).count(":") >= 1:
-                    parts = [int(x) for x in str(dur_str).split(":")]
-                    dur = 0
-                    for x in parts:
-                        dur = dur * 60 + x
-            if dur and int(dur) > 0:
-                song.duration = int(dur)
-                enriched["duration"] = song.duration
-
-        # Fill cover: download from cover_url
-        if needs_cover:
-            cover_url = getattr(best, "cover_url", None)
-            if cover_url and str(cover_url).startswith("http"):
-                cover_path = self._download_cover(best, self._cover_output_dir(song), self._cover_stem(song))
-                if cover_path:
-                    song.cover_path = str(cover_path)
-                    enriched["cover_path"] = song.cover_path
-
-        # Fill lyrics
-        if needs_lyrics:
-            lyric = getattr(best, "lyric", None)
-            if lyric and str(lyric).strip() and str(lyric) not in {"NULL", "null", "None", "none"}:
-                lrc_path = self._save_lyrics(song, str(lyric))
-                if lrc_path:
-                    song.lrc_path = lrc_path
-                    enriched["lrc_path"] = song.lrc_path
-
-        # Persist if anything changed
-        if enriched:
-            try:
-                self.db.add(song)
-                self.db.commit()
-                self.db.refresh(song)
-            except Exception:
-                try:
-                    self.db.rollback()
-                except Exception:
-                    pass
-
-        return enriched
-
 
     def _summarize_search_item(self, item, *, max_title: int = 40) -> dict:
         """Compact dict for scrape debug logs."""
@@ -923,22 +580,18 @@ class MusicDLService:
         best_score = -1
 
         for src in sources:
-            def _search_one(source=src):
-                self._init_client(
-                    Path("/tmp/musicdl_scrape"),
-                    music_sources=[source],
-                    search_size_per_source=search_size_per_source,
-                )
-                results = self.client.search(keyword=keyword)
-                return self._flatten_search_results(results)
-
             try:
                 log.info("开始搜索 source=%s keyword=%r timeout=%ss", src, keyword, timeout_per_source)
-                # musicdl 无法注入超时 → 统一硬超时（旧实现的 with 池在超时后
-                # shutdown(wait=True) 仍会等僵尸线程，等于没有超时）
-                items = run_with_hard_timeout(
-                    _search_one, max(1.0, float(timeout_per_source)), label=f"刮削搜索[{src}]"
+                # 轻量搜索：单源一次请求，请求自带超时；外层硬超时仅作兜底
+                items, search_errors = run_with_hard_timeout(
+                    lambda source=src: LightSearchService(self.db).search(
+                        keyword, [source], size_per_source=search_size_per_source
+                    ),
+                    max(1.0, float(timeout_per_source)),
+                    label=f"刮削搜索[{src}]",
                 )
+                if search_errors:
+                    log.warning("搜索部分失败 source=%s keyword=%r errors=%s", src, keyword, search_errors)
             except FuturesTimeout:
                 log.warning("搜索超时 source=%s keyword=%r timeout=%ss", src, keyword, timeout_per_source)
                 continue
@@ -964,7 +617,8 @@ class MusicDLService:
                 "album": getattr(best, "album", None),
                 "source": getattr(best, "_sonpick_source", None) or src,
             }
-            dur = getattr(best, "duration", None)
+            # 轻量搜索提供整型 duration_s（旧重搜索只有 hms 字符串，int() 必然失败）
+            dur = getattr(best, "duration_s", None) or getattr(best, "duration", None)
             try:
                 if dur is not None:
                     n = int(dur)

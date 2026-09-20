@@ -39,6 +39,10 @@ def _validate_duplicate_decision(req: DownloadRequest, db: Session) -> None:
 @router.post("")
 def download(req: DownloadRequest, user: str = Depends(get_current_user), db: Session = Depends(get_db)):
     _validate_duplicate_decision(req, db)
+    if req.song_id and (not req.source or req.source == "all"):
+        raise HTTPException(status_code=422, detail="锁定单曲下载需要指定具体音乐源")
+    if not req.song_id and not req.keyword.strip():
+        raise HTTPException(status_code=422, detail="缺少下载关键词")
     task = Task(
         type="search_download",
         status="pending",
@@ -46,6 +50,8 @@ def download(req: DownloadRequest, user: str = Depends(get_current_user), db: Se
             "keyword": req.keyword,
             "prefer": req.prefer,
             "source": req.source,
+            "song_id": req.song_id,
+            "format": req.format,
             "duplicate_action": req.duplicate_action,
             "replace_song_file_id": req.replace_song_file_id,
             "matched_song_id": req.matched_song_id,
