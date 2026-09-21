@@ -196,7 +196,7 @@ music/
 
 
 - `MusicDLService`：下载（按格式落盘）；`download_one` 只消费「已解析出 download_url 的 SongInfo」（`picked`），签名以源码为准，`task_worker` 必须匹配
-- `light_search_service.py`：轻量搜索 + 下载时解析的唯一入口（`LightSearchService`）。搜索只取元数据（复用 musicdl 的搜索 URL 构造/官方解析，跳过其逐条 URL 解析），源间并发 + 10min 内存 TTL 缓存（空结果不缓存）；`resolve_formats` 对锁定单曲定向验证三档格式（lossless/high/standard，每档 1 接口 + 1 探测、档间并行），按 (ext, 体积) 去重、标签按实际 ext/码率诚实命名；`resolve_for_download` 按档位逐级回退，全空再兜底第三方接口。复用了 musicdl 私有方法（钉版依赖），上游升级时 `tests/test_light_search.py` 的契约测试会失败
+- `light_search_service.py`：轻量搜索 + 下载时解析的唯一入口（`LightSearchService`）。搜索只取元数据（复用 musicdl 的搜索 URL 构造/官方解析，跳过其逐条 URL 解析），源间并发 + 10min 内存 TTL 缓存（空结果不缓存）；`resolve_formats` 对锁定单曲定向验证三档格式（lossless/high/standard，每档 1 接口 + 1 探测、档间并行），官方三档全空（VIP/付费曲常见）时兜底一次第三方解析级联（条目 `via=third_party`、tier=best，带 10min 缓存避免弹窗与 worker 重复级联）；按 (ext, 体积) 去重、标签按实际 ext/码率诚实命名；`resolve_for_download` 按档位逐级回退，全空再兜底第三方接口。复用了 musicdl 私有方法（钉版依赖），上游升级时 `tests/test_light_search.py` 的契约测试会失败
 - `WebDAVService`：
   - list/stream/upload **共用** URL 根拆分逻辑，禁止再写死 `/music`
   - 上传为套件：音频 + 可选封面/歌词（同 stem）

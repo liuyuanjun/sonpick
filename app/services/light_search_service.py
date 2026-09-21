@@ -167,9 +167,7 @@ def qq_item_to_songinfo(item: dict) -> Optional[SongInfo]:
         size = _int_or_none(file_meta.get(size_key))
         if size:
             formats.append({"ext": ext, "size_bytes": size, "quality": tier, "label": label})
-    # QQ 搜索接口对 VIP 曲目也返回 size（平台有此格式），付费标记单独透出
-    pay = item.get("pay") or {}
-    vip_only = bool(pay.get("pay_play") or pay.get("pay_down"))
+    # QQ 搜索接口对付费曲目也返回 size（平台有此格式）；不做 VIP/版权预判，能不能下由下载时验证决定
     albummid = safeextractfromdict(item, ["album", "mid"], "") or item.get("albummid") or ""
     best = formats[0] if formats else {}
     song = SongInfo(
@@ -189,7 +187,6 @@ def qq_item_to_songinfo(item: dict) -> Optional[SongInfo]:
         identifier=str(mid),
     )
     song.formats_meta = formats
-    song.vip_only = vip_only
     return song
 
 
@@ -213,7 +210,6 @@ def netease_item_to_songinfo(item: dict) -> Optional[SongInfo]:
         identifier=str(song_id),
     )
     song.formats_meta = []
-    song.vip_only = bool(safeextractfromdict(item, ["privilege", "fee"], 0) == 1)
     return song
 
 
@@ -281,7 +277,6 @@ def migu_item_to_songinfo(item: dict) -> Optional[SongInfo]:
         identifier=str(content_id),
     )
     song.formats_meta = formats
-    song.vip_only = False
     return song
 
 
@@ -614,8 +609,9 @@ class LightSearchService:
     def resolve_formats(self, item: SongInfo) -> list[dict]:
         """对锁定单曲并行验证三档格式，返回「已验证可下」列表（高音质在前）。
 
-        供下载确认弹窗使用：只走官方接口，快速（每档 1 请求 + 1 探测）；
-        第三方解析级联较慢，不在此处尝试（由下载执行路径兜底）。
+        供下载确认弹窗使用：先走官方接口（每档 1 请求 + 1 探测）；官方全部
+        落空（常见于 VIP/付费曲）时兜底一次第三方解析级联，命中的条目带
+        ``via="third_party"`` 标记。第三方也落空才返回空列表（前端仍可直接下载）。
 
         注意：上游接口可能给不同档位返回同一内容（如咪咕各档回退到同一 mp3、
         网易 lossless/exhigh 落地同一文件）——签名 URL 各不相同，须按
@@ -640,7 +636,20 @@ class LightSearchService:
                 "ext": song.ext,
                 "file_size_bytes": song.file_size_bytes,
                 "file_size": song.file_size,
+                "via": "official",
             })
+        if not formats:
+            third = self._resolve_via_third_party(item, src)
+            if third is not None:
+                # tier=best：worker 收到后按全部档位+第三方重走一遍，语义一致
+                formats.append({
+                    "tier": "best",
+                    "label": _honest_quality_label(third),
+                    "ext": third.ext,
+                    "file_size_bytes": third.file_size_bytes,
+                    "file_size": third.file_size,
+                    "via": "third_party",
+                })
         return formats
 
     def resolve_for_download(self, item: SongInfo, tier: str = "best") -> SongInfo:
@@ -658,7 +667,7 @@ class LightSearchService:
         song = self._resolve_via_third_party(item, src)
         if song is not None:
             return song
-        raise RuntimeError(f"{SOURCE_LABELS.get(src, src)}未找到可下载版本（版权或 VIP 限制）")
+        raise RuntimeError(f"{SOURCE_LABELS.get(src, src)}未找到可下载版本")
 
     def _resolve_all_tiers(self, item: SongInfo, src: str) -> dict[str, Optional[SongInfo]]:
         cache_key = ("resolve", src, str(item.identifier))
@@ -698,6 +707,11 @@ class LightSearchService:
     def _resolve_via_third_party(self, item: SongInfo, src: str) -> Optional[SongInfo]:
         if src not in ("QQMusicClient", "NeteaseMusicClient"):
             return None
+        # 弹窗验证与 worker 下载会各走一次，缓存避免重复级联（空结果不缓存）
+        cache_key = ("resolve3rd", src, str(item.identifier))
+        cached = _resolve_cache.get(cache_key)
+        if cached is not None:
+            return cached
         try:
             client = _new_client(_RESOLVE_CLIENTS, src)
             search_result = (item.raw_data or {}).get("search") or {}
@@ -713,6 +727,7 @@ class LightSearchService:
             song._sonpick_source = src
             if not song.identifier:
                 song.identifier = str(item.identifier)
+            _resolve_cache.set(cache_key, song)
             return song
         return None
 

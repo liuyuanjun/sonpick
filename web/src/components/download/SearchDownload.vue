@@ -7,7 +7,15 @@
         class="keyword-input"
         @keydown.enter="doSearch(1)"
       />
-      <n-select v-model:value="source" :options="sourceOptions" class="source-select" />
+      <n-select
+        v-model:value="sources"
+        :options="sourceOptions"
+        multiple
+        :max-tag-count="2"
+        class="source-select"
+        placeholder="选择来源"
+        @update:value="ensureSourceNonEmpty"
+      />
       <div class="toolbar-actions">
         <n-button type="primary" :loading="searching" class="action-btn" @click="doSearch(1)">搜索</n-button>
       </div>
@@ -41,7 +49,6 @@
               >
                 {{ f.label || formatLabel(f.ext, '-') }}
               </n-tag>
-              <n-tag v-if="row.vip_only" size="small" type="warning">VIP</n-tag>
               <n-tag size="small" :bordered="false">{{ row.source || '-' }}</n-tag>
               <n-tag
                 v-if="row.library_match"
@@ -91,17 +98,21 @@
         </div>
 
         <template v-else>
-          <n-alert v-if="!resolveFormats.length" type="warning" :bordered="false">
-            该曲当前无可下载格式（版权或 VIP 限制）
+          <n-alert v-if="!resolveFormats.length" type="info" :bordered="false">
+            未能在线验证到可下格式，可直接下载（下载时将自动尝试全部可用格式）
           </n-alert>
-          <n-radio-group v-else v-model:value="selectedTier" class="format-radios">
-            <n-space vertical>
-              <n-radio v-for="f in resolveFormats" :key="f.tier" :value="f.tier">
-                {{ f.label }} · {{ formatLabel(f.ext, '-') }}
-                <span v-if="f.file_size" class="format-size">{{ f.file_size }}</span>
-              </n-radio>
-            </n-space>
-          </n-radio-group>
+          <template v-else>
+            <n-text depth="3">选择要下载的格式（可多选，每个格式各建一个下载任务）：</n-text>
+            <n-checkbox-group v-model:value="selectedTiers" class="format-checks" @update:value="onTierChange">
+              <n-space vertical>
+                <n-checkbox v-for="f in resolveFormats" :key="f.tier" :value="f.tier">
+                  {{ f.label }} · {{ formatLabel(f.ext, '-') }}
+                  <span v-if="f.file_size" class="format-size">{{ f.file_size }}</span>
+                  <n-tag v-if="f.via === 'third_party'" size="tiny" type="warning" :bordered="false" class="format-via">第三方解析</n-tag>
+                </n-checkbox>
+              </n-space>
+            </n-checkbox-group>
+          </template>
 
           <!-- 曲库重复决策（仅命中曲库时显示） -->
           <template v-if="downloadRow?.library_match">
@@ -117,7 +128,7 @@
                 <span v-else-if="!v.replaceable" class="version-note">（文件不可访问，无法替换）</span>
               </li>
             </ul>
-            <n-radio-group v-model:value="dupAction" class="dup-actions">
+            <n-radio-group :value="dupAction" class="dup-actions" @update:value="onDupActionChange">
               <n-space vertical>
                 <n-radio value="keep_both">保留两者，下载为新版本</n-radio>
                 <n-radio value="replace" :disabled="!replaceableVersions.length">
@@ -139,11 +150,11 @@
           <n-button @click="downloadDialogVisible = false">取消</n-button>
           <n-button
             type="primary"
-            :disabled="resolving || !resolveFormats.length"
+            :disabled="resolving || (!!resolveFormats.length && !selectedTiers.length)"
             :loading="submitting"
             @click="confirmDownload"
           >
-            确认下载
+            {{ resolveFormats.length ? `确认下载${selectedTiers.length > 1 ? `（${selectedTiers.length} 个任务）` : ''}` : '直接下载' }}
           </n-button>
         </n-space>
       </template>
@@ -163,7 +174,7 @@ import { formatLabel } from '@/utils/media'
 const message = useMessage()
 const isMobile = useIsMobile()
 const keyword = ref('')
-const source = ref('QQMusicClient')
+const sources = ref(['QQMusicClient', 'NeteaseMusicClient', 'MiguMusicClient'])
 const searching = ref(false)
 const results = ref([])
 const page = ref(1)
@@ -176,8 +187,14 @@ const sourceOptions = [
   { label: 'QQ 音乐', value: 'QQMusicClient' },
   { label: '网易云音乐', value: 'NeteaseMusicClient' },
   { label: '咪咕音乐', value: 'MiguMusicClient' },
-  { label: '全部来源', value: 'all' },
 ]
+
+// 多选来源不允许清空：全部取消时自动回填全部来源
+function ensureSourceNonEmpty(val) {
+  if (!val || !val.length) {
+    sources.value = sourceOptions.map((o) => o.value)
+  }
+}
 
 // 体积与格式标签的实现都在 utils/format.js / utils/media.js
 function formatSize(bytes) {
@@ -216,11 +233,7 @@ const columns = [
     key: 'formats',
     width: 180,
     render(row) {
-      const badges = [formatBadges(row)]
-      if (row.vip_only) {
-        badges.push(h(NTag, { size: 'small', type: 'warning' }, { default: () => 'VIP' }))
-      }
-      return badges
+      return formatBadges(row)
     },
   },
   { title: '来源', key: 'source', width: 100 },
@@ -269,7 +282,7 @@ async function doSearch(p = page.value) {
   results.value = []
   total.value = 0
   try {
-    const res = await searchMusic(keyword.value.trim(), page.value, pageSize, source.value)
+    const res = await searchMusic(keyword.value.trim(), page.value, pageSize, sources.value.join(','))
     lastQuery = keyword.value.trim()
     results.value = res.data.items || []
     total.value = res.data.total || 0
@@ -286,7 +299,7 @@ const downloadDialogVisible = ref(false)
 const downloadRow = ref(null)
 const resolving = ref(false)
 const resolveFormats = ref([])
-const selectedTier = ref(null)
+const selectedTiers = ref([])
 const submitting = ref(false)
 const dupAction = ref('keep_both')
 const dupReplaceId = ref(null)
@@ -305,7 +318,7 @@ async function openDownload(row) {
   }
   downloadRow.value = row
   resolveFormats.value = []
-  selectedTier.value = null
+  selectedTiers.value = []
   dupAction.value = 'keep_both'
   dupReplaceId.value = (row.library_match?.versions || []).find((v) => v.replaceable)?.song_file_id ?? null
   downloadDialogVisible.value = true
@@ -313,42 +326,67 @@ async function openDownload(row) {
   try {
     const res = await resolveMusicFormats({
       q: lastQuery || keyword.value.trim(),
-      source: row.source || source.value,
+      source: row.source,
       song_id: row.song_id,
     })
     resolveFormats.value = res.data.formats || []
-    selectedTier.value = res.data.default_tier || null
+    selectedTiers.value = res.data.default_tier ? [res.data.default_tier] : []
   } catch (err) {
-    downloadDialogVisible.value = false
-    message.error(err.response?.data?.detail || '格式验证失败')
+    // 验证失败不拦截下载：留空格式列表，用户仍可「直接下载」按原链路尝试
+    resolveFormats.value = []
+    selectedTiers.value = []
+    message.warning(err.response?.data?.detail || '格式验证失败，可直接下载尝试')
   } finally {
     resolving.value = false
   }
 }
 
+// 「替换已有版本」只能面向一个目标文件，多格式同时替换同一文件没有意义 → 该模式下只保留最后勾选的格式
+function onTierChange(val) {
+  if (dupAction.value === 'replace' && val.length > 1) {
+    selectedTiers.value = [val[val.length - 1]]
+  }
+}
+
+function onDupActionChange(val) {
+  dupAction.value = val
+  if (val === 'replace' && selectedTiers.value.length > 1) {
+    selectedTiers.value = selectedTiers.value.slice(0, 1)
+  }
+}
+
 async function confirmDownload() {
   const row = downloadRow.value
-  if (!row || !selectedTier.value) return
+  if (!row) return
+  if (resolveFormats.value.length && !selectedTiers.value.length) {
+    message.warning('请选择要下载的格式')
+    return
+  }
   if (row.library_match && dupAction.value === 'replace' && !dupReplaceId.value) {
     message.warning('请选择要替换的本地版本')
     return
   }
-  const body = {
+  // 有验证格式 → 每个格式一个任务；无验证格式 → 单个任务不指定格式，worker 按原链路自动尝试
+  const tiers = resolveFormats.value.length ? selectedTiers.value : [null]
+  const base = {
     keyword: `${row.song_name || ''} ${row.singers || ''}`.trim(),
-    source: row.source || source.value,
+    source: row.source,
     song_id: row.song_id,
-    format: selectedTier.value,
   }
   if (row.library_match) {
-    body.duplicate_action = dupAction.value
-    body.matched_song_id = row.library_match.song_id
-    if (dupAction.value === 'replace') body.replace_song_file_id = dupReplaceId.value
+    base.duplicate_action = dupAction.value
+    base.matched_song_id = row.library_match.song_id
+    if (dupAction.value === 'replace') base.replace_song_file_id = dupReplaceId.value
   }
   submitting.value = true
+  let created = 0
   try {
-    await api.post('/download', body)
+    for (const tier of tiers) {
+      await api.post('/download', tier ? { ...base, format: tier } : base)
+      created += 1
+    }
     downloadDialogVisible.value = false
-    message.success('已创建下载任务')
+    message.success(created > 1 ? `已创建 ${created} 个下载任务` : '已创建下载任务')
   } catch (err) {
     message.error(err.response?.data?.detail || '创建下载任务失败')
   } finally {
@@ -412,6 +450,9 @@ async function confirmDownload() {
 }
 .format-size {
   opacity: 0.65;
+  margin-left: 4px;
+}
+.format-via {
   margin-left: 4px;
 }
 

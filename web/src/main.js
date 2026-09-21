@@ -7,6 +7,7 @@ import {
   NButtonGroup,
   NCard,
   NCheckbox,
+  NCheckboxGroup,
   NConfigProvider,
   NDataTable,
   NDivider,
@@ -69,7 +70,7 @@ import { useThemeStore } from '@/stores/theme'
 
 const naive = create({
   components: [
-    NAlert, NButton, NButtonGroup, NCard, NCheckbox, NConfigProvider, NDataTable, NDivider,
+    NAlert, NButton, NButtonGroup, NCard, NCheckbox, NCheckboxGroup, NConfigProvider, NDataTable, NDivider,
   NDropdown, NEllipsis,
     NForm, NFormItem, NGi, NGrid, NH1, NH2, NH3, NIcon, NInput, NInputNumber,
     NLayout, NLayoutContent, NLayoutFooter, NLayoutHeader, NLayoutSider,

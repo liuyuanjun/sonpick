@@ -71,7 +71,6 @@ class QQMappingTests(unittest.TestCase):
         self.assertEqual(song.singers, "周杰伦")
         self.assertEqual(song.album, "叶惠美")
         self.assertEqual(song.duration_s, 269)
-        self.assertTrue(song.vip_only)
         self.assertEqual(
             song.cover_url,
             "https://y.gtimg.cn/music/photo_new/T002R800x800M000000MkMni19ClKG.jpg",
@@ -109,7 +108,6 @@ class NeteaseMappingTests(unittest.TestCase):
         self.assertEqual(song.album, "叶惠美")
         self.assertEqual(song.duration_s, 269)
         self.assertEqual(song.cover_url, "https://p1.music.126.net/abc.jpg")
-        self.assertTrue(song.vip_only)
         self.assertEqual(song.formats_meta, [])
 
 
@@ -201,6 +199,35 @@ class ResolveFlowTests(unittest.TestCase):
             formats = svc.resolve_formats(item)
         self.assertEqual(len(formats), 1)
         self.assertEqual(formats[0]["tier"], "lossless")
+
+    def test_resolve_formats_falls_back_to_third_party(self):
+        # 官方三档全空（VIP/付费曲常见）→ 弹窗也要给出第三方解析的可下格式
+        svc = LightSearchService(None)
+        item = self._item()
+        third = mock.Mock(ext=".flac", file_size_bytes=30_000_000, file_size="28.61 MB", duration_s=269)
+        with (
+            mock.patch.object(svc, "_resolve_all_tiers", return_value={"lossless": None, "high": None, "standard": None}),
+            mock.patch.object(svc, "_resolve_via_third_party", return_value=third) as third_mock,
+        ):
+            formats = svc.resolve_formats(item)
+        self.assertEqual(len(formats), 1)
+        self.assertEqual(formats[0]["tier"], "best")  # worker 收到 best 会全档位+第三方重走，语义一致
+        self.assertEqual(formats[0]["via"], "third_party")
+        self.assertEqual(formats[0]["label"], "无损")
+
+    def test_resolve_formats_skips_third_party_when_official_available(self):
+        # 官方有可下格式时不做第三方级联（省一次慢调用）
+        svc = LightSearchService(None)
+        item = self._item()
+        high = mock.Mock(ext=".mp3", file_size_bytes=10_000_000, file_size="9.54 MB", duration_s=269)
+        with (
+            mock.patch.object(svc, "_resolve_all_tiers", return_value={"lossless": None, "high": high, "standard": None}),
+            mock.patch.object(svc, "_resolve_via_third_party") as third_mock,
+        ):
+            formats = svc.resolve_formats(item)
+        self.assertEqual(len(formats), 1)
+        self.assertEqual(formats[0]["via"], "official")
+        third_mock.assert_not_called()
 
 
 class MusicdlPrivateApiContractTests(unittest.TestCase):

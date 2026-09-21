@@ -37,7 +37,6 @@ def _to_result_item(item) -> SearchResultItem:
         duration=getattr(item, "duration", None),
         source=getattr(item, "_sonpick_source", None) or getattr(item, "source", None),
         song_id=str(getattr(item, "identifier", "") or "") or None,
-        vip_only=bool(getattr(item, "vip_only", False)),
         formats=formats,
     )
 
@@ -51,11 +50,20 @@ def search(
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """轻量搜索：每源一次请求，不解析下载地址（在 /search/resolve 按需验证）。"""
+    """轻量搜索：每源一次请求，不解析下载地址（在 /search/resolve 按需验证）。
+
+    `source` 支持逗号分隔的多源（如 `QQMusicClient,NeteaseMusicClient`），`all` 表示全部。
+    """
     requested_source = (source or "all").strip()
-    music_sources = None if requested_source == "all" else [requested_source]
-    if music_sources and requested_source not in DEFAULT_DOWNLOAD_SOURCES:
-        raise HTTPException(status_code=422, detail="不支持的音乐源")
+    if requested_source == "all":
+        music_sources = None
+    else:
+        music_sources = [s.strip() for s in requested_source.split(",") if s.strip()]
+        invalid = [s for s in music_sources if s not in DEFAULT_DOWNLOAD_SOURCES]
+        if invalid:
+            raise HTTPException(status_code=422, detail=f"不支持的音乐源: {', '.join(invalid)}")
+        if not music_sources:
+            raise HTTPException(status_code=422, detail="请至少选择一个音乐源")
     try:
         items, errors = LightSearchService(db).search(q, music_sources=music_sources)
     except Exception as exc:
@@ -87,8 +95,8 @@ def search(
 def resolve(req: ResolveRequest, user: str = Depends(get_current_user), db: Session = Depends(get_db)):
     """单曲格式验证：对锁定的一首歌并行验证三档格式（官方接口 + 链接探测）。
 
-    返回「已验证可下」的格式列表；为空表示官方渠道当前无可下格式
-    （版权/VIP 限制），前端据此拦截下载而不是放任任务失败。
+    返回「已验证可下」的格式列表，供前端在确认弹窗里展示；为空不代表不能下，
+    前端仍可直接入队，由 worker 按原有链路尝试。
     """
     service = LightSearchService(db)
     item = service.find_item(req.q, req.source, req.song_id)

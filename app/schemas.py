@@ -188,7 +188,6 @@ class SearchResultItem(BaseModel):
     ext: Optional[str] = None
     source: Optional[str] = None
     song_id: Optional[str] = None
-    vip_only: bool = False
     formats: list[SearchFormatOut] = Field(default_factory=list)
     download_url: Optional[str] = None
     raw: Optional[dict] = None
@@ -204,11 +203,12 @@ class ResolveRequest(BaseModel):
 
 class ResolvedFormatOut(BaseModel):
     """已验证可下载的格式（接口请求 + 链接探测通过）。"""
-    tier: str  # lossless | high | standard
+    tier: str  # lossless | high | standard | best（best = 第三方解析兜底）
     label: str
     ext: Optional[str] = None
     file_size_bytes: Optional[int] = None
     file_size: Optional[str] = None
+    via: str = "official"  # official | third_party（官方全落空时的第三方解析兜底）
 
 
 class ResolveOut(BaseModel):
