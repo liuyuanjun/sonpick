@@ -122,10 +122,10 @@ const queueLabel = computed(() => `队列 ${player.queue?.length || 0}`)
   min-width: 14px;
   height: 14px;
   padding: 0 3px;
-  border-radius: 999px;
+  border-radius: var(--sp-radius-pill);
   background: var(--accent, var(--sp-ui-primary));
   color: #fff;
-  font-size: 9px;
+  font-size: var(--sp-fs-micro);
   line-height: 14px;
   font-weight: 700;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);

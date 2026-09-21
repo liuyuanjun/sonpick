@@ -202,7 +202,7 @@ watch(
   flex: 0 0 168px;
   width: 168px;
   height: 168px;
-  border-radius: 12px;
+  border-radius: var(--sp-radius-lg);
   overflow: hidden;
   background: var(--sp-ui-hover);
   display: flex;
@@ -226,14 +226,14 @@ watch(
   gap: 8px;
 }
 .info-title {
-  font-size: 18px;
+  font-size: var(--sp-fs-h3);
   font-weight: 500;
   line-height: 1.3;
   color: var(--sp-ui-text-1);
   word-break: break-word;
 }
 .info-sub {
-  font-size: 13px;
+  font-size: var(--sp-fs-small);
   color: var(--sp-ui-text-2);
   word-break: break-word;
 }
@@ -252,7 +252,7 @@ watch(
   display: flex;
   gap: 8px;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   line-height: 1.6;
 }
 .kv dt {
@@ -278,17 +278,17 @@ watch(
   align-items: baseline;
   flex-wrap: wrap;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--sp-fs-small);
   font-weight: 500;
   color: var(--sp-ui-text-1);
 }
 .section-count {
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   font-weight: 400;
   color: var(--sp-ui-text-3);
 }
 .section-hint {
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   font-weight: 400;
   color: var(--sp-ui-text-3);
 }
@@ -303,9 +303,9 @@ watch(
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: var(--sp-radius-sm);
   background: var(--sp-ui-hover);
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   color: var(--sp-ui-text-2);
 }
 .version-row.is-preferred {
@@ -320,12 +320,12 @@ watch(
   color: var(--sp-ui-text-3);
 }
 .v-badge {
-  font-size: 11px;
+  font-size: var(--sp-fs-micro);
   color: var(--sp-ui-primary);
   white-space: nowrap;
 }
 .version-error {
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   line-height: 1.5;
   color: var(--sp-ui-error);
   padding: 0 10px;

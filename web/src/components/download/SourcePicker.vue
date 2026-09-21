@@ -104,14 +104,14 @@ function onDrop(i) {
 
 <style scoped>
 .area-label {
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   color: var(--sp-ui-text-2);
   margin-bottom: 6px;
 }
 .area-hint {
   margin-left: 8px;
   color: var(--sp-ui-text-3);
-  font-size: 11px;
+  font-size: var(--sp-fs-micro);
 }
 .chips {
   display: flex;
@@ -123,8 +123,8 @@ function onDrop(i) {
   align-items: center;
   gap: 2px;
   padding: 3px 8px;
-  border-radius: 999px;
-  font-size: 12.5px;
+  border-radius: var(--sp-radius-pill);
+  font-size: var(--sp-fs-caption);
   line-height: 1.6;
   border: 1px solid var(--sp-ui-border);
   background: var(--sp-ui-card);
@@ -165,9 +165,9 @@ function onDrop(i) {
   color: var(--sp-ui-text-3);
   cursor: pointer;
   padding: 0 3px;
-  font-size: 13px;
+  font-size: var(--sp-fs-small);
   line-height: 1.4;
-  border-radius: 4px;
+  border-radius: var(--sp-radius-xs);
 }
 .chip-btn:hover:not(:disabled) {
   color: var(--sp-ui-primary);
@@ -181,7 +181,7 @@ function onDrop(i) {
 }
 .empty-tip {
   margin-top: 6px;
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   color: var(--sp-ui-warning);
 }
 </style>

@@ -291,7 +291,7 @@ function onLyricSeek(time) {
 .vd-groove {
   position: absolute;
   inset: 0;
-  border-radius: 50%;
+  border-radius: var(--sp-radius-circle);
   /* 沟槽两色取自 PlayerPanel 的 --vinyl-bg-a / --vinyl-bg-b（明暗两套都在那里，别在这里写死色值） */
   background:
     conic-gradient(from 205deg at 50% 50%, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0) 62deg, rgba(255, 255, 255, 0) 296deg, rgba(255, 255, 255, 0.1) 360deg),
@@ -315,7 +315,7 @@ function onLyricSeek(time) {
   top: 19.1%;
   width: 61.8%;
   height: 61.8%;
-  border-radius: 50%;
+  border-radius: var(--sp-radius-circle);
   object-fit: cover;
   box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.45);
   filter: brightness(0.82) saturate(1.05);
@@ -323,7 +323,7 @@ function onLyricSeek(time) {
 .vd-veil {
   position: absolute;
   inset: 0;
-  border-radius: 50%;
+  border-radius: var(--sp-radius-circle);
   background: radial-gradient(circle at 34% 30%, rgba(6, 7, 11, 0.1), rgba(6, 7, 11, 0.34) 78%);
 }
 /* 亮色：盘面已经够亮，veil 不再压暗，改成左上一道柔光让白胶有体积感 */
@@ -356,7 +356,7 @@ function onLyricSeek(time) {
   padding: 22px 24px 0 88px;
 }
 .v-title {
-  font-size: 30px;
+  font-size: var(--sp-fs-display);
   font-weight: 700;
   letter-spacing: 0.01em;
   color: var(--fg);
@@ -366,7 +366,7 @@ function onLyricSeek(time) {
 }
 .v-artist {
   margin-top: 8px;
-  font-size: 15px;
+  font-size: var(--sp-fs-body);
   color: var(--fg-3);
   white-space: nowrap;
   overflow: hidden;
@@ -414,7 +414,7 @@ function onLyricSeek(time) {
 }
 .tech {
   margin-top: 22px;
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   color: var(--fg-3);
   letter-spacing: 0.03em;
 }
@@ -429,7 +429,7 @@ function onLyricSeek(time) {
     --disc-cap: calc(var(--disc-r) * 0.382);
   }
   .v-title {
-    font-size: 22px;
+    font-size: var(--sp-fs-h2);
   }
   .art-stage {
     width: min(52vw, 300px);

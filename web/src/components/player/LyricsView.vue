@@ -180,12 +180,12 @@ onBeforeUnmount(() => {
   color: var(--lyric-empty);
 }
 .empty-title {
-  font-size: 16px;
+  font-size: var(--sp-fs-h3);
   font-weight: 600;
   color: var(--lyric-empty-title);
 }
 .empty-sub {
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   color: var(--lyric-empty-sub);
 }
 .line {
@@ -196,7 +196,7 @@ onBeforeUnmount(() => {
   transition: color 0.22s ease, transform 0.22s ease, opacity 0.22s ease, text-shadow 0.22s ease, font-size 0.18s ease;
   cursor: pointer;
   user-select: none;
-  border-radius: 10px;
+  border-radius: var(--sp-radius-md);
 }
 .line:hover {
   color: var(--lyric-hover);

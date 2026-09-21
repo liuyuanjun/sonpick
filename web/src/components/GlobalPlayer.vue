@@ -460,7 +460,7 @@ onUnmounted(() => {
   padding: 0 22px;
   box-sizing: border-box;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: var(--sp-radius-pill);
   background: var(--gp-bg);
   border: 1px solid var(--gp-border);
   color: var(--gp-text);
@@ -494,7 +494,7 @@ onUnmounted(() => {
 .cover {
   width: 52px;
   height: 52px;
-  border-radius: 10px;
+  border-radius: var(--sp-radius-md);
   object-fit: cover;
   flex-shrink: 0;
   background: rgba(127, 127, 127, 0.12);
@@ -513,14 +513,14 @@ onUnmounted(() => {
 }
 .title {
   font-weight: 700;
-  font-size: 13px;
+  font-size: var(--sp-fs-small);
   line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .artist {
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   color: var(--gp-text-3);
   white-space: nowrap;
   overflow: hidden;
@@ -549,7 +549,7 @@ onUnmounted(() => {
   align-items: center;
 }
 .progress-row span {
-  font-size: 11px;
+  font-size: var(--sp-fs-micro);
   color: var(--gp-text-3);
   font-variant-numeric: tabular-nums;
   text-align: center;
@@ -569,7 +569,7 @@ onUnmounted(() => {
   right: 0;
   height: 3px;
   overflow: hidden;
-  border-radius: 999px 999px 0 0;
+  border-radius: var(--sp-radius-pill) var(--sp-radius-pill) 0 0;
   background: var(--sp-ui-hover);
   pointer-events: none;
   z-index: 3;
@@ -650,7 +650,7 @@ onUnmounted(() => {
   justify-content: center;
 }
 .gp-volume-value {
-  font-size: 11px;
+  font-size: var(--sp-fs-micro);
   line-height: 1;
   color: var(--sp-ui-text-3);
   font-variant-numeric: tabular-nums;
@@ -691,7 +691,7 @@ onUnmounted(() => {
   .cover {
     width: 40px;
     height: 40px;
-    border-radius: 10px;
+    border-radius: var(--sp-radius-md);
   }
 }
 @media (prefers-reduced-motion: reduce) {

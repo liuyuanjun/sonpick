@@ -64,7 +64,7 @@ watch(
      比例由外层皮肤注入（叠层卡要用它反算「盘面 = 卡宽」时的封面尺寸），
      两处必须同源，所以只在这里给兜底值。 */
   inset: calc((1 - var(--disc-ratio, 1.3)) * 50%);
-  border-radius: 50%;
+  border-radius: var(--sp-radius-circle);
   /* 外投影留在这一层（不自转），沟槽/高光/内阴影画在 .disc::before 上（自转）。
      box-shadow 与 filter 都在元素自身坐标系里绘制，挂在自转层上会跟着转 ——
      实测 0°→90° 时投影从下方转到左方（亮色下肉眼可见）。 */
@@ -75,7 +75,7 @@ watch(
   content: '';
   position: absolute;
   inset: 0;
-  border-radius: 50%;
+  border-radius: var(--sp-radius-circle);
   background:
     conic-gradient(from 205deg at 50% 50%, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 62deg, rgba(255, 255, 255, 0) 296deg, rgba(255, 255, 255, 0.12) 360deg),
     repeating-radial-gradient(circle at center, #1a1b20 0 1.5px, #0c0d10 1.5px 3px);
@@ -100,7 +100,7 @@ watch(
 .halo {
   position: absolute;
   inset: -9%;
-  border-radius: 50%;
+  border-radius: var(--sp-radius-circle);
   background: rgba(0, 0, 0, 0.52);
   filter: blur(9px);
   pointer-events: none;
@@ -111,7 +111,7 @@ watch(
 .ring {
   position: absolute;
   inset: -5.5%;
-  border-radius: 50%;
+  border-radius: var(--sp-radius-circle);
   border: 1px solid rgba(255, 255, 255, 0.09);
   pointer-events: none;
 }
@@ -157,7 +157,7 @@ watch(
   position: relative;
   width: 100%;
   height: 100%;
-  border-radius: 16px;
+  border-radius: var(--sp-radius-xl);
   object-fit: cover;
   display: block;
   box-shadow:
@@ -180,14 +180,14 @@ watch(
   background: var(--cover-bg, #eef1f6);
 }
 .ph-ic {
-  font-size: 40px;
+  font-size: var(--sp-icon-2xl);
   display: grid;
   place-items: center;
 }
 .sheen {
   position: absolute;
   inset: 0;
-  border-radius: 16px;
+  border-radius: var(--sp-radius-xl);
   pointer-events: none;
   background: linear-gradient(115deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0) 32%);
 }

@@ -297,12 +297,12 @@ function onUserSelect(key) {
 .logo-mark {
   width: 28px;
   height: 28px;
-  border-radius: 7px;
+  border-radius: var(--sp-radius-sm);
   display: block;
 }
 .logo-text {
   font-weight: 700;
-  font-size: 16px;
+  font-size: var(--sp-fs-h3);
 }
 /* 左下功能区：贴底常驻，展开态横向一排（折叠开关靠右），折叠态纵向堆叠居中 */
 .sider-footer {
@@ -341,10 +341,13 @@ function onUserSelect(key) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px;
+  padding: 0 var(--sp-layout-page-pad-x-mobile);
 }
 .content {
-  padding: 16px 20px 24px;
+  padding: var(--sp-layout-page-pad-y) var(--sp-layout-page-pad-x) 24px;
+  /* 内容限宽居中：1280 内容 + 两侧边距一起居中；仅在 >1500px 大屏触发 */
+  max-width: calc(var(--sp-layout-content-max) + 2 * var(--sp-layout-page-pad-x));
+  margin: 0 auto;
 }
 /* 悬浮播放胶囊浮在内容之上，为其预留底部空间；几何统一由 :root 的 --gp-* 变量驱动 */
 .content.has-mini-player {
@@ -371,7 +374,7 @@ function onUserSelect(key) {
   align-items: center;
   justify-content: center;
   gap: 2px;
-  font-size: 11px;
+  font-size: var(--sp-fs-micro);
   color: v-bind('themeVars.textColor3');
   cursor: pointer;
   user-select: none;
@@ -384,7 +387,7 @@ function onUserSelect(key) {
 
 @media (max-width: 768px) {
   .content {
-    padding: 12px 12px calc(52px + env(safe-area-inset-bottom, 0px) + 12px);
+    padding: var(--sp-layout-page-pad-y-mobile) var(--sp-layout-page-pad-x-mobile) calc(52px + env(safe-area-inset-bottom, 0px) + 12px);
   }
   .content.has-mini-player {
     padding-bottom: var(--gp-reserve);

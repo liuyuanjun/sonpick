@@ -97,7 +97,7 @@ async function start() {
   width: 160px;
 }
 .line-count {
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
 }
 @media (max-width: 768px) {
   .import-toolbar {

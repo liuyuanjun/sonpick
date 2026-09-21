@@ -31,7 +31,7 @@
           </div>
         </div>
 
-        <n-data-table
+        <sp-table
           v-if="!isMobile"
           :columns="columns"
           :data="rows"
@@ -50,7 +50,7 @@
                   <div class="log-tags">
                     <n-tag size="small" :bordered="false">{{ actionLabel[row.action] || row.action }}</n-tag>
                     <n-tag size="small" :bordered="false" :type="statusType[row.status] || 'default'">
-                      {{ row.status }}
+                      {{ statusLabel[row.status] || row.status }}
                     </n-tag>
                   </div>
                   <n-text depth="3" class="log-time">{{ formatDateTime(row.created_at, { withYear: true }) }}</n-text>
@@ -117,11 +117,37 @@ const statusType = {
   renamed: 'info',
 }
 
+/**
+ * 状态文案。后端返回的是英文枚举（success / failed / …），
+ * 直接渲染会让界面出现中英混排 —— 违反「中文优先」红线。
+ * 所有状态的展示都必须过这张表。
+ */
+const statusLabel = {
+  success: '成功',
+  failed: '失败',
+  skipped: '跳过',
+  partial: '部分成功',
+  renamed: '已重命名',
+}
+
+/**
+ * 路径列只展示文件名。
+ * 完整路径对用户零价值（同一批日志前缀全相同），却会把列撑爆
+ * ——实测 565px 内容塞进 153px，12 行全部被截断成 `/Users/yuanjun/Work/...`。
+ * 完整路径挂在 title 上，悬停可见，信息不丢失。
+ */
+function baseName(p) {
+  if (!p) return '—'
+  const parts = String(p).split(/[\\/]/).filter(Boolean)
+  return parts.length ? parts[parts.length - 1] : String(p)
+}
+
 const columns = [
   {
     title: '时间',
     key: 'created_at',
-    width: 180,
+    width: 170,
+    className: 'sp-num',
     render: (row) => formatDateTime(row.created_at, { withYear: true }),
   },
   {
@@ -143,7 +169,7 @@ const columns = [
       h(
         NTag,
         { size: 'small', bordered: false, type: statusType[row.status] || 'default' },
-        { default: () => row.status },
+        { default: () => statusLabel[row.status] || row.status },
       ),
   },
   {
@@ -159,14 +185,16 @@ const columns = [
   {
     title: '本地路径',
     key: 'local_path',
-    ellipsis: { tooltip: true },
-    render: (row) => row.local_path || '—',
+    width: 170,
+    ellipsis: { tooltip: false },
+    render: (row) => h('span', { title: row.local_path || '' }, baseName(row.local_path)),
   },
   {
     title: '远程路径',
     key: 'remote_path',
-    ellipsis: { tooltip: true },
-    render: (row) => row.remote_path || '—',
+    width: 170,
+    ellipsis: { tooltip: false },
+    render: (row) => h('span', { title: row.remote_path || '' }, baseName(row.remote_path)),
   },
   {
     title: '任务',
@@ -249,7 +277,7 @@ onMounted(load)
 }
 .log-card {
   border: 1px solid var(--sp-ui-border);
-  border-radius: 12px;
+  border-radius: var(--sp-radius-lg);
   padding: 12px;
   background: color-mix(in srgb, var(--sp-ui-card) 92%, transparent);
 }
@@ -266,7 +294,7 @@ onMounted(load)
 }
 .log-time {
   flex-shrink: 0;
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   line-height: 1.4;
 }
 .log-title {
@@ -280,7 +308,7 @@ onMounted(load)
 .log-task {
   margin-top: 6px;
   color: var(--sp-ui-text-3);
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   line-height: 1.45;
   word-break: break-word;
 }

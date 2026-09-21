@@ -52,7 +52,6 @@ const accentStyle = computed(() => {
   const dark = themeStore.isDark
   return {
     '--cover-accent': `rgb(${r}, ${g}, ${b})`,
-    '--cover-accent-glow': `rgba(${r}, ${g}, ${b}, ${dark ? 0.18 : 0.13})`,
     '--cover-accent-wash': `rgba(${r}, ${g}, ${b}, ${dark ? 0.18 : 0.12})`,
     '--cover-accent-wash-soft': `rgba(${r}, ${g}, ${b}, ${dark ? 0.10 : 0.08})`,
   }

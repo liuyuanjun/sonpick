@@ -363,17 +363,17 @@ function onCoverError(e) {
   gap: 12px;
   margin-top: 16px;
   padding: 10px 12px;
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   border: 1px solid rgba(127, 127, 127, 0.16);
-  border-radius: 14px;
+  border-radius: var(--sp-radius-xl);
   background: color-mix(in srgb, var(--sp-ui-card) 88%, transparent);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.10);
   backdrop-filter: blur(14px);
 }
 .pagination-bar :deep(.n-pagination) {
   justify-content: flex-end;
-  font-size: 12px;
-  --n-font-size: 12px;
+  font-size: var(--sp-fs-caption);
+  --n-font-size: var(--sp-fs-caption);
 }
 
 /* 分页渐进降级（tier/with-total 由 ResizeObserver 按容器宽度计算，见 script） */
@@ -399,7 +399,7 @@ function onCoverError(e) {
   margin-left: auto;
 }
 .page-indicator {
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   color: var(--sp-ui-text-2);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -423,12 +423,12 @@ function onCoverError(e) {
 }
 .song-list-head {
   padding: 8px 6px;
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   color: var(--sp-ui-text-3);
 }
 .song-row {
   padding: 8px 6px;
-  border-radius: 10px;
+  border-radius: var(--sp-radius-md);
   cursor: pointer;
   transition: background 0.12s ease;
 }
@@ -439,7 +439,7 @@ function onCoverError(e) {
 .col-idx {
   text-align: center;
   font-variant-numeric: tabular-nums;
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   color: var(--sp-ui-text-3);
   white-space: nowrap;
   line-height: 1;
@@ -447,7 +447,7 @@ function onCoverError(e) {
 .col-time {
   text-align: right;
   font-variant-numeric: tabular-nums;
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   color: var(--sp-ui-text-3);
   white-space: nowrap;
 }
@@ -456,14 +456,14 @@ function onCoverError(e) {
   align-items: center;
   justify-content: flex-start;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   white-space: nowrap;
   overflow: hidden;
 }
 .col-size {
   text-align: right;
   font-variant-numeric: tabular-nums;
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   color: var(--sp-ui-text-3);
   white-space: nowrap;
 }
@@ -483,10 +483,10 @@ function onCoverError(e) {
 /* 多版本角标：提示「还有别的版本」，明细在 tooltip 与信息弹窗里。
    中性灰底，避免整列绿色徽标连成色带分散注意力 */
 .format-more {
-  font-size: 11px;
+  font-size: var(--sp-fs-micro);
   line-height: 1;
   padding: 1px 3px;
-  border-radius: 4px;
+  border-radius: var(--sp-radius-xs);
   color: var(--sp-ui-text-3);
   background: rgba(127, 127, 127, 0.14);
 }
@@ -494,7 +494,7 @@ function onCoverError(e) {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   line-height: 1.5;
   max-width: 280px;
 }
@@ -539,7 +539,7 @@ function onCoverError(e) {
   max-width: 40px;
   max-height: 40px;
   flex: 0 0 40px;
-  border-radius: 8px;
+  border-radius: var(--sp-radius-sm);
   overflow: hidden;
   background: rgba(127, 127, 127, 0.12);
   position: relative;
@@ -563,7 +563,7 @@ function onCoverError(e) {
   align-items: center;
   justify-content: center;
   color: var(--sp-ui-text-3);
-  font-size: 14px;
+  font-size: var(--sp-fs-body);
 }
 
 .song-meta {
@@ -576,7 +576,7 @@ function onCoverError(e) {
 }
 .song-title {
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--sp-fs-small);
   line-height: 1.35;
   white-space: nowrap;
   overflow: hidden;
@@ -584,7 +584,7 @@ function onCoverError(e) {
   color: var(--sp-ui-text-1);
 }
 .song-sub {
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   line-height: 1.3;
   color: var(--sp-ui-text-3);
   white-space: nowrap;

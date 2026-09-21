@@ -347,7 +347,7 @@ loadTasks()
   padding: 10px 12px;
   margin-bottom: 8px;
   border: 1px solid var(--sp-ui-border);
-  border-radius: 10px;
+  border-radius: var(--sp-radius-md);
 }
 .task-item-head {
   display: flex;
@@ -365,7 +365,7 @@ loadTasks()
   display: block;
   flex: 1;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

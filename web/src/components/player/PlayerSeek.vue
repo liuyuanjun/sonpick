@@ -48,7 +48,7 @@ function onSeek(value) {
   gap: 10px;
 }
 .seek .t {
-  font-size: 11.5px;
+  font-size: var(--sp-fs-micro);
   color: var(--fg-3);
   font-variant-numeric: tabular-nums;
 }
@@ -70,11 +70,11 @@ function onSeek(value) {
 }
 .chip {
   flex: none;
-  font-size: 10.5px;
+  font-size: var(--sp-fs-micro);
   letter-spacing: 0.03em;
   color: var(--accent, var(--sp-ui-primary));
   border: 1px solid color-mix(in srgb, var(--accent, var(--sp-ui-primary)) 40%, transparent);
-  border-radius: 5px;
+  border-radius: var(--sp-radius-xs);
   padding: 1px 6px;
 }
 </style>

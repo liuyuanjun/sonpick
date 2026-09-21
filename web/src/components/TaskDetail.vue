@@ -42,7 +42,7 @@
         </div>
       </div>
     </div>
-    <n-text v-else depth="3" style="font-size: 12px">暂无运行日志</n-text>
+    <n-text v-else depth="3" style="font-size: var(--sp-fs-caption)">暂无运行日志</n-text>
   </div>
 </template>
 
@@ -100,9 +100,9 @@ const heartbeatText = computed(() => {
 .task-detail {
   margin-top: 8px;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: var(--sp-radius-sm);
   background: var(--action-color, rgba(127, 127, 127, 0.08));
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
 }
 .task-detail-row {
   display: flex;

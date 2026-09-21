@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.15.2-rc5
+
+### 布局 token 接入
+
+- **页面边距与内容限宽 token 化**：`theme/tokens.js` 的 `LAYOUT` 里 `pagePadX/Y`、`contentMaxWidth` 等此前只有声明、未接布局。现新增 `--sp-layout-page-pad-*` / `--sp-layout-content-max` 变量，由 `LayoutView` 的 `.content`（页面边距 + 内容限宽 1280px 居中，仅 >1500px 大屏触发）与 `.header` 消费；`pagePadYMobile` 补齐移动端竖向边距。
+- **语义间距落地**：`--sp-space-section`(16) / `-card-pad`(14) / `-card-gap`(12) 此前零消费，现替换 `DashboardView` 中「值匹配且语义匹配」的硬编码（页面区块 gap、KPI/面板卡片内边距、卡片网格间距）。值不匹配的间距（18/10/8/6px）留待后续「间距收敛」专项。
+- **移除无锚点 token**：`iconButtonSize`（圆形按钮 40px）全站无对应实现（圆形按钮均走 Naive tiny 26 / small 32 / medium 36），删除。
+
+## 0.15.2-rc4
+
+### 设计系统（本版重点）
+
+- **Token 体系升级为全量单一真相源**：`web/src/theme/tokens.js` 从「只管颜色」扩展为覆盖颜色 / 排版 / 图标尺度 / 圆角 / 间距 / 阴影 / 动效 / 层级 / 字体族；新增 `web/src/theme/naive.js` 作为 Token → Naive `themeOverrides` 的适配层，`buildCssVars()` 同步输出全套 `--sp-*` 变量。修掉了「业务 CSS 改了、Naive 组件还是老样子」的结构性问题。
+- **`DESIGN.md` 重写为硬标准**：与代码逐值对应，明确「一份数据、两个出口」的架构、新增状态设计 / 图标尺度 / 无障碍 / 验收清单章节，并把全部历史问题整理为「已修复 / 遗留」两张表供回归对照。
+
+### 修复
+
+- **字体从未真正加载（全站观感根因）**：`index.html` 只有一条 `brand.css` 引用，声明的 `Inter` / `Noto Sans SC` 从未生效，全站实际渲染 Naive 的 `v-sans`，部分节点回落 Arial。现自托管 Inter latin 子集（5 字重约 120KB，`@fontsource/inter`），中文明确走系统 CJK 栈（中文 webfont 体积与 NAS 自托管场景冲突），并新增 `web/src/styles/base.css` 作为全局基线层。
+- **Naive 默认圆角 3px 泄漏**：`common.borderRadius` 默认值是 3px，业务 CSS 压不住（Naive 把颜色类变量写在元素 inline style 上），实测曲库页 61 个、日志/设置各 22 个元素渲染成 3px 直角。现由 `naive.js` 的 `common` + 逐组件覆盖收口为 6/8/10/12/16/20/999 七档。
+- **`fontWeightStrong` 默认 500 与规范 600 冲突**：收口后曲库页 600 字重元素由 10 个增至 130 个，层级信号恢复。
+- **非标字重污染层级**：概览页 7 处 `650/720/760/780` 声明、影响 32 个文字元素，导致非标字重（32）比标准字重（16）还多。现按语义映射到 600/700。
+- **`13.3333px` 渗出**：`<button>` 的 UA 默认字号未继承，概览页 `.action-tile` 等 18 个元素脱轨。`base.css` 的 `button,input,select,textarea{font:inherit}` 一次性堵住这类问题。
+- **尺度外字号 27 处**：`12.5/15/15.5/17/18/24/26/30/40px` 全部映射到 Type Scale、移动端降级档位或图标尺度；另有 105 处字号、77 处圆角改为 Token 引用。
+- **表格空态英文 `No Data`**：来源是 Naive `n-data-table` 内部渲染的 `n-empty`（其 `description` 默认值即英文，且是组件 prop、无法从 themeOverrides 收口）。新增项目组件 `<sp-table>` 统一兜住 `#empty` 插槽，替换 7 个文件共 11 处表格。
+- **日志页英文状态标签与路径列**：状态标签 `success`/`failed` 改为中文（新增 `statusLabel` 映射，与任务中心口径一致）；路径列原本 565px 内容塞进 153px、12 行全部截断成 `/Users/.../Work/...`，现只显示文件名、完整路径进 `title`；时间列加 `tabular-nums`。
+- **播放器抽屉两套氛围背景叠加 + 色板外硬编码色**：`utils/color.js` 的 `ambientBackground()` 与 `GlobalPlayerDrawer` 的 `.gp-drawer-stage` 各铺一层全屏渐变，并夹带色板外的 `#5856D6`（iOS 紫）、`rgba(64,128,255)` 与 `#12141a`/`#0a0b0f`/`#07080b`。现删除该函数，氛围底合并为 `.gp-drawer-stage` 唯一来源（仍按封面主色派生，alpha 上限 0.20）。
+- **概览页三条同性质覆盖率进度条用语义色区分类别**：原本用 `success`/`info`/`warning` 区分「封面/歌词/时长」，这三者是并列覆盖率而非三种状态，会让用户误读「歌词出问题了」。现统一为主色。
+- **概览页 KPI「349.70 MB」折行撑高卡片**：`.kpi-value` 加 `tabular-nums` + `nowrap`。
+- **设置页二级导航与主侧栏风格割裂**：原为纯文字列表（无图标、激活态无圆角），现换用主侧栏同源导航语言（线性图标 + 软底激活态）。
+- **设置页「实际路径」与输入框内容完全重复**：改为仅在输入为相对路径或留空时显示。
+- **下载页「命名规范」常驻占约 1/3 屏高**：改为可折叠，默认收起。
+- **设置页地区标注不规范**：`香港`/`台湾` 改为 `中国香港`/`中国台湾`。
+
+### 移除
+
+- **死代码 1117 行**：`views/SourcesView.vue`（1036 行）与 `views/ImportView.vue`（81 行）——`/sources`、`/import` 早已 redirect 到 `/library`、`/download?tab=import`，两者全项目（含 router）零引用。占前端总量 8.3%。
+- **死样式 `web/public/brand/brand.css`**：旧 `--sp-*` 色阶、吉祥物色、字体栈均已由 `tokens.js` 取代，全文件零消费（连 `index.html` 的引用一并移除），同时消除该文件在亮色下未覆盖而留下的「一用即错」陷阱。
+
+### 说明
+
+- 新增项目组件 `SpTable` / `StateEmpty`。**项目自有组件必须用 `app.component()` 显式注册**，不能塞进 `naive-ui` 的 `create({ components })`——后者只做 `app.component('N' + component.name, c)`，而 `<script setup>` SFC 没有 `name`，会被注册成 `Nundefined`，模板解析不到即渲染为未知元素且**控制台不报错**（本次实测表现为「表格整块消失」）。验证方式已写入 `AGENTS.md` 与 `DESIGN.md` §9。
+- 空状态插画暂用内联 SVG 声波弧线：`mascot-scenes.png` 是深色底不透明三格拼图，在亮色主题下会变成深色方块，需以「透明底 + 单张独立」重导出后才能启用（`StateEmpty` 的 `#illustration` 槽已预留）。
+
 ## 0.15.2-rc3
 
 ### 修复

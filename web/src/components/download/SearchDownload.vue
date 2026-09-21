@@ -18,7 +18,7 @@
       <n-text depth="2">正在搜索…</n-text>
     </div>
 
-    <n-data-table
+    <sp-table
       v-else-if="!isMobile"
       :columns="columns"
       :data="results"
@@ -423,7 +423,7 @@ async function confirmDownload() {
 }
 .result-card {
   border: 1px solid var(--sp-ui-border);
-  border-radius: 10px;
+  border-radius: var(--sp-radius-md);
   padding: 12px 14px;
   background: color-mix(in srgb, var(--sp-ui-card) 92%, transparent);
 }
@@ -432,7 +432,7 @@ async function confirmDownload() {
 }
 .result-sub {
   margin-top: 2px;
-  font-size: 12.5px;
+  font-size: var(--sp-fs-caption);
   opacity: 0.75;
 }
 .result-tags {
@@ -448,12 +448,12 @@ async function confirmDownload() {
 .version-list {
   margin: 0;
   padding-left: 18px;
-  font-size: 13px;
+  font-size: var(--sp-fs-small);
   line-height: 1.9;
 }
 .version-note {
   opacity: 0.6;
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
 }
 .format-size {
   opacity: 0.65;

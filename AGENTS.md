@@ -33,7 +33,7 @@
 
 当前版本（以代码为准）：`0.15.1-rc7`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
 
-- **品牌视觉**：见 `web/public/brand/`（LOGO / 20 图标 / 吉祥物 PNG）与 `docs/brand-guidelines.md`，设计稿在 Ardot 文件《Sonpick 拾音 · 品牌视觉系统》。
+- **品牌视觉**：设计系统规范见 `DESIGN.md`（唯一权威）；品牌**资产**（LOGO / 20 图标 / 吉祥物 PNG）见 `web/public/brand/` 与 `docs/brand-guidelines.md`，设计稿在 Ardot 文件《Sonpick 拾音 · 品牌视觉系统》。
 
 ### 1.1 歌词与元信息边界
 
@@ -250,6 +250,7 @@ music/
 - 主题：`theme` store；`App.vue` 使用 `n-config-provider` + dialog/message provider。颜色规则见 **§5.4 主题与配色**
 - 前端文案：当前仓库以中文硬编码为主；**若新增 React 代码**，全局规则要求走 i18n、禁止硬编码用户可见字符串。现有 Vue 页面保持项目既有风格，不强制一次性 i18n 化
 - **改动即核对组件注册**：模板用了新 Naive 组件（`<n-xxx>`）或 `h(NXxx)`，必须在 `web/src/main.js` 的 `create({ components: [...] })` 里 import 并注册，否则构建产物在运行时对未注册标签渲染为原生未知元素（白屏/样式全丢），**编译不报错**。加组件后顺手 `grep -c "<n-组件名" src/` 确认模板与注册对得上。
+- **项目自有组件不要塞进 `create({ components })`**（`SpTable` / `StateEmpty` 这类）：`naive-ui` 的 `create()` 只做 `app.component('N' + component.name, c)`，而 SFC 用 `<script setup>` 时**没有 `name`**，于是被注册成 `Nundefined` —— 模板里的 `<sp-table>` 解析不到，被当成未知元素渲染，**控制台连警告都没有**（实测表现：表格整块消失）。自有组件一律用 `app.component('SpTable', SpTable)` 显式注册。验证方式：控制台跑 `[...document.querySelectorAll('*')].map(e=>e.tagName.toLowerCase()).filter(t=>t.startsWith('sp-'))`，结果必须是 `[]`。
 - **改动即核对模板标识符**：模板里的函数/变量必须已在 `<script setup>` 声明或 import。漏了 `import { formatFileSize }` 这类问题 `pnpm build` **同样不报错**，但渲染时抛 `TypeError: _ctx.xxx is not a function`，那一块子树直接渲染失败（表现为「弹窗打开后空白 / 只剩占位文案」）。改完模板跑 `pnpm check:template-refs`（`web/scripts/check-template-refs.mjs`）。
 - **自定义组件的 v-model 契约必须与调用点一致**：全站约定用 Naive 风格的 `value` / `update:value`（即 `v-model:value`），**不要**在自定义组件里声明 `modelValue` / `update:modelValue`。契约不匹配时 prop 为 undefined，组件渲染期抛错、整棵子树静默渲染为注释节点（构建和 `check:template-refs` 都不报错，页面其余部分正常）——v0.15.2-rc1 的 SourcePicker 因此整行消失。改完组件契约后用浏览器实际渲染验证（本地可用 Playwright 无头浏览器跑 `127.0.0.1:8000`）。
 
@@ -380,7 +381,7 @@ Naive 的 modal / drawer / popover 会被 teleport 到 `body`，脱离 `.app-lay
 ```
 isDark ──┬──> buildNaiveOverrides()         → App.vue 的 :theme-overrides（驱动 Naive 组件）
          ├──> buildCssVars()                → :root 上的 --sp-ui-*（业务样式消费）
-         ├──> documentElement.dataset.theme → 激活 brand.css 的 [data-theme] 分支
+         ├──> documentElement.dataset.theme → 驱动 base.css 的 color-scheme（暗色滚动条/表单控件）
          └──> <meta name="theme-color">
 ```
 
@@ -392,7 +393,7 @@ isDark ──┬──> buildNaiveOverrides()         → App.vue 的 :theme-ove
 - **分类/强调色**（KPI 卡、快捷入口、活动流图标等「按类别区分」处）用 `--sp-accent-teal|blue|rose|amber|sky|green|slate`，软底用 `--sp-accent-*-soft`。由 tokens 统一按模式给值（亮色 700 级、暗色 400 级，均满足 AA 4.5:1），**禁止**在业务里另写 `#0f766e` 之类硬编码——已因此出过「亮色主题下概览页 KPI 图标花屏」类问题。
 - 语义色（success/info/warning/error）用 `--sp-ui-{success|info|warning|error}`，不要写 Naive 默认 `#18a058` / `#d03050` 等。
 - `theme` store 支持 `system` / `light` / `dark`（默认跟随系统，localStorage `sonpick_theme`）；`init()` 必须在 `main.js` 的 `mount()` **之前**调用，否则首屏会闪一下错误配色。
-- `web/public/brand/brand.css` 的 `[data-theme="light"]` 分支取值必须与 `tokens.js` 的 `SURFACE.light` 一致，避免两处漂移。
+- ~~`web/public/brand/brand.css`~~ 已删除（旧 `--sp-*` 色阶由 `tokens.js` 取代）：明暗色值只在 `tokens.js` 的 `SURFACE.light/dark` 一处定义，无需再同步第二处。
 - 组件内部的局部调色板（如 `PlayerPanel` 的 `--fg`/`--rail`、`PlayerPanel`/`GlobalPlayerDrawer` 的 `--cover-accent*`）可自定义，但必须同时给出暗色与 `.light` 两套。
 
 ### 5.3 构建与单测

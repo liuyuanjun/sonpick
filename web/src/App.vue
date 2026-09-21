@@ -25,11 +25,7 @@ const themeStore = useThemeStore()
 </script>
 
 <style>
-html, body, #app {
-  height: 100%;
-  margin: 0;
-  padding: 0;
-}
+/* html / body / #app 的尺寸与排版基线统一在 src/styles/base.css，此处不再重复声明 */
 .app-layout {
   min-height: 100vh;
 }

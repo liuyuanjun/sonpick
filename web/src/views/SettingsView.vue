@@ -54,7 +54,7 @@
                     :input-props="{ autocomplete: 'off', name: 'lossy_output_path' }"
                   />
                   <n-text depth="3">有损格式（MP3/AAC/M4A/OGG/WMA 等，含下载与转码产物，不限码率档位）的存放目录；无损格式（FLAC/APE/WAV/AIFF/ALAC）见下方「无损存放目录」。留空使用默认目录；相对路径（如 LOSSY 或 /LOSSY）基于本地存储路径解析；多段绝对路径（如 /mnt/nas/lossy）按原样使用。</n-text>
-                  <n-text depth="3" class="path-line">实际路径：<code>{{ resolvedLossyPath }}</code></n-text>
+                  <n-text v-if="needsResolved(form.lossy_output_path, resolvedLossyPath)" depth="3" class="path-line">实际路径：<code>{{ resolvedLossyPath }}</code></n-text>
                 </n-space>
               </n-form-item>
               <n-form-item label="无损存放目录">
@@ -65,7 +65,7 @@
                     :input-props="{ autocomplete: 'off', name: 'lossless_output_path' }"
                   />
                   <n-text depth="3">FLAC/APE/WAV 等无损格式的存放目录，下载无损音乐时落到该目录；留空使用默认目录，路径规则同上。</n-text>
-                  <n-text depth="3" class="path-line">实际路径：<code>{{ resolvedLosslessPath }}</code></n-text>
+                  <n-text v-if="needsResolved(form.lossless_output_path, resolvedLosslessPath)" depth="3" class="path-line">实际路径：<code>{{ resolvedLosslessPath }}</code></n-text>
                 </n-space>
               </n-form-item>
               <n-form-item label="默认优先播放">
@@ -133,7 +133,7 @@
             <n-alert type="info" :show-icon="false" style="margin-bottom: 16px">
               自动刮削按优先级依次执行：本地元数据 → 国内主源 → 海外兜底 → 音频指纹。手动刮削仅可选择已启用的来源。
             </n-alert>
-            <n-data-table
+            <sp-table
               v-if="!isMobile"
               :columns="sourceColumns"
               :data="scrapeSources"
@@ -236,7 +236,7 @@
             <n-alert type="info" :show-icon="false" style="margin-bottom: 16px">
               歌词检索与歌曲信息刮削相互独立。LRCLIB 无需 API Key，批量操作会串行请求并遵守公共服务限流。
             </n-alert>
-            <n-data-table
+            <sp-table
               v-if="!isMobile"
               :columns="lyricsSourceColumns"
               :data="lyricsSources"
@@ -277,7 +277,13 @@
 <script setup>
 import { computed, h, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { NButton, NInput, NSelect, NSwitch, useMessage } from 'naive-ui'
+import { NButton, NIcon, NInput, NSelect, NSwitch, useMessage } from 'naive-ui'
+import {
+  AlbumsOutline,
+  DocumentTextOutline,
+  PersonCircleOutline,
+  SettingsOutline,
+} from '@vicons/ionicons5'
 import api from '@/api/client'
 import { useIsMobile } from '@/composables/useIsMobile'
 import { useAuthStore } from '@/stores/auth'
@@ -303,16 +309,25 @@ const acoustidReady = ref(false)
 const acoustidMessage = ref('未检测')
 const scrapeSources = ref([])
 const lyricsSources = ref([])
+/**
+ * 二级导航与主侧栏共用同一套导航语言：**线性图标 + 文案**。
+ * 历史问题：这里曾是纯文字列表（无图标、激活态无圆角），
+ * 与主侧栏（带图标 + 软底激活态）并列时像是两个产品。
+ */
+function navIcon(comp) {
+  return () => h(NIcon, null, { default: () => h(comp) })
+}
+
 const menuOptions = [
-  { label: '系统设置', key: 'general' },
-  { label: '刮削源', key: 'scrape' },
-  { label: '歌词源', key: 'lyrics' },
-  { label: '账户', key: 'account' },
+  { label: '系统设置', key: 'general', icon: navIcon(SettingsOutline) },
+  { label: '刮削源', key: 'scrape', icon: navIcon(AlbumsOutline) },
+  { label: '歌词源', key: 'lyrics', icon: navIcon(DocumentTextOutline) },
+  { label: '账户', key: 'account', icon: navIcon(PersonCircleOutline) },
 ]
 const regionOptions = [
   { label: '中国大陆', value: 'cn' },
-  { label: '香港', value: 'hk' },
-  { label: '台湾', value: 'tw' },
+  { label: '中国香港', value: 'hk' },
+  { label: '中国台湾', value: 'tw' },
   { label: '全球', value: 'global' },
 ]
 const form = reactive({
@@ -336,6 +351,16 @@ const resolveDir = (raw, defaultName) => {
 }
 const resolvedLossyPath = computed(() => resolveDir(form.lossy_output_path, 'LOSSY'))
 const resolvedLosslessPath = computed(() => resolveDir(form.lossless_output_path, 'LOSSLESS'))
+
+/**
+ * 「实际路径」只在它与用户输入**不一致**时才展示。
+ * 输入已是完整绝对路径时，再重复一遍纯属噪声（实测原实现两行内容完全相同）；
+ * 但输入为相对路径或留空时，它是有效信息（告诉用户文件最终落在哪）。
+ */
+function needsResolved(input, resolved) {
+  const v = (input || '').trim()
+  return !v || v !== resolved
+}
 
 const sourceColumns = [
   {
@@ -519,7 +544,7 @@ onMounted(load)
 .source-tier {
   margin-top: 3px;
   color: var(--sp-ui-text-3);
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
 }
 .source-test {
   display: flex;
@@ -573,7 +598,7 @@ onMounted(load)
 .source-status {
   min-width: 0;
   flex: 1;
-  font-size: 13px;
+  font-size: var(--sp-fs-small);
   color: var(--sp-ui-text-3);
   word-break: break-word;
 }
@@ -586,7 +611,7 @@ onMounted(load)
   .settings-mobile-tabs :deep(.n-tabs-nav) {
     padding: 3px;
     border: 1px solid var(--sp-ui-border);
-    border-radius: 10px;
+    border-radius: var(--sp-radius-md);
     background: color-mix(in srgb, var(--sp-ui-body) 78%, var(--sp-ui-primary) 5%);
   }
   .settings-mobile-tabs :deep(.n-tabs-tab) {
@@ -631,7 +656,7 @@ onMounted(load)
     max-width: 1px !important;
   }
   .scrape-card {
-    border-radius: 12px;
+    border-radius: var(--sp-radius-lg);
   }
   .scrape-mobile-list {
     width: 100%;

@@ -14,7 +14,7 @@
       <n-alert v-else-if="error" type="error" style="margin-bottom: 12px">
         {{ error }}
       </n-alert>
-      <n-text v-else depth="3" style="display:block;margin-bottom:12px;font-size:13px">
+      <n-text v-else depth="3" style="display:block;margin-bottom:12px;font-size:var(--sp-fs-small)">
         当前源 ID：{{ sourceId }}；路径：/{{ currentPath || '' }}
       </n-text>
 
@@ -29,7 +29,7 @@
         </n-breadcrumb-item>
       </n-breadcrumb>
 
-      <n-data-table
+      <sp-table
         :columns="columns"
         :data="entries"
         :loading="loading"

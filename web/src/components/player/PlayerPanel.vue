@@ -107,7 +107,7 @@
           <n-button type="primary" size="small" :loading="scraping" @click="searchScrapeCandidates">检索候选</n-button>
           <n-text depth="3">{{ scrapeQueryText }}</n-text>
         </n-space>
-        <n-data-table :columns="candidateColumns" :data="scrapeCandidates" :loading="scraping" :pagination="false" size="small" max-height="420" />
+        <sp-table :columns="candidateColumns" :data="scrapeCandidates" :loading="scraping" :pagination="false" size="small" max-height="420" />
       </n-space>
     </n-modal>
 
@@ -228,7 +228,7 @@
           <n-text depth="3">{{ lyricsHint || lyricsQueryText }}</n-text>
         </n-space>
         <div class="lyrics-workbench">
-          <n-data-table
+          <sp-table
             class="lyrics-candidates"
             :columns="lyricsCandidateColumns"
             :data="lyricsCandidates"
@@ -390,7 +390,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useIsMobile } from '@/composables/useIsMobile'
 import { formatClock, formatDateTime, formatFileSize } from '@/utils/format'
-import { ambientBackground, extractAccentFromImage } from '@/utils/color'
+import { extractAccentFromImage } from '@/utils/color'
 import { normalizeSongFiles, normalizedScrapeValue, shouldSelectScrapeField } from '@/utils/scrapeApply'
 import PlayerSkin from '@/components/player/PlayerSkin.vue'
 import { fetchSongFiles } from '@/api/music'
@@ -672,10 +672,15 @@ const candidateColumns = computed(() => [
 ])
 
 const panelStyle = computed(() => {
-  const bg = ambientBackground(accent.value, { dark: isDark.value })
   const a = accent.value
+  /*
+    这里只注入「封面主题色」派生的变量，**不再注入背景**。
+    舞台的氛围底由唯一宿主 GlobalPlayerDrawer 的 .gp-drawer-stage 负责
+    （它已按封面主色算好 --cover-accent-wash，且明暗两套 alpha 都在规范上限内）。
+    历史问题：此处曾由 utils/color.js 的 ambientBackground() 再铺一层全屏渐变，
+    与 .gp-drawer-stage 叠成两层氛围光，并夹带色板外的硬编码紫 #5856D6。
+  */
   return {
-    ...bg,
     '--accent': a ? a.css : 'var(--sp-ui-primary)',
     '--accent-soft': a ? a.soft : 'color-mix(in srgb, var(--sp-ui-primary) 35%, transparent)',
     '--accent-glow': a ? a.glow : 'color-mix(in srgb, var(--sp-ui-primary) 45%, transparent)',
@@ -1234,7 +1239,7 @@ async function applyCandidate() {
 }
 .view-switch {
   padding: 2px;
-  border-radius: 999px;
+  border-radius: var(--sp-radius-pill);
   background: rgba(127, 127, 127, 0.10);
 }
 .view-toggle,
@@ -1256,13 +1261,13 @@ async function applyCandidate() {
   align-items: center;
   gap: 2px;
   padding: 0 4px;
-  border-radius: 999px;
+  border-radius: var(--sp-radius-pill);
   background: rgba(127, 127, 127, 0.12);
 }
 .font-size-label {
   min-width: 22px;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   color: var(--fg-3);
   font-variant-numeric: tabular-nums;
 }
@@ -1274,50 +1279,50 @@ async function applyCandidate() {
 
 .tag-grid { display: grid; gap: 8px; }
 .tag-row { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px; align-items: start; }
-.tag-key { color: var(--fg-3); font-size: 12px; }
-.tag-val { color: var(--fg); font-size: 12px; word-break: break-all; white-space: pre-wrap; }
-:deep(.mini-apply-btn) { border: 1px solid color-mix(in srgb, var(--sp-ui-primary) 45%, transparent); color: var(--sp-ui-primary); background: transparent; border-radius: 6px; padding: 2px 8px; cursor: pointer; }
+.tag-key { color: var(--fg-3); font-size: var(--sp-fs-caption); }
+.tag-val { color: var(--fg); font-size: var(--sp-fs-caption); word-break: break-all; white-space: pre-wrap; }
+:deep(.mini-apply-btn) { border: 1px solid color-mix(in srgb, var(--sp-ui-primary) 45%, transparent); color: var(--sp-ui-primary); background: transparent; border-radius: var(--sp-radius-xs); padding: 2px 8px; cursor: pointer; }
 :deep(.mini-apply-btn:hover) { background: color-mix(in srgb, var(--sp-ui-primary) 12%, transparent); }
 .lyrics-workbench { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(420px, .95fr); gap: 14px; min-height: 360px; }
 .lyrics-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-width: 0; }
 .lyrics-compare-pane { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.lyrics-fetched-at { font-size: 12px; }
+.lyrics-fetched-at { font-size: var(--sp-fs-caption); }
 .lyrics-candidates { min-width: 0; }
-.lyrics-preview { min-width: 0; border: 1px solid rgba(128,128,128,.22); border-radius: 10px; padding: 12px; background: rgba(127,127,127,.06); }
+.lyrics-preview { min-width: 0; border: 1px solid rgba(128,128,128,.22); border-radius: var(--sp-radius-md); padding: 12px; background: rgba(127,127,127,.06); }
 .lyrics-preview-header { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
-.lyrics-preview-text { height: 380px; margin: 0; overflow: auto; white-space: pre-wrap; word-break: break-word; font: inherit; font-size: 13px; line-height: 1.8; color: var(--fg); }
+.lyrics-preview-text { height: 380px; margin: 0; overflow: auto; white-space: pre-wrap; word-break: break-word; font: inherit; font-size: var(--sp-fs-small); line-height: 1.8; color: var(--fg); }
 :deep(.lyrics-row-selected td) { background: color-mix(in srgb, var(--sp-ui-primary) 14%, transparent) !important; }
 :deep(.lyrics-candidates .n-data-table-tr) { cursor: pointer; }
 .scrape-compare-list { display: grid; gap: 10px; max-height: 62vh; overflow: auto; padding-right: 4px; }
-.scrape-compare-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) minmax(0, 1fr) 48px; gap: 12px; align-items: center; padding: 12px; border: 1px solid rgba(128,128,128,.22); border-radius: 10px; }
+.scrape-compare-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) minmax(0, 1fr) 48px; gap: 12px; align-items: center; padding: 12px; border: 1px solid rgba(128,128,128,.22); border-radius: var(--sp-radius-md); }
 .scrape-field-heading { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 .scrape-value-block { min-width: 0; }
-.scrape-value-label { display: block; margin-bottom: 4px; color: var(--fg-3); font-size: 11px; }
-.scrape-value-text { max-height: 90px; overflow: auto; color: var(--fg); font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+.scrape-value-label { display: block; margin-bottom: 4px; color: var(--fg-3); font-size: var(--sp-fs-micro); }
+.scrape-value-text { max-height: 90px; overflow: auto; color: var(--fg); font-size: var(--sp-fs-caption); line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
 .scrape-value-text.empty { color: var(--fg-4); font-style: italic; }
-.scrape-cover-preview { display: flex; align-items: center; gap: 10px; min-width: 0; color: var(--fg-3); font-size: 12px; }
-.scrape-cover-preview img, .scrape-cover-placeholder { width: 96px; height: 96px; flex: 0 0 96px; border-radius: 8px; border: 1px solid rgba(128,128,128,.24); background: rgba(128,128,128,.1); }
+.scrape-cover-preview { display: flex; align-items: center; gap: 10px; min-width: 0; color: var(--fg-3); font-size: var(--sp-fs-caption); }
+.scrape-cover-preview img, .scrape-cover-placeholder { width: 96px; height: 96px; flex: 0 0 96px; border-radius: var(--sp-radius-sm); border: 1px solid rgba(128,128,128,.24); background: rgba(128,128,128,.1); }
 .scrape-cover-preview img { display: block; object-fit: cover; }
 .scrape-cover-placeholder { display: grid; place-items: center; color: var(--fg-4); }
 .scrape-cover-preview span { line-height: 1.5; word-break: break-word; }
-.song-files-section { display: grid; gap: 8px; padding: 12px; border: 1px solid rgba(128,128,128,.22); border-radius: 10px; }
+.song-files-section { display: grid; gap: 8px; padding: 12px; border: 1px solid rgba(128,128,128,.22); border-radius: var(--sp-radius-md); }
 .song-files-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .song-files-list { display: grid; gap: 8px; max-height: 220px; overflow-y: auto; }
-.song-file-item { display: grid; gap: 6px; padding: 9px 10px; border-radius: 8px; background: rgba(128,128,128,.08); }
-.song-file-summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; font-size: 12px; }
+.song-file-item { display: grid; gap: 6px; padding: 9px 10px; border-radius: var(--sp-radius-sm); background: rgba(128,128,128,.08); }
+.song-file-summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; font-size: var(--sp-fs-caption); }
 .song-file-summary span { color: var(--sp-ui-text-3); }
-.song-file-path { overflow: hidden; color: var(--sp-ui-text-3); font-size: 12px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+.song-file-path { overflow: hidden; color: var(--sp-ui-text-3); font-size: var(--sp-fs-caption); line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 整理到标准路径：弹窗内容 teleport 到 body，颜色统一走 --sp-ui-*（AGENTS §5.5） */
-.organize-move, .organize-excluded-item { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border-radius: 8px; background: var(--sp-ui-hover); }
+.organize-move, .organize-excluded-item { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border-radius: var(--sp-radius-sm); background: var(--sp-ui-hover); }
 .organize-move { flex-direction: row; }
 .organize-move-body { flex: 1 1 auto; display: grid; gap: 2px; min-width: 0; }
-.organize-move-path { overflow: hidden; min-width: 0; color: var(--sp-ui-text-2); font-size: 12px; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
+.organize-move-path { overflow: hidden; min-width: 0; color: var(--sp-ui-text-2); font-size: var(--sp-fs-caption); line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
 .organize-move-to { color: var(--sp-ui-primary); font-weight: 500; }
-.organize-move-meta { color: var(--sp-ui-text-3); font-size: 11px; }
+.organize-move-meta { color: var(--sp-ui-text-3); font-size: var(--sp-fs-micro); }
 .organize-excluded { display: grid; gap: 6px; }
 .organize-excluded-item { padding: 6px 10px; }
-.organize-conflict { padding: 8px 10px; border-radius: 8px; background: var(--sp-ui-hover); }
+.organize-conflict { padding: 8px 10px; border-radius: var(--sp-radius-sm); background: var(--sp-ui-hover); }
 @media (max-width: 720px) {
   .lyrics-workbench { grid-template-columns: 1fr; }
   .lyrics-compare { grid-template-columns: 1fr; }

@@ -408,21 +408,21 @@ const metaItems = computed(() => [
     label: '封面',
     pct: pctNum(meta.value.cover_pct),
     count: meta.value.cover_count ?? Math.round((pctNum(meta.value.cover_pct) / 100) * (stats.value.song_count || 0)),
-    color: 'var(--sp-ui-success)',
+    color: 'var(--sp-ui-primary)',
   },
   {
     key: 'lyrics',
     label: '歌词',
     pct: pctNum(meta.value.lyrics_pct),
     count: meta.value.lyrics_count ?? Math.round((pctNum(meta.value.lyrics_pct) / 100) * (stats.value.song_count || 0)),
-    color: 'var(--sp-ui-info)',
+    color: 'var(--sp-ui-primary)',
   },
   {
     key: 'duration',
     label: '时长',
     pct: pctNum(meta.value.duration_pct),
     count: meta.value.duration_count ?? Math.round((pctNum(meta.value.duration_pct) / 100) * (stats.value.song_count || 0)),
-    color: 'var(--sp-ui-warning)',
+    color: 'var(--sp-ui-primary)',
   },
 ])
 
@@ -590,7 +590,7 @@ onMounted(reload)
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--sp-space-section);
 }
 
 .hero {
@@ -599,7 +599,7 @@ onMounted(reload)
   gap: 14px;
   padding: 18px;
   border: 1px solid var(--sp-ui-border, rgba(127,127,127,.18));
-  border-radius: 14px;
+  border-radius: var(--sp-radius-xl);
   background:
     radial-gradient(1200px 240px at 0% 0%, color-mix(in srgb, var(--sp-ui-primary) 16%, transparent), transparent 60%),
     color-mix(in srgb, var(--sp-ui-card) 94%, var(--sp-ui-primary) 6%);
@@ -607,7 +607,7 @@ onMounted(reload)
 }
 
 .hero-kicker {
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   font-weight: 700;
   letter-spacing: .04em;
   color: color-mix(in srgb, var(--sp-ui-primary) 80%, var(--sp-ui-text-3, #8a8f99));
@@ -616,15 +616,15 @@ onMounted(reload)
 
 .hero-title {
   margin: 0;
-  font-size: 28px;
+  font-size: var(--sp-fs-h1);
   line-height: 1.2;
-  font-weight: 780;
+  font-weight: 700;
 }
 
 .hero-sub {
   margin: 8px 0 0;
   color: var(--sp-ui-text-3, #8a8f99);
-  font-size: 13px;
+  font-size: var(--sp-fs-small);
 }
 
 .hero-chips {
@@ -640,12 +640,12 @@ onMounted(reload)
   gap: 6px;
   height: 34px;
   padding: 0 12px;
-  border-radius: 999px;
+  border-radius: var(--sp-radius-pill);
   border: 1px solid var(--sp-ui-border, rgba(127,127,127,.2));
   background: color-mix(in srgb, var(--sp-ui-card) 88%, transparent);
   color: inherit;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--sp-fs-small);
   font-weight: 600;
 }
 
@@ -669,8 +669,8 @@ onMounted(reload)
   align-items: center;
   gap: 12px;
   min-width: 0;
-  padding: 14px;
-  border-radius: 12px;
+  padding: var(--sp-space-card-pad);
+  border-radius: var(--sp-radius-lg);
   border: 1px solid color-mix(in srgb, var(--sp-ui-border, rgba(127,127,127,.2)) 80%, transparent);
   background: color-mix(in srgb, var(--sp-ui-card) 82%, transparent);
   cursor: pointer;
@@ -686,7 +686,7 @@ onMounted(reload)
 .recent-cover {
   width: 56px;
   height: 56px;
-  border-radius: 10px;
+  border-radius: var(--sp-radius-md);
   object-fit: cover;
   flex-shrink: 0;
   background: rgba(127,127,127,.12);
@@ -718,7 +718,7 @@ onMounted(reload)
 .action-desc,
 .task-summary-body span {
   color: var(--sp-ui-text-3, #8a8f99);
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
 }
 
 .now-title,
@@ -733,15 +733,15 @@ onMounted(reload)
 }
 
 .now-title {
-  font-size: 15px;
-  font-weight: 720;
+  font-size: var(--sp-fs-body);
+  font-weight: 600;
   margin-top: 2px;
 }
 
 .now-artist,
 .recent-sub {
   margin-top: 2px;
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   color: var(--sp-ui-text-3, #8a8f99);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -751,13 +751,13 @@ onMounted(reload)
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--sp-space-card-gap);
 }
 
 .kpi-card,
 .panel {
   border: 1px solid var(--sp-ui-border, rgba(127,127,127,.18));
-  border-radius: 12px;
+  border-radius: var(--sp-radius-lg);
   background: color-mix(in srgb, var(--sp-ui-card) 94%, transparent);
   box-shadow: 0 10px 24px rgba(21, 32, 53, .05);
 }
@@ -766,7 +766,7 @@ onMounted(reload)
   display: flex;
   gap: 10px;
   align-items: flex-start;
-  padding: 14px;
+  padding: var(--sp-space-card-pad);
   cursor: pointer;
   transition: transform .15s ease, box-shadow .15s ease;
   min-height: 96px;
@@ -782,7 +782,7 @@ onMounted(reload)
 .activity-icon {
   width: 34px;
   height: 34px;
-  border-radius: 10px;
+  border-radius: var(--sp-radius-md);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -794,9 +794,11 @@ onMounted(reload)
 }
 
 .kpi-value {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
   margin-top: 4px;
-  font-size: 22px;
-  font-weight: 760;
+  font-size: var(--sp-fs-h2);
+  font-weight: 700;
   line-height: 1.15;
 }
 
@@ -820,7 +822,7 @@ onMounted(reload)
 }
 
 .panel {
-  padding: 14px;
+  padding: var(--sp-space-card-pad);
   min-width: 0;
 }
 
@@ -834,8 +836,8 @@ onMounted(reload)
 
 .panel-title {
   margin: 0;
-  font-size: 16px;
-  font-weight: 720;
+  font-size: var(--sp-fs-h3);
+  font-weight: 700;
 }
 
 .panel-desc {
@@ -856,7 +858,7 @@ onMounted(reload)
   gap: 10px;
   width: 100%;
   padding: 8px;
-  border-radius: 10px;
+  border-radius: var(--sp-radius-md);
   border: 1px solid transparent;
   background: color-mix(in srgb, var(--sp-ui-body, transparent) 70%, transparent);
   color: inherit;
@@ -872,12 +874,12 @@ onMounted(reload)
 .recent-cover {
   width: 44px;
   height: 44px;
-  border-radius: 8px;
+  border-radius: var(--sp-radius-sm);
 }
 
 .recent-title {
-  font-weight: 650;
-  font-size: 14px;
+  font-weight: 600;
+  font-size: var(--sp-fs-body);
 }
 
 .recent-play {
@@ -895,13 +897,13 @@ onMounted(reload)
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--sp-fs-small);
   margin-bottom: 6px;
 }
 
 .meta-bar {
   height: 8px;
-  border-radius: 999px;
+  border-radius: var(--sp-radius-pill);
   background: rgba(127,127,127,.14);
   overflow: hidden;
 }
@@ -918,7 +920,7 @@ onMounted(reload)
 .source-item,
 .activity-item {
   padding: 10px;
-  border-radius: 10px;
+  border-radius: var(--sp-radius-md);
   background: color-mix(in srgb, var(--sp-ui-body, transparent) 72%, transparent);
 }
 
@@ -941,7 +943,7 @@ onMounted(reload)
 .source-dot {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: var(--sp-radius-circle);
   background: var(--sp-ui-text-3);
   flex-shrink: 0;
 }
@@ -951,7 +953,7 @@ onMounted(reload)
 .source-dot.muted { background: var(--sp-ui-text-3); }
 
 .source-name {
-  font-size: 13px;
+  font-size: var(--sp-fs-small);
 }
 
 .source-sub,
@@ -981,8 +983,8 @@ onMounted(reload)
 }
 
 .activity-title {
-  font-size: 13px;
-  font-weight: 650;
+  font-size: var(--sp-fs-small);
+  font-weight: 600;
 }
 
 .activity-msg {
@@ -1004,7 +1006,7 @@ onMounted(reload)
   align-items: flex-start;
   width: 100%;
   padding: 12px;
-  border-radius: 10px;
+  border-radius: var(--sp-radius-md);
   border: 1px solid var(--sp-ui-border, rgba(127,127,127,.16));
   background: color-mix(in srgb, var(--sp-ui-body, transparent) 70%, transparent);
   color: inherit;
@@ -1023,7 +1025,7 @@ onMounted(reload)
 }
 
 .action-title {
-  font-size: 13px;
+  font-size: var(--sp-fs-small);
   font-weight: 700;
 }
 
@@ -1034,7 +1036,7 @@ onMounted(reload)
 .task-summary {
   margin-top: 12px;
   padding: 12px;
-  border-radius: 10px;
+  border-radius: var(--sp-radius-md);
   background: color-mix(in srgb, var(--sp-ui-primary) 8%, transparent);
   border: 1px solid color-mix(in srgb, var(--sp-ui-primary) 18%, transparent);
 }
@@ -1048,8 +1050,8 @@ onMounted(reload)
 
 .task-summary-body strong {
   display: block;
-  font-size: 18px;
-  font-weight: 760;
+  font-size: var(--sp-fs-h3);
+  font-weight: 600;
   line-height: 1.1;
 }
 
@@ -1087,12 +1089,12 @@ onMounted(reload)
   }
 
   .hero {
-    padding: 14px;
-    border-radius: 12px;
+    padding: var(--sp-space-card-pad);
+    border-radius: var(--sp-radius-lg);
   }
 
   .hero-title {
-    font-size: 24px;
+    font-size: var(--sp-fs-h1-mobile);
   }
 
   .kpi-grid {
@@ -1106,7 +1108,7 @@ onMounted(reload)
   }
 
   .kpi-value {
-    font-size: 18px;
+    font-size: var(--sp-fs-h2-mobile);
   }
 
   .action-grid {

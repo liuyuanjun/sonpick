@@ -763,7 +763,7 @@ onMounted(async () => {
 }
 .page-title {
   margin: 0 0 4px;
-  font-size: 22px;
+  font-size: var(--sp-fs-h2);
   letter-spacing: 0.2px;
   line-height: 1.25;
 }
@@ -771,7 +771,7 @@ onMounted(async () => {
   margin: 24px 0 8px;
   padding: 28px 16px;
   border: 1px dashed color-mix(in srgb, var(--sp-ui-text-3) 30%, transparent);
-  border-radius: 16px;
+  border-radius: var(--sp-radius-xl);
   background: var(--sp-ui-hover);
 }
 
@@ -790,7 +790,7 @@ onMounted(async () => {
   text-align: center;
 }
 .media-card {
-  border-radius: 14px;
+  border-radius: var(--sp-radius-xl);
   padding: 12px;
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
@@ -807,7 +807,7 @@ onMounted(async () => {
 .media-cover {
   width: 100%;
   aspect-ratio: 1;
-  border-radius: 12px;
+  border-radius: var(--sp-radius-lg);
   overflow: hidden;
   background: rgba(127, 127, 127, 0.12);
   display: flex;
@@ -817,7 +817,7 @@ onMounted(async () => {
   color: var(--sp-ui-text-3);
 }
 .media-cover.circle {
-  border-radius: 50%;
+  border-radius: var(--sp-radius-circle);
 }
 .media-cover img {
   width: 100%;
@@ -826,7 +826,7 @@ onMounted(async () => {
 }
 .media-title {
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--sp-fs-small);
   line-height: 1.35;
   white-space: nowrap;
   overflow: hidden;
@@ -834,7 +834,7 @@ onMounted(async () => {
 }
 .media-sub {
   margin-top: 3px;
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   color: var(--sp-ui-text-3);
   white-space: nowrap;
   overflow: hidden;
@@ -864,13 +864,13 @@ onMounted(async () => {
     align-items: center;
     gap: 6px;
     padding: 7px 12px;
-    font-size: 13px;
+    font-size: var(--sp-fs-small);
     line-height: 1;
     white-space: nowrap;
     color: var(--sp-ui-text-2);
     background: transparent;
     border: 1px solid transparent;
-    border-radius: 999px;
+    border-radius: var(--sp-radius-pill);
     cursor: pointer;
     transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
   }
@@ -890,7 +890,7 @@ onMounted(async () => {
     padding-bottom: 0;
   }
   .page-title {
-    font-size: 18px;
+    font-size: var(--sp-fs-h2-mobile);
   }
   .card-grid {
     grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));

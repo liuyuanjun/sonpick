@@ -31,7 +31,7 @@
         :padding="0"
         :disabled="!player.current"
         v-model:show="pickerOpen"
-        style="border-radius: 12px"
+        style="border-radius: var(--sp-radius-lg)"
       >
         <template #trigger>
           <n-button
@@ -111,7 +111,7 @@ async function toggleFavorite() {
 .mini {
   width: 46px;
   height: 46px;
-  border-radius: 9px;
+  border-radius: var(--sp-radius-sm);
   object-fit: cover;
   flex: none;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
@@ -133,7 +133,7 @@ async function toggleFavorite() {
   min-width: 0;
 }
 .tt {
-  font-size: 15.5px;
+  font-size: var(--sp-fs-h3);
   font-weight: 600;
   letter-spacing: 0.01em;
   white-space: nowrap;
@@ -143,7 +143,7 @@ async function toggleFavorite() {
 }
 .ss {
   margin-top: 2px;
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   color: var(--fg-3);
   white-space: nowrap;
   overflow: hidden;

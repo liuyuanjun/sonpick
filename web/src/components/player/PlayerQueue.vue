@@ -71,12 +71,12 @@ const player = usePlayerStore()
 }
 .queue-title {
   font-weight: 700;
-  font-size: 14px;
+  font-size: var(--sp-fs-body);
   color: var(--sp-ui-text-1);
 }
 .queue-count {
   margin-top: 2px;
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   color: var(--sp-ui-text-3);
 }
 .queue-empty {
@@ -98,7 +98,7 @@ const player = usePlayerStore()
 }
 .queue-list::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--sp-radius-pill);
   background: var(--player-scrollbar-thumb, rgba(127, 127, 127, 0.28));
   background-clip: padding-box;
 }
@@ -112,7 +112,7 @@ const player = usePlayerStore()
   gap: 8px;
   align-items: center;
   padding: 10px 8px;
-  border-radius: 10px;
+  border-radius: var(--sp-radius-md);
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
   color: var(--sp-ui-text-1);
@@ -127,7 +127,7 @@ const player = usePlayerStore()
   color: var(--cover-accent, var(--sp-ui-primary));
 }
 .q-idx {
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   color: var(--sp-ui-text-3);
   text-align: center;
   font-variant-numeric: tabular-nums;
@@ -142,7 +142,7 @@ const player = usePlayerStore()
   gap: 2px;
 }
 .q-title {
-  font-size: 13px;
+  font-size: var(--sp-fs-small);
   font-weight: 600;
   line-height: 1.3;
   white-space: nowrap;
@@ -151,7 +151,7 @@ const player = usePlayerStore()
   color: var(--sp-ui-text-1);
 }
 .q-artist {
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   color: var(--sp-ui-text-3);
   white-space: nowrap;
   overflow: hidden;

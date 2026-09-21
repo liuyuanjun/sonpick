@@ -7,9 +7,38 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/brand/favicon-16.png" />
     <link rel="apple-touch-icon" href="/brand/logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0B0C10" />
+
+    <!--
+      theme-color 是唯一允许写死色值的地方：它必须在任何 JS 执行前就存在，
+      无法引用运行时注入的 CSS 变量。取值与 src/theme/tokens.js 的 THEME_COLOR 一致，
+      用户在应用内切换主题后由 theme store 覆盖。
+    -->
+    <meta name="theme-color" content="#F5F6F8" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0B0C10" media="(prefers-color-scheme: dark)" />
+
     <title>拾音 Sonpick</title>
-    <link rel="stylesheet" href="/brand/brand.css" />
+
+    <!--
+      首屏防闪烁：在任何样式与脚本之前确定 data-theme。
+      只写属性、不写颜色 —— 颜色仍由 src/theme/tokens.js 独家提供。
+      theme store 初始化后会再次写入同一属性，二者结果一致，不会打架。
+    -->
+    <script>
+      ;(function () {
+        try {
+          var stored = localStorage.getItem('sonpick_theme')
+          var mode =
+            stored === 'dark' || stored === 'light'
+              ? stored
+              : window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light'
+          document.documentElement.dataset.theme = mode
+        } catch (e) {
+          /* 隐私模式下 localStorage 不可读，交给 theme store 兜底 */
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="app"></div>

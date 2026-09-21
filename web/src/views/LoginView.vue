@@ -127,21 +127,21 @@ async function handleSubmit() {
   background:
     radial-gradient(900px 520px at 18% 18%, rgba(52, 211, 153, 0.10), transparent 62%),
     radial-gradient(820px 520px at 84% 80%, rgba(99, 102, 241, 0.12), transparent 62%),
-    var(--sp-bg, #0B0C10);
+    var(--sp-ui-body);
 }
 
 .login-shell {
   display: flex;
   width: min(920px, 100%);
-  border-radius: 24px;
+  border-radius: var(--sp-radius-2xl);
   overflow: hidden;
   border: 1px solid var(--sp-ui-border);
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.12);
+  box-shadow: var(--sp-shadow-2xl);
   background: var(--sp-ui-card);
 }
 
 [data-theme='dark'] .login-shell {
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--sp-shadow-2xl);
 }
 
 /* ── 左：品牌区 ───────────────────────── */
@@ -160,7 +160,7 @@ async function handleSubmit() {
 
 /* 暗色下保留深邃的品牌底，亮色下随卡片走，避免整页出现深色硬边 */
 [data-theme='dark'] .brand-pane {
-  background: #0B0C10;
+  background: var(--sp-ui-body);
 }
 
 .brand-glow {
@@ -184,7 +184,7 @@ async function handleSubmit() {
 .brand-logo {
   width: 88px;
   height: 88px;
-  border-radius: 20px;
+  border-radius: var(--sp-radius-2xl);
   display: block;
 }
 
@@ -196,14 +196,14 @@ async function handleSubmit() {
 }
 
 .brand-en {
-  font-size: 26px;
+  font-size: var(--sp-fs-h1);
   font-weight: 800;
   letter-spacing: 0.01em;
   color: var(--sp-ui-text-1);
 }
 
 .brand-cn {
-  font-size: 17px;
+  font-size: var(--sp-fs-h3);
   font-weight: 600;
   color: var(--sp-ui-primary);
 }
@@ -218,8 +218,8 @@ async function handleSubmit() {
 
 .brand-slogan {
   margin: 0;
-  font-size: 15px;
-  color: var(--sp-text-2, #8B95A5);
+  font-size: var(--sp-fs-body);
+  color: var(--sp-ui-text-2);
   letter-spacing: 0.04em;
 }
 
@@ -240,15 +240,15 @@ async function handleSubmit() {
 
 .form-title {
   margin: 0 0 8px;
-  font-size: 24px;
+  font-size: var(--sp-fs-h2);
   font-weight: 700;
-  color: var(--sp-text, #ECEEF2);
+  color: var(--sp-ui-text-1);
 }
 
 .form-sub {
   margin: 0 0 24px;
-  font-size: 14px;
-  color: var(--sp-text-2, #8B95A5);
+  font-size: var(--sp-fs-body);
+  color: var(--sp-ui-text-2);
 }
 
 .form-input {
@@ -257,7 +257,7 @@ async function handleSubmit() {
 
 .form-foot {
   margin: 22px 0 0;
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   color: var(--sp-ui-text-3);
   text-align: center;
 }
@@ -271,13 +271,13 @@ async function handleSubmit() {
   .brand-pane {
     width: 100%;
     border-right: none;
-    border-bottom: 1px solid var(--sp-border, #23262F);
+    border-bottom: 1px solid var(--sp-ui-border);
     padding: 32px 24px 24px;
   }
   .brand-logo {
     width: 64px;
     height: 64px;
-    border-radius: 16px;
+    border-radius: var(--sp-radius-xl);
   }
   .brand-mascot {
     width: 130px;

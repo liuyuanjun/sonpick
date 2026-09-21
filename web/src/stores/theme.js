@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watchEffect } from 'vue'
 import { darkTheme, lightTheme } from 'naive-ui'
-import { buildCssVars, buildNaiveOverrides, THEME_COLOR } from '@/theme/tokens'
+import { buildCssVars, THEME_COLOR } from '@/theme/tokens'
+import { buildNaiveOverrides } from '@/theme/naive'
 
 const STORAGE_KEY = 'sonpick_theme'
 const DARK_QUERY = '(prefers-color-scheme: dark)'

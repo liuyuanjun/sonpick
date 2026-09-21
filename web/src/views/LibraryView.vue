@@ -38,7 +38,7 @@
                   <n-tag size="small" :type="source.enabled ? 'success' : 'default'">{{ source.enabled ? '启用' : '停用' }}</n-tag>
                   <n-tag size="small" :type="statusTagType(source)">{{ statusText(source) }}</n-tag>
                   <n-tag v-if="source.is_default_upload" size="small" type="warning">默认上传</n-tag>
-                  <n-text depth="3" style="font-size: 12px">歌曲 {{ source.song_count ?? '-' }}</n-text>
+                  <n-text depth="3" style="font-size: var(--sp-fs-caption)">歌曲 {{ source.song_count ?? '-' }}</n-text>
                 </n-space>
                 <n-text depth="3" class="source-path">{{ sourcePath(source) }}</n-text>
                 <n-space size="small" wrap @click.stop>
@@ -140,7 +140,7 @@
                 <n-button v-if="songs.length" secondary @click="openBatchLyrics(selectedSource)">获取歌词</n-button>
               </n-space>
             </n-space>
-            <n-data-table
+            <sp-table
               class="library-table"
               :columns="songColumns"
               :data="songs"
@@ -175,7 +175,7 @@
               </n-breadcrumb-item>
             </n-breadcrumb>
             <n-alert v-if="browseError" type="error">{{ browseError }}</n-alert>
-            <n-data-table
+            <sp-table
               :columns="browseColumns"
               :data="browseEntries"
               :loading="browseLoading"
@@ -225,7 +225,7 @@
                 <n-tag size="small" :type="source.enabled ? 'success' : 'default'">{{ source.enabled ? '启用' : '停用' }}</n-tag>
                 <n-tag size="small" :type="statusTagType(source)">{{ statusText(source) }}</n-tag>
                 <n-tag v-if="source.is_default_upload" size="small" type="warning">默认上传</n-tag>
-                <n-text depth="3" style="font-size: 12px">歌曲 {{ source.song_count ?? '-' }}</n-text>
+                <n-text depth="3" style="font-size: var(--sp-fs-caption)">歌曲 {{ source.song_count ?? '-' }}</n-text>
               </n-space>
               <n-text depth="3" class="source-path">{{ sourcePath(source) }}</n-text>
               <n-space size="small" wrap @click.stop>
@@ -261,7 +261,7 @@
       <template v-if="form.type === 'local'">
         <n-form-item label="根目录">
           <n-input v-model:value="form.root_path" placeholder="/app/downloads 或 NAS 路径" :disabled="isEditingBuiltin" />
-          <n-text v-if="isEditingBuiltin" depth="3" style="margin-left: 8px; font-size: 12px">内置本地曲库路径不可修改</n-text>
+          <n-text v-if="isEditingBuiltin" depth="3" style="margin-left: 8px; font-size: var(--sp-fs-caption)">内置本地曲库路径不可修改</n-text>
         </n-form-item>
         <n-form-item label="扫描子目录">
           <n-input v-model:value="form.scan_dirs_text" type="textarea" :rows="3" placeholder="每行一个，相对根目录或绝对路径；空表示扫根目录" />
@@ -335,7 +335,7 @@
       </n-form-item>
       <n-form-item label="数量限制">
         <n-input-number v-model:value="reorgForm.limit" :min="0" :max="100000" style="width: 180px" />
-        <n-text depth="3" style="margin-left: 8px; font-size: 12px">0 表示不限制；建议先小批量预览</n-text>
+        <n-text depth="3" style="margin-left: 8px; font-size: var(--sp-fs-caption)">0 表示不限制；建议先小批量预览</n-text>
       </n-form-item>
       <n-form-item label="包含失败目录">
         <n-switch v-model:value="reorgForm.include_failed" />
@@ -343,7 +343,7 @@
       <n-form-item label="按格式归档">
         <n-space align="center">
           <n-switch v-model:value="reorgForm.relocate_format_dirs" />
-          <n-text depth="3" style="font-size: 12px">开启后，整理时会把错放的无损文件（FLAC/APE/WAV 等）移入「无损存放目录」、MP3/AAC 等有损文件移入「有损存放目录」下对应的艺术家/专辑位置（目录在设置页配置，默认不开启）。内置曲库未开启时会分别在有损/无损存放目录内整理；目标已存在同一首歌时保留音质较好的文件。仅本地曲库生效。</n-text>
+          <n-text depth="3" style="font-size: var(--sp-fs-caption)">开启后，整理时会把错放的无损文件（FLAC/APE/WAV 等）移入「无损存放目录」、MP3/AAC 等有损文件移入「有损存放目录」下对应的艺术家/专辑位置（目录在设置页配置，默认不开启）。内置曲库未开启时会分别在有损/无损存放目录内整理；目标已存在同一首歌时保留音质较好的文件。仅本地曲库生效。</n-text>
         </n-space>
       </n-form-item>
       <n-form-item label="允许网络补全">
@@ -356,7 +356,7 @@
       <n-alert v-if="reorgResult" type="success" style="margin-bottom: 12px">
         已整理 {{ reorgResult.changed || 0 }} / {{ reorgResult.total || 0 }}；失败 {{ reorgResult.failed || 0 }}
       </n-alert>
-      <n-data-table :columns="reorgColumns" :data="reorgPreview.items || []" :loading="reorgLoading" size="small" max-height="420" />
+      <sp-table :columns="reorgColumns" :data="reorgPreview.items || []" :loading="reorgLoading" size="small" max-height="420" />
     </n-form>
   </n-modal>
 
@@ -372,7 +372,7 @@
       </n-alert>
       <n-form-item label="网络补全">
         <n-switch v-model:value="scrapeForm.allow_network" />
-        <n-text depth="3" style="margin-left: 8px; font-size: 12px">MusicBrainz → 网易/QQ/咪咕，异步执行</n-text>
+        <n-text depth="3" style="margin-left: 8px; font-size: var(--sp-fs-caption)">MusicBrainz → 网易/QQ/咪咕，异步执行</n-text>
       </n-form-item>
       <n-form-item label="写回文件标签">
         <n-switch v-model:value="scrapeForm.write_file_tags" />
@@ -382,7 +382,7 @@
       </n-form-item>
       <n-form-item label="数量限制">
         <n-input-number v-model:value="scrapeForm.limit" :min="0" :max="100000" style="width: 180px" />
-        <n-text depth="3" style="margin-left: 8px; font-size: 12px">默认 20；建议小批量</n-text>
+        <n-text depth="3" style="margin-left: 8px; font-size: var(--sp-fs-caption)">默认 20；建议小批量</n-text>
       </n-form-item>
       <n-alert v-if="scrapeTaskId" type="info" style="margin-top: 12px">
         任务 #{{ scrapeTaskId }} · {{ scrapeTaskStatus || 'pending' }} · {{ scrapeTaskMessage || '排队中' }}
@@ -407,7 +407,7 @@
     <n-space v-if="uploadConflictData?.conflicts?.length" vertical size="small">
       <n-card v-for="item in uploadConflictData.conflicts" :key="item.kind" size="small">
         <n-text strong>{{ item.kind === 'audio' ? '音频' : item.kind === 'cover' ? '封面' : '歌词' }}</n-text>
-        <n-text depth="3" style="display: block; font-size: 12px; word-break: break-all;">{{ item.remote_path }}</n-text>
+        <n-text depth="3" style="display: block; font-size: var(--sp-fs-caption); word-break: break-all;">{{ item.remote_path }}</n-text>
       </n-card>
     </n-space>
     <template #footer>
@@ -431,7 +431,7 @@
         <template v-if="cleanupPreview.blocked_samples?.length">
           <n-text strong>跳过（存储不可达）</n-text>
           <n-space vertical size="small">
-            <n-text v-for="item in cleanupPreview.blocked_samples" :key="item.song_id" depth="3" style="font-size: 12px">
+            <n-text v-for="item in cleanupPreview.blocked_samples" :key="item.song_id" depth="3" style="font-size: var(--sp-fs-caption)">
               {{ item.artist || '未知艺术家' }} - {{ item.title }}：{{ item.reason }}
             </n-text>
           </n-space>
@@ -439,7 +439,7 @@
         <template v-if="cleanupPreview.cleanable_samples?.length">
           <n-text strong>将清理的记录（前 {{ cleanupPreview.cleanable_samples.length }} 条）</n-text>
           <n-space vertical size="small">
-            <n-text v-for="item in cleanupPreview.cleanable_samples" :key="item.song_id" depth="3" style="font-size: 12px">
+            <n-text v-for="item in cleanupPreview.cleanable_samples" :key="item.song_id" depth="3" style="font-size: var(--sp-fs-caption)">
               {{ item.artist || '未知艺术家' }} - {{ item.title }}
             </n-text>
           </n-space>
@@ -1139,7 +1139,7 @@ watch(songsQuery, () => {
   cursor: pointer;
   margin-bottom: 10px;
   border: 1px solid transparent;
-  border-radius: 12px;
+  border-radius: var(--sp-radius-lg);
   transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
 }
 .source-card:hover {
@@ -1153,19 +1153,19 @@ watch(songsQuery, () => {
 }
 .source-path {
   display: block;
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   word-break: break-all;
 }
 .library-toolbar {
   padding: 10px;
   border: 1px solid var(--sp-ui-border);
-  border-radius: 10px;
+  border-radius: var(--sp-radius-md);
   background: color-mix(in srgb, var(--sp-ui-body) 72%, var(--sp-ui-primary) 4%);
 }
 .library-mode-tabs :deep(.n-tabs-nav) {
   padding: 3px;
   border: 1px solid var(--sp-ui-border);
-  border-radius: 10px;
+  border-radius: var(--sp-radius-md);
   background: color-mix(in srgb, var(--sp-ui-body) 78%, var(--sp-ui-primary) 5%);
 }
 .library-mode-tabs :deep(.n-tabs-tab) {
@@ -1194,7 +1194,7 @@ watch(songsQuery, () => {
   white-space: nowrap;
 }
 .song-cell-sub {
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   line-height: 1.3;
   color: var(--sp-ui-text-3, #8a8f99);
   overflow: hidden;
@@ -1274,7 +1274,7 @@ watch(songsQuery, () => {
     gap: 10px;
     padding: 10px 12px;
     border: 1px solid var(--sp-ui-border);
-    border-radius: 12px;
+    border-radius: var(--sp-radius-lg);
     background: color-mix(in srgb, var(--sp-ui-card) 94%, var(--sp-ui-primary) 6%);
     color: inherit;
     text-align: left;
@@ -1287,18 +1287,18 @@ watch(songsQuery, () => {
     gap: 2px;
   }
   .mobile-source-label {
-    font-size: 11px;
+    font-size: var(--sp-fs-micro);
     color: var(--sp-ui-text-3, #8a8f99);
   }
   .mobile-source-name {
-    font-size: 15px;
+    font-size: var(--sp-fs-body);
     line-height: 1.3;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .mobile-source-sub {
-    font-size: 12px;
+    font-size: var(--sp-fs-caption);
     color: var(--sp-ui-text-3, #8a8f99);
   }
   .mobile-source-actions {

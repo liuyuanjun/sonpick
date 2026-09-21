@@ -162,7 +162,7 @@ load()
 /* 本组件经 popover/modal teleport 到 body：颜色一律用 :root 上的 --sp-ui-*（组件局部变量不可达） */
 .plp {
   width: 274px;
-  font-size: 13px;
+  font-size: var(--sp-fs-small);
   color: var(--sp-ui-text-1);
 }
 .plp-head {
@@ -170,7 +170,7 @@ load()
   align-items: center;
   justify-content: space-between;
   padding: 11px 12px 7px;
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   color: var(--sp-ui-text-3);
 }
 .plp-title {
@@ -187,7 +187,7 @@ load()
   margin: 0 10px 8px;
   height: 30px;
   padding: 0 9px;
-  border-radius: 8px;
+  border-radius: var(--sp-radius-sm);
   background: var(--sp-ui-hover);
   color: var(--sp-ui-text-3);
 }
@@ -198,7 +198,7 @@ load()
   outline: none;
   background: transparent;
   color: var(--sp-ui-text-1);
-  font-size: 12.5px;
+  font-size: var(--sp-fs-caption);
 }
 .plp-search-input::placeholder {
   color: var(--sp-ui-text-3);
@@ -217,7 +217,7 @@ load()
   gap: 10px;
   padding: 8px 12px;
   cursor: pointer;
-  border-radius: 7px;
+  border-radius: var(--sp-radius-sm);
 }
 .plp-row:hover {
   background: var(--sp-ui-hover);
@@ -225,7 +225,7 @@ load()
 .plp-tick {
   width: 16px;
   height: 16px;
-  border-radius: 50%;
+  border-radius: var(--sp-radius-circle);
   border: 1.5px solid var(--sp-ui-border);
   display: grid;
   place-items: center;
@@ -246,7 +246,7 @@ load()
   font-weight: 500;
 }
 .plp-ct {
-  font-size: 11.5px;
+  font-size: var(--sp-fs-micro);
   color: var(--sp-ui-text-3);
   font-variant-numeric: tabular-nums;
 }
@@ -257,7 +257,7 @@ load()
   padding: 22px 0;
   text-align: center;
   color: var(--sp-ui-text-3);
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
 }
 .plp-new {
   display: flex;
@@ -266,7 +266,7 @@ load()
   padding: 9px 12px;
   border-top: 1px solid var(--sp-ui-border);
   color: var(--sp-ui-primary);
-  font-size: 12.5px;
+  font-size: var(--sp-fs-caption);
   cursor: pointer;
 }
 .plp-new:hover {
@@ -283,11 +283,11 @@ load()
   min-width: 0;
   height: 30px;
   padding: 0 9px;
-  border-radius: 7px;
+  border-radius: var(--sp-radius-sm);
   border: 1px solid var(--sp-ui-border);
   background: transparent;
   color: var(--sp-ui-text-1);
-  font-size: 12.5px;
+  font-size: var(--sp-fs-caption);
   outline: none;
 }
 .plp-create-input:focus {
@@ -298,10 +298,10 @@ load()
   height: 30px;
   padding: 0 11px;
   border: none;
-  border-radius: 7px;
+  border-radius: var(--sp-radius-sm);
   background: var(--sp-ui-primary);
   color: var(--sp-ui-on-primary);
-  font-size: 12.5px;
+  font-size: var(--sp-fs-caption);
   font-weight: 500;
   cursor: pointer;
 }

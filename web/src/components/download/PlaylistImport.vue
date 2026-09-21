@@ -20,7 +20,7 @@
         <n-text depth="3">共 {{ playlist.track_count }} 首，已选 {{ selectedKeys.length }} 首</n-text>
       </div>
 
-      <n-data-table
+      <sp-table
         v-if="!isMobile"
         :columns="columns"
         :data="playlist.tracks"
@@ -189,7 +189,7 @@ async function start() {
 }
 .playlist-name {
   font-weight: 600;
-  font-size: 15px;
+  font-size: var(--sp-fs-body);
 }
 .import-toolbar {
   display: flex;
@@ -213,7 +213,7 @@ async function start() {
   align-items: center;
   gap: 10px;
   border: 1px solid var(--sp-ui-border);
-  border-radius: 10px;
+  border-radius: var(--sp-radius-md);
   padding: 10px 12px;
   margin-bottom: 8px;
   background: color-mix(in srgb, var(--sp-ui-card) 92%, transparent);
@@ -229,14 +229,14 @@ async function start() {
   white-space: nowrap;
 }
 .track-sub {
-  font-size: 12.5px;
+  font-size: var(--sp-fs-caption);
   opacity: 0.75;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .track-duration {
-  font-size: 12px;
+  font-size: var(--sp-fs-caption);
   opacity: 0.65;
 }
 @media (max-width: 768px) {
