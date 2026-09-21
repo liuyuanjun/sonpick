@@ -251,6 +251,7 @@ music/
 - 前端文案：当前仓库以中文硬编码为主；**若新增 React 代码**，全局规则要求走 i18n、禁止硬编码用户可见字符串。现有 Vue 页面保持项目既有风格，不强制一次性 i18n 化
 - **改动即核对组件注册**：模板用了新 Naive 组件（`<n-xxx>`）或 `h(NXxx)`，必须在 `web/src/main.js` 的 `create({ components: [...] })` 里 import 并注册，否则构建产物在运行时对未注册标签渲染为原生未知元素（白屏/样式全丢），**编译不报错**。加组件后顺手 `grep -c "<n-组件名" src/` 确认模板与注册对得上。
 - **改动即核对模板标识符**：模板里的函数/变量必须已在 `<script setup>` 声明或 import。漏了 `import { formatFileSize }` 这类问题 `pnpm build` **同样不报错**，但渲染时抛 `TypeError: _ctx.xxx is not a function`，那一块子树直接渲染失败（表现为「弹窗打开后空白 / 只剩占位文案」）。改完模板跑 `pnpm check:template-refs`（`web/scripts/check-template-refs.mjs`）。
+- **自定义组件的 v-model 契约必须与调用点一致**：全站约定用 Naive 风格的 `value` / `update:value`（即 `v-model:value`），**不要**在自定义组件里声明 `modelValue` / `update:modelValue`。契约不匹配时 prop 为 undefined，组件渲染期抛错、整棵子树静默渲染为注释节点（构建和 `check:template-refs` 都不报错，页面其余部分正常）——v0.15.2-rc1 的 SourcePicker 因此整行消失。改完组件契约后用浏览器实际渲染验证（本地可用 Playwright 无头浏览器跑 `127.0.0.1:8000`）。
 
 ### 5.5 前端硬规范（避免重复踩坑）
 

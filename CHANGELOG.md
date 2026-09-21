@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.2-rc2
+
+### 修复
+- **来源选择器 SourcePicker 整行不渲染（rc1 引入）**：组件声明的是 `modelValue` / `update:modelValue`，而三处调用点按全站约定用 `v-model:value`——prop 永远 undefined，`candidates` computed 抛 `TypeError: ... 'includes'`，整个组件渲染为注释节点（页面其余部分正常，无白屏，仅在控制台报错）。现统一为 `value` / `update:value`。此类「prop 契约不匹配」构建与 `check:template-refs` 都查不出，已用无头浏览器（Playwright）对下载页三个 tab 做真实渲染回归验证。AGENTS.md §5.5 新增对应硬规范。
+
 ## 0.15.2-rc1
 
 ### 修复

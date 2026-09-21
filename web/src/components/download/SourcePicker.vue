@@ -5,8 +5,8 @@
     </div>
     <div class="chips">
       <span
-        v-for="(value, i) in modelValue"
-        :key="value"
+        v-for="(src, i) in value"
+        :key="src"
         class="chip selected"
         draggable="true"
         :class="{ dragging: dragIndex === i, 'drag-over': dragOverIndex === i && dragIndex !== i }"
@@ -17,8 +17,8 @@
         @drop.prevent="onDrop(i)"
       >
         <button type="button" class="chip-btn move" :disabled="i === 0" title="前移" @click="move(i, -1)">‹</button>
-        <span class="chip-label">{{ labelOf(value) }}</span>
-        <button type="button" class="chip-btn move" :disabled="i === modelValue.length - 1" title="后移" @click="move(i, 1)">›</button>
+        <span class="chip-label">{{ labelOf(src) }}</span>
+        <button type="button" class="chip-btn move" :disabled="i === value.length - 1" title="后移" @click="move(i, 1)">›</button>
         <button type="button" class="chip-btn remove" title="移除" @click="removeAt(i)">×</button>
       </span>
       <button
@@ -32,45 +32,46 @@
         <span class="plus">+</span> {{ opt.label }}
       </button>
     </div>
-    <div v-if="!modelValue.length" class="empty-tip">未选择来源 —— 点击上方来源添加</div>
+    <div v-if="!value.length" class="empty-tip">未选择来源 —— 点击上方来源添加</div>
   </div>
 </template>
 
 <script setup>
 import { computed, ref } from 'vue'
 
+// v-model 契约用 Naive 风格的 value / update:value（与全站组件及三处调用点一致，勿改回 modelValue）
 const props = defineProps({
   // 有序已选源 value 列表，顺序即优先级
-  modelValue: { type: Array, required: true },
+  value: { type: Array, required: true },
   // 全部可选源 [{ value, label }]
   options: { type: Array, required: true },
 })
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:value'])
 
-const candidates = computed(() => props.options.filter((o) => !props.modelValue.includes(o.value)))
+const candidates = computed(() => props.options.filter((o) => !props.value.includes(o.value)))
 
 function labelOf(value) {
   return props.options.find((o) => o.value === value)?.label || value
 }
 
 function update(next) {
-  emit('update:modelValue', next)
+  emit('update:value', next)
 }
 
 function add(value) {
-  update([...props.modelValue, value])
+  update([...props.value, value])
 }
 
 function removeAt(i) {
-  const next = props.modelValue.slice()
+  const next = props.value.slice()
   next.splice(i, 1)
   update(next)
 }
 
 function move(i, dir) {
   const j = i + dir
-  if (j < 0 || j >= props.modelValue.length) return
-  const next = props.modelValue.slice()
+  if (j < 0 || j >= props.value.length) return
+  const next = props.value.slice()
   ;[next[i], next[j]] = [next[j], next[i]]
   update(next)
 }
@@ -94,7 +95,7 @@ function onDrop(i) {
   const from = dragIndex.value
   onDragEnd()
   if (from < 0 || from === i) return
-  const next = props.modelValue.slice()
+  const next = props.value.slice()
   const [item] = next.splice(from, 1)
   next.splice(i, 0, item)
   update(next)
