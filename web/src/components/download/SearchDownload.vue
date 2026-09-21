@@ -7,19 +7,11 @@
         class="keyword-input"
         @keydown.enter="doSearch(1)"
       />
-      <n-select
-        v-model:value="sources"
-        :options="sourceOptions"
-        multiple
-        :max-tag-count="2"
-        class="source-select"
-        placeholder="选择来源"
-        @update:value="ensureSourceNonEmpty"
-      />
       <div class="toolbar-actions">
         <n-button type="primary" :loading="searching" class="action-btn" @click="doSearch(1)">搜索</n-button>
       </div>
     </div>
+    <source-picker v-model:value="sources" :options="downloadSources" />
 
     <div v-if="searching" class="search-loading">
       <n-spin size="small" />
@@ -163,18 +155,22 @@
 </template>
 
 <script setup>
-import { computed, h, ref } from 'vue'
+import { computed, h, onMounted, ref, watch } from 'vue'
 import { NButton, NTag, NTooltip, useMessage } from 'naive-ui'
 import api from '@/api/client'
 import { resolveMusicFormats, searchMusic } from '@/api/music'
+import SourcePicker from '@/components/download/SourcePicker.vue'
 import { useIsMobile } from '@/composables/useIsMobile'
+import { DOWNLOAD_SOURCES, loadSourcePref, saveSourcePref } from '@/utils/downloadSources'
 import { formatFileSize } from '@/utils/format'
 import { formatLabel } from '@/utils/media'
 
 const message = useMessage()
 const isMobile = useIsMobile()
 const keyword = ref('')
-const sources = ref(['QQMusicClient', 'NeteaseMusicClient', 'MiguMusicClient'])
+const downloadSources = DOWNLOAD_SOURCES
+const sources = ref(loadSourcePref())
+watch(sources, (val) => saveSourcePref(val), { deep: true })
 const searching = ref(false)
 const results = ref([])
 const page = ref(1)
@@ -182,19 +178,6 @@ const pageSize = 20
 const total = ref(0)
 // 最近一次成功搜索的关键词：resolve 时用于后端定位该曲的搜索上下文
 let lastQuery = ''
-
-const sourceOptions = [
-  { label: 'QQ 音乐', value: 'QQMusicClient' },
-  { label: '网易云音乐', value: 'NeteaseMusicClient' },
-  { label: '咪咕音乐', value: 'MiguMusicClient' },
-]
-
-// 多选来源不允许清空：全部取消时自动回填全部来源
-function ensureSourceNonEmpty(val) {
-  if (!val || !val.length) {
-    sources.value = sourceOptions.map((o) => o.value)
-  }
-}
 
 // 体积与格式标签的实现都在 utils/format.js / utils/media.js
 function formatSize(bytes) {
@@ -277,6 +260,10 @@ async function doSearch(p = page.value) {
     message.warning('请输入关键词')
     return
   }
+  if (!sources.value.length) {
+    message.warning('请至少选择一个来源')
+    return
+  }
   page.value = p
   searching.value = true
   results.value = []
@@ -311,6 +298,18 @@ const replaceOptions = computed(() =>
   replaceableVersions.value.map((v) => ({ label: versionText(v), value: v.song_file_id })),
 )
 
+// 弹窗默认档位跟随系统设置 prefer_format（flac→无损，mp3/m4a→高品质，any→最高可下档）
+const preferFormat = ref('any')
+const PREFER_TO_TIER = { flac: 'lossless', mp3: 'high', m4a: 'high' }
+onMounted(async () => {
+  try {
+    const { data } = await api.get('/settings')
+    preferFormat.value = data?.prefer_format || 'any'
+  } catch (_) {
+    /* 拉取失败按 any 处理 */
+  }
+})
+
 async function openDownload(row) {
   if (!row.song_id) {
     message.error('该结果缺少歌曲 ID，无法下载')
@@ -330,7 +329,11 @@ async function openDownload(row) {
       song_id: row.song_id,
     })
     resolveFormats.value = res.data.formats || []
-    selectedTiers.value = res.data.default_tier ? [res.data.default_tier] : []
+    const wantTier = PREFER_TO_TIER[preferFormat.value]
+    const pick =
+      (wantTier && resolveFormats.value.some((f) => f.tier === wantTier) && wantTier) ||
+      res.data.default_tier
+    selectedTiers.value = pick ? [pick] : []
   } catch (err) {
     // 验证失败不拦截下载：留空格式列表，用户仍可「直接下载」按原链路尝试
     resolveFormats.value = []
@@ -461,8 +464,7 @@ async function confirmDownload() {
     flex-direction: column;
     align-items: stretch;
   }
-  .keyword-input,
-  .source-select {
+  .keyword-input {
     width: 100%;
   }
   .toolbar-actions {

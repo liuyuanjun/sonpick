@@ -13,6 +13,9 @@
         <n-tab-pane name="import" tab="导入歌单">
           <import-download />
         </n-tab-pane>
+        <n-tab-pane name="playlist" tab="歌单链接">
+          <playlist-import />
+        </n-tab-pane>
       </n-tabs>
     </n-card>
 
@@ -43,12 +46,13 @@ import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import SearchDownload from '@/components/download/SearchDownload.vue'
 import ImportDownload from '@/components/download/ImportDownload.vue'
+import PlaylistImport from '@/components/download/PlaylistImport.vue'
 import { useIsMobile } from '@/composables/useIsMobile'
 
 const route = useRoute()
 const router = useRouter()
 const isMobile = useIsMobile()
-const activeTab = ref(route.query.tab === 'import' ? 'import' : 'search')
+const activeTab = ref(['search', 'import', 'playlist'].includes(route.query.tab) ? route.query.tab : 'search')
 
 const layoutSample = `艺术家/
   artist.jpg
@@ -58,7 +62,7 @@ const layoutSample = `艺术家/
     歌名.lrc`
 
 watch(activeTab, (v) => {
-  router.replace({ path: '/download', query: v === 'import' ? { tab: 'import' } : {} })
+  router.replace({ path: '/download', query: v === 'search' ? {} : { tab: v } })
 })
 </script>
 

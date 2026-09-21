@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.models import Song, SongFile
 from app.services.constants import AUDIO_EXTS
 from app.services.library_layout import unique_path
+from app.services.media_meta_service import backfill_song_cover_l0
 from app.services.song_file_resolver import SongFileResolver
 
 
@@ -33,7 +34,8 @@ def _resolve_new_local_file(db: Session, new_song: Song) -> SongFile:
 def _adopt_sidecars(db: Session, target_song: Song, donor: Song, donor_file: Optional[SongFile]) -> None:
     """把下载附带的封面/歌词补到目标歌曲（不覆盖已有资源）。"""
     if not target_song.cover_path and donor.cover_path:
-        target_song.cover_path = donor.cover_path
+        # 兼容历史非 by-hash 的 donor 封面：统一走 L0 固化
+        backfill_song_cover_l0(target_song, donor.cover_path)
     if not target_song.lrc_path and donor.lrc_path:
         target_song.lrc_path = donor.lrc_path
     if not target_song.duration and donor.duration:
@@ -169,7 +171,8 @@ def apply_replace(
         if lrc_path and not song.lrc_path:
             song.lrc_path = lrc_path
         if old_file.cover_path and not song.cover_path:
-            song.cover_path = old_file.cover_path
+            # L0 口径：版本侧车回填 Song 封面需固化为 by-hash
+            backfill_song_cover_l0(song, old_file.cover_path)
         song.updated_at = _now()
         db.add(song)
 

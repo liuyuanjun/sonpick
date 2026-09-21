@@ -133,7 +133,8 @@ class LibraryScanResponse(BaseModel):
 
 class DownloadRequest(BaseModel):
     keyword: str = ""
-    prefer: str = "any"
+    # None = 跟随系统设置 prefer_format（worker 侧解析）
+    prefer: Optional[str] = Field(default=None, pattern="^(flac|mp3|m4a|any)$")
     source: str = "all"
     # 单曲锁定下载：搜索页点下载时带上，worker 按 song_id 锁定该曲解析
     song_id: Optional[str] = None
@@ -145,10 +146,45 @@ class DownloadRequest(BaseModel):
     matched_song_id: Optional[int] = None
 
 
+class BatchDownloadItem(BaseModel):
+    """歌单导入等链路的确切曲目：song_id 锁定，无需搜索。keyword 仅作失败兜底与日志展示。"""
+
+    keyword: str = ""
+    source: str
+    song_id: str
+
+
 class BatchDownloadRequest(BaseModel):
-    content: str
-    prefer: str = "any"
+    content: str = ""
+    # 歌单导入：确切曲目清单（song_id 锁定）；与 content 关键词模式二选一，items 优先
+    items: Optional[list[BatchDownloadItem]] = None
+    # None = 跟随系统设置 prefer_format（worker 侧解析）
+    prefer: Optional[str] = Field(default=None, pattern="^(flac|mp3|m4a|any)$")
     source: str = "all"
+    # 曲库已存在时的策略：skip（默认，跳过）| keep_both（仍下载为新版本）；replace 不开放给批量
+    duplicate_action: Optional[str] = Field(default="skip", pattern="^(skip|keep_both)$")
+
+
+class PlaylistParseRequest(BaseModel):
+    url: str
+
+
+class PlaylistTrackOut(BaseModel):
+    song_id: str
+    song_name: str
+    singers: str = ""
+    album: str = ""
+    duration_s: Optional[int] = None
+    duration: Optional[str] = None
+
+
+class PlaylistParseOut(BaseModel):
+    source: str
+    source_label: str
+    playlist_id: str
+    name: str
+    track_count: int
+    tracks: list[PlaylistTrackOut]
 
 
 class LibraryMatchVersionOut(BaseModel):

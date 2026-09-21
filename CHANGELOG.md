@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.15.2-rc1
+
+### 修复
+- **L0 封面每次播放解析后被打回侧车路径（A4 根因）**：`SongFileResolver.refresh_song_assets` 旧逻辑无条件用选中版本的侧车 `SongFile.cover_path` 覆盖 `Song.cover_path`——下载/刮削写入的 by-hash L0 路径在 worker 后置 `resolve_local`（写操作日志、转码、播放）时立刻被改回 `Artist/Album/cover.jpg`，L0 口径形同虚设。现封面回填统一走新的 `backfill_song_cover_l0`（`media_meta_service`）：已有合法 L0 封面**绝不覆盖**；缺失/失效/历史非 by-hash 时用候选侧车固化为 by-hash 回填（候选失联不乱写坏路径）。扫描回填（2 处）、`download_duplicate_service` 的 `_adopt_sidecars`/替换回填同步切到该 helper；歌词指针维持「跟随选中版本」语义不变。存量侧车路径会在首次解析（播放/重检/转码等）时自动修复。回归测试 `tests/test_l0_cover_backfill.py`。
+- **`prefer_format` 设置此前是死配置**：下载/批量接口的 `prefer` 不传时 worker 不回读设置页「默认音质」，永远按 any 处理。现 `DownloadRequest.prefer`/`BatchDownloadRequest.prefer` 可选，缺省由 worker 回退到 `settings.prefer_format` 再兜底 any；前端两个下载入口的默认格式也会拉取该设置。
+- **批量下载不查曲库重复**：批量任务原来每首歌都直接下载，曲库已有也照下。现每首下载前经 `match_search_results` 实时比对，命中按 `duplicate_action`（`skip` 默认 / `keep_both` 并入同一逻辑 Song 为新版本）处理，批量不开放 `replace`。
+- **批量输入重复行与计数**：批量导入前端实时显示「共 N 行，去重后 M 首」（`utils/batchText.js`），后端对关键词保序去重，同一批内重复行不再重复下载。
+- **批量任务终态摘要**：完成后给出「成功 X，失败 Y，跳过 Z」汇总与失败明细（写入 result_json 与任务进度），不再只有逐条流水。
+- **搜索结果不再漏出 `'NULL'` 字符串**：musicdl `legalizestring` 会把空字段（无歌手/无专辑）变成 `'NULL'`，此前原样透传到搜索结果与歌单曲目。现 mapper 出口统一走 `light_search_service._legalize` 包装（清洗后 `'NULL'` → 空串），六源搜索 mapper 与歌单适配器全部切换；展示归一函数 `clean_display_text` 为唯一实现，路由层复用，不再各写一份。
+
+### 新增
+- **下载源扩展到 6 个**：新增**酷狗音乐、酷我音乐、千千音乐（百度）**，与 QQ/网易/咪咕同链路接入轻量搜索 + 下载时解析。三源搜索均 ~0.1s；解析复用 musicdl 官方级联（内部按音质从高到低尝试 + 链接探测），酷狗/酷我另有第三方解析兜底。实测 6 源搜索 120 条 1.0s；酷我/千千可直下 FLAC，酷狗 VIP 曲第三方解析 4s 出 FLAC。搜索响应自带的格式清单同步展示（酷狗 Hi-Res/FLAC/MP3 320、酷我 MINFO 全码率表、千千 rateFileInfo），酷我 N_MINFO 加密格式（mflac/mgg）不收录。
+- **来源选择器 SourcePicker**（搜索下载与批量导入共用）：单排 chips——实色为已选（在前，按顺序优先，可拖拽排序或点 ‹ › 微调、× 移除），虚线为待选（在后，点击追加到已选末尾）。选择持久化到 localStorage（`sonpick_download_sources`），默认全选。前端源清单元数据收敛到 `utils/downloadSources.js`（与后端 `SOURCE_LABELS` 对应）。
+- **批量下载候选回退与匹配排序**：① 源按已选顺序搜索（原写死 QQ→网易→咪咕）；② 候选按「歌名规范化相等 + 歌手重叠」重排（与曲库比对同一套 `_norm_title`/`_norm_artist`，伴奏/Live/翻唱等版本差异降一级），不再盲取第一条；③ 第一条解析失败时按序回退后续候选（每首上限 5 个），全部失败才判失败——QQ 解析不出、网易能下的歌不再误判失败。
+- **musicdl 2.13.4 → 2.13.11**：私有 API 面（各源 `_constructsearchurls`/`_parsewithofficialapiv1`/`_parsewiththirdpartapis`、QQ/网易加密工具、咪咕 `_decryptresp`）契约测试全部通过；修复 2.13.11 酷狗第三方解析 `request_overrides=None` 直接 `.get` 的上游崩溃（调用方显式传 `{}`）。
+- **歌单链接导入**（下载页第三个 tab）：粘贴 QQ/网易/咪咕/酷狗/酷我/千千歌单 URL → `POST /download/playlist/parse` 轻量解析（只拉曲目元数据，每源 1 列表请求 + 分页；**故意不用** musicdl `parseplaylist`——它逐曲串行跑完整解析级联，百首歌单就是数百个串行请求）→ 勾选曲目 → `POST /download/batch` 的 `items` 模式按 song_id 锁定下载（经歌曲注册表 `_song_registry` 直接定位，跳过搜索与候选打分，单次上限 500 首）。六源实测真实歌单解析成功（QQ 1253 首/网易 42/咪咕 100/酷狗 154/酷我 177/千千 13）；条目映射复用轻量搜索的 6 个 mapper，酷狗/酷我歌单形状不同各有一个适配器。后端 `playlist_import_service.py`（六源接口与字段形状写在文件头注释），前端 `components/download/PlaylistImport.vue`（桌面 n-data-table 勾选 / 移动端卡片多选），契约测试 `tests/test_playlist_import.py`。
+
+### 注意
+- musicdl 还有 60+ 客户端未接入：Spotify/Apple/TIDAL/Qobuz/YouTube 需账号或会员 Cookie；喜马拉雅/荔枝/蜻蜓是电台有声书；FMA/Jamendo/OpenGameArt 是素材站；其余多为不稳定的刮站。如需波点/汽水/Joox 等可后续按同模式补充（每源约一个 mapper + 解析注册）。
+- 批量/搜索的 `source` 参数支持逗号分隔的有序多源，顺序即优先级。
+
 ## 0.15.1-rc23
 
 ### 修复

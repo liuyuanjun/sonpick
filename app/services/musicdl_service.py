@@ -23,7 +23,12 @@ from app.services.library_layout import (
     track_stem,
     unique_path,
 )
-from app.services.media_meta_service import enrich_local_audio, is_local_file, write_album_cover_file
+from app.services.media_meta_service import (
+    enrich_local_audio,
+    is_local_file,
+    materialize_cover_to_l0,
+    write_album_cover_file,
+)
 from app.services.scrape.query_normalize import (
     build_search_keyword,
     clean_artist,
@@ -290,7 +295,11 @@ class MusicDLService:
                 if lrc_saved:
                     song.lrc_path = lrc_saved
         except Exception:
-            pass
+            log.exception("enrich_local_audio failed in _move_files")
+
+        # L0 口径统一：Song.cover_path 一律指向 data/covers/by-hash（侧车 cover.jpg 仍挂 SongFile）
+        if song.cover_path:
+            song.cover_path = materialize_cover_to_l0(song.cover_path) or song.cover_path
 
         self.db.commit()
         self.db.refresh(song)

@@ -24,7 +24,7 @@ from app.services.library_layout import (
     is_generic_dir_name,
 )
 from app.services.library_visibility import count_songs_in_source
-from app.services.media_meta_service import enrich_local_audio, is_local_file, read_audio_tags, resolve_song_meta
+from app.services.media_meta_service import backfill_song_cover_l0, enrich_local_audio, is_local_file, read_audio_tags, resolve_song_meta
 from app.services.operation_log_service import write_log
 from app.services.webdav_service import WebDAVService
 
@@ -463,8 +463,8 @@ class LibraryScanService:
                 if duration and (not song.duration or song.duration <= 0):
                     song.duration = int(duration)
                     changed = True
-                if cover and (not song.cover_path or not is_local_file(song.cover_path)):
-                    song.cover_path = cover
+                # L0 口径：回填 Song 封面一律固化为 by-hash（侧车仍挂 SongFile）
+                if backfill_song_cover_l0(song, cover):
                     changed = True
                 if lrc and (
                     not song.lrc_path
@@ -590,10 +590,9 @@ class LibraryScanService:
                 elif song.album and _is_generic_dir_name(song.album):
                     song.album = None
                     changed = True
-                if cover and (not song.cover_path or not is_local_file(song.cover_path)):
-                    if not is_local_file(song.cover_path):
-                        song.cover_path = cover
-                        changed = True
+                # L0 口径：回填 Song 封面一律固化为 by-hash（侧车仍挂 SongFile）
+                if backfill_song_cover_l0(song, cover):
+                    changed = True
                 if lrc and (not song.lrc_path or song.lrc_path != lrc):
                     song.lrc_path = lrc
                     changed = True

@@ -119,6 +119,34 @@ def materialize_cover_to_l0(
         return None
 
 
+def is_l0_cover_path(path: str | Path | None) -> bool:
+    """Song.cover_path 的 L0 口径：本地存在且位于 data/covers/by-hash/ 下。"""
+    if not path or not is_local_file(path):
+        return False
+    try:
+        return Path(path).resolve().parent == (covers_root() / "by-hash").resolve()
+    except OSError:
+        return False
+
+
+def backfill_song_cover_l0(song, candidate_cover: str | Path | None) -> bool:
+    """Song.cover_path 不满足 L0 口径时，用候选封面（通常是版本侧车）固化为 by-hash 回填。
+
+    返回是否发生变更。候选固化为 by-hash 失败时退回候选路径本身，保证至少有封面可展示；
+    已有合法 L0 封面时绝不覆盖（版本侧车是 L1 写穿，不得反向污染 L0）。
+    """
+    if not candidate_cover or is_l0_cover_path(getattr(song, "cover_path", None)):
+        return False
+    if not is_local_file(candidate_cover):
+        # 候选侧车已失联：不拿坏路径覆盖现状
+        return False
+    l0 = materialize_cover_to_l0(candidate_cover) or str(candidate_cover)
+    if l0 == getattr(song, "cover_path", None):
+        return False
+    song.cover_path = l0
+    return True
+
+
 # 明确支持内嵌文本/封面/歌词写入的格式（其余本轮视为 unsupported）
 _TAG_WRITE_FULL = {".mp3", ".flac", ".m4a", ".mp4", ".aac"}
 

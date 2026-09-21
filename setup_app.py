@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="music-nas",
-    version="0.15.1-rc23",
+    version="0.15.2-rc1",
     packages=find_packages(),
     python_requires=">=3.10",
 )

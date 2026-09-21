@@ -112,13 +112,22 @@ class SongFileResolver:
         raise NoPlayableSongFileError("该歌曲没有可用的本地文件版本")
 
     def refresh_song_assets(self, song: Song, selected: SongFile) -> bool:
-        """将选中文件版本的侧车资源回填为 Song 的聚合缓存。"""
+        """将选中文件版本的侧车资源回填为 Song 的聚合缓存。
+
+        L0 口径（见 docs/metadata-l0-cover-refactor.md）：Song.cover_path 只接受
+        data/covers/by-hash；版本侧车不得反向覆盖已有 L0 封面，缺失/失效/历史非
+        by-hash 时由 backfill_song_cover_l0 固化回填。歌词指针允许指向版本侧车，
+        维持「跟随选中版本」语义。
+        """
+        from app.services.media_meta_service import backfill_song_cover_l0
+
         changed = False
-        for field in ("cover_path", "lrc_path"):
-            candidate = getattr(selected, field, None)
-            if candidate and candidate != getattr(song, field, None):
-                setattr(song, field, candidate)
-                changed = True
+        candidate_lrc = selected.lrc_path
+        if candidate_lrc and candidate_lrc != song.lrc_path:
+            song.lrc_path = candidate_lrc
+            changed = True
+        if backfill_song_cover_l0(song, selected.cover_path):
+            changed = True
         if changed:
             song.updated_at = _now()
             self.db.add(song)

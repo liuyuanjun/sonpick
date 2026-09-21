@@ -28,7 +28,14 @@ from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urljoin
 
-from musicdl.modules.sources import MiguMusicClient, NeteaseMusicClient, QQMusicClient
+from musicdl.modules.sources import (
+    KugouMusicClient,
+    KuwoMusicClient,
+    MiguMusicClient,
+    NeteaseMusicClient,
+    QianqianMusicClient,
+    QQMusicClient,
+)
 from musicdl.modules.utils import (
     AudioLinkTester,
     SongInfo,
@@ -50,11 +57,17 @@ DEFAULT_DOWNLOAD_SOURCES = [
     "QQMusicClient",
     "NeteaseMusicClient",
     "MiguMusicClient",
+    "KugouMusicClient",
+    "KuwoMusicClient",
+    "QianqianMusicClient",
 ]
 SOURCE_LABELS = {
     "QQMusicClient": "QQ 音乐",
     "NeteaseMusicClient": "网易云音乐",
     "MiguMusicClient": "咪咕音乐",
+    "KugouMusicClient": "酷狗音乐",
+    "KuwoMusicClient": "酷我音乐",
+    "QianqianMusicClient": "千千音乐",
 }
 # 轻量搜索每源结果数：一次请求一页，成本与条数无关，取与前端页大小一致
 DEFAULT_SEARCH_SIZE_PER_SOURCE = 20
@@ -139,6 +152,17 @@ class _TTLCache:
 
 # ---------------------------------------------------------------- 元数据提取（纯函数，契约测试直接覆盖）
 
+def clean_display_text(value) -> str:
+    """musicdl legalizestring 会把空串/清洗后为空的串变成 'NULL'，展示层统一归一为空串。"""
+    text = (value or "").strip()
+    return "" if text.upper() == "NULL" else text
+
+
+def _legalize(value) -> str:
+    """legalizestring 的归一包装：清洗（html/emoji/不可打印字符）后把 'NULL' 回成空串。"""
+    return clean_display_text(legalizestring(value or ""))
+
+
 def _hms(seconds) -> Optional[str]:
     try:
         n = int(float(seconds))
@@ -173,11 +197,11 @@ def qq_item_to_songinfo(item: dict) -> Optional[SongInfo]:
     song = SongInfo(
         source=QQMusicClient.source,
         raw_data={"search": item, "download": {}, "lyric": {}},
-        song_name=legalizestring(item.get("title") or item.get("songname") or ""),
-        singers=legalizestring(", ".join(
+        song_name=_legalize(item.get("title") or item.get("songname") or ""),
+        singers=_legalize(", ".join(
             s.get("name") for s in (item.get("singer") or []) if isinstance(s, dict) and s.get("name")
         )),
-        album=legalizestring(safeextractfromdict(item, ["album", "title"], None) or item.get("albumname") or ""),
+        album=_legalize(safeextractfromdict(item, ["album", "title"], None) or item.get("albumname") or ""),
         ext=best.get("ext"),
         file_size_bytes=best.get("size_bytes"),
         file_size=SongInfoUtils.byte2mb(best["size_bytes"]) if best.get("size_bytes") else None,
@@ -199,11 +223,11 @@ def netease_item_to_songinfo(item: dict) -> Optional[SongInfo]:
     song = SongInfo(
         source=NeteaseMusicClient.source,
         raw_data={"search": item, "download": {}, "lyric": {}},
-        song_name=legalizestring(item.get("name") or ""),
-        singers=legalizestring(", ".join(
+        song_name=_legalize(item.get("name") or ""),
+        singers=_legalize(", ".join(
             s.get("name") for s in (item.get("ar") or []) if isinstance(s, dict) and s.get("name")
         )),
-        album=legalizestring(safeextractfromdict(item, ["al", "name"], None) or ""),
+        album=_legalize(safeextractfromdict(item, ["al", "name"], None) or ""),
         duration_s=duration_s,
         duration=_hms(duration_s),
         cover_url=safeextractfromdict(item, ["al", "picUrl"], None),
@@ -259,12 +283,12 @@ def migu_item_to_songinfo(item: dict) -> Optional[SongInfo]:
     song = SongInfo(
         source=MiguMusicClient.source,
         raw_data={"search": item, "download": {}, "lyric": {}},
-        song_name=legalizestring(item.get("name") or item.get("songName") or ""),
-        singers=legalizestring(", ".join(
+        song_name=_legalize(item.get("name") or item.get("songName") or ""),
+        singers=_legalize(", ".join(
             s.get("name") for s in (item.get("singers") or item.get("singerList") or [])
             if isinstance(s, dict) and s.get("name")
         )),
-        album=legalizestring(
+        album=_legalize(
             item.get("album")
             or ", ".join(a.get("name") for a in (item.get("albums") or []) if isinstance(a, dict) and a.get("name"))
         ),
@@ -275,6 +299,148 @@ def migu_item_to_songinfo(item: dict) -> Optional[SongInfo]:
         duration=_hms(duration_s),
         cover_url=cover,
         identifier=str(content_id),
+    )
+    song.formats_meta = formats
+    return song
+
+
+def kugou_item_to_songinfo(item: dict) -> Optional[SongInfo]:
+    """酷狗 data.lists 条目 → 纯元数据 SongInfo（SQ/Res 体积字段直接可得）。"""
+    song_id = item.get("ID") or item.get("SongID") or item.get("MixSongID")
+    if not song_id:
+        return None
+    duration_s = _int_or_none(item.get("Duration"))
+    formats: list[dict] = []
+    for size, ext, tier, label in (
+        (item.get("ResFileSize"), "flac", "lossless", "Hi-Res"),
+        (item.get("SQFileSize"), item.get("SQExtName") or "flac", "lossless", "FLAC"),
+        (item.get("HQFileSize"), item.get("HQExtName") or "mp3", "high", "MP3 320"),
+        (item.get("FileSize"), item.get("ExtName") or "mp3", "standard", "MP3"),
+    ):
+        size_b = _int_or_none(size)
+        if size_b:
+            formats.append({
+                "ext": str(ext).lower().lstrip("."),
+                "size_bytes": size_b,
+                "quality": tier,
+                "label": str(label),
+            })
+    best = formats[0] if formats else {}
+    cover = item.get("Image") or ""
+    if "{size}" in cover:
+        cover = cover.replace("{size}", "480")
+    song = SongInfo(
+        source=KugouMusicClient.source,
+        raw_data={"search": item, "download": {}, "lyric": {}},
+        song_name=_legalize(item.get("SongName") or item.get("OriSongName") or ""),
+        singers=_legalize(item.get("SingerName") or ""),
+        album=_legalize(item.get("AlbumName") or ""),
+        ext=best.get("ext"),
+        file_size_bytes=best.get("size_bytes"),
+        file_size=SongInfoUtils.byte2mb(best["size_bytes"]) if best.get("size_bytes") else None,
+        duration_s=duration_s,
+        duration=_hms(duration_s),
+        cover_url=cover or None,
+        identifier=str(song_id),
+    )
+    song.formats_meta = formats
+    return song
+
+
+def kuwo_item_to_songinfo(item: dict) -> Optional[SongInfo]:
+    """酷我 abslist 条目 → 纯元数据 SongInfo（MINFO 串里带全格式码率/体积）。
+
+    MINFO 形如 ``level:ff,bitrate:2000,format:flac,size:52.83Mb;...``；
+    N_MINFO 是加密格式（mflac/mgg），不可直下，不收录。
+    """
+    rid = item.get("MUSICRID") or item.get("DC_TARGETID")
+    if not rid:
+        return None
+    duration_s = _int_or_none(item.get("DURATION"))
+    formats: list[dict] = []
+    for entry in str(item.get("MINFO") or "").split(";"):
+        meta: dict[str, str] = {}
+        for kv in entry.split(","):
+            if ":" in kv:
+                k, v = kv.split(":", 1)
+                meta[k.strip()] = v.strip()
+        fmt = (meta.get("format") or "").lower()
+        bitrate = _int_or_none(meta.get("bitrate"))
+        size_txt = (meta.get("size") or "").rstrip("MmBb")
+        if not fmt or not size_txt:
+            continue
+        try:
+            size_bytes = int(float(size_txt) * 1024 * 1024)
+        except ValueError:
+            continue
+        tier = "lossless" if fmt in _LOSSLESS_EXTS else ("high" if (bitrate or 0) >= 256 else "standard")
+        formats.append({
+            "ext": fmt,
+            "size_bytes": size_bytes,
+            "quality": tier,
+            "label": f"{fmt.upper()} {bitrate}k" if bitrate else fmt.upper(),
+        })
+    formats.sort(key=lambda f: (TIERS.index(f["quality"]), -f["size_bytes"]))
+    best = formats[0] if formats else {}
+    cover_short = item.get("web_albumpic_short") or ""
+    cover = ("https://img1.kuwo.cn/star/albumcover/" + re.sub(r"^\d+/", "500/", cover_short)) if cover_short else None
+    song = SongInfo(
+        source=KuwoMusicClient.source,
+        raw_data={"search": item, "download": {}, "lyric": {}},
+        song_name=_legalize(item.get("SONGNAME") or item.get("NAME") or ""),
+        singers=_legalize(item.get("ARTIST") or ""),
+        album=_legalize(item.get("ALBUM") or ""),
+        ext=best.get("ext"),
+        file_size_bytes=best.get("size_bytes"),
+        file_size=SongInfoUtils.byte2mb(best["size_bytes"]) if best.get("size_bytes") else None,
+        duration_s=duration_s,
+        duration=_hms(duration_s),
+        cover_url=cover,
+        identifier=str(rid),
+    )
+    song.formats_meta = formats
+    return song
+
+
+def qianqian_item_to_songinfo(item: dict) -> Optional[SongInfo]:
+    """千千（百度）typeTrack 条目 → 纯元数据 SongInfo（rateFileInfo 带码率/体积）。"""
+    song_id = item.get("TSID") or item.get("id") or item.get("assetId")
+    if not song_id:
+        return None
+    duration_s = _int_or_none(item.get("duration"))
+    formats: list[dict] = []
+    for rate, info in (item.get("rateFileInfo") or {}).items():
+        if not isinstance(info, dict):
+            continue
+        fmt = (info.get("format") or "").lower()
+        size_b = _int_or_none(info.get("size"))
+        if not fmt or not size_b:
+            continue
+        rate_n = _int_or_none(rate) or 0
+        tier = "lossless" if fmt in _LOSSLESS_EXTS else ("high" if rate_n >= 256 else "standard")
+        formats.append({
+            "ext": fmt,
+            "size_bytes": size_b,
+            "quality": tier,
+            "label": "FLAC" if fmt in _LOSSLESS_EXTS else f"{fmt.upper()} {rate_n}k",
+        })
+    formats.sort(key=lambda f: (TIERS.index(f["quality"]), -f["size_bytes"]))
+    best = formats[0] if formats else {}
+    song = SongInfo(
+        source=QianqianMusicClient.source,
+        raw_data={"search": item, "download": {}, "lyric": {}},
+        song_name=_legalize(item.get("title") or ""),
+        singers=_legalize(", ".join(
+            a.get("name") for a in (item.get("artist") or []) if isinstance(a, dict) and a.get("name")
+        )),
+        album=_legalize(item.get("albumTitle") or ""),
+        ext=best.get("ext"),
+        file_size_bytes=best.get("size_bytes"),
+        file_size=SongInfoUtils.byte2mb(best["size_bytes"]) if best.get("size_bytes") else None,
+        duration_s=duration_s,
+        duration=_hms(duration_s),
+        cover_url=item.get("pic") or None,
+        identifier=str(song_id),
     )
     song.formats_meta = formats
     return song
@@ -345,16 +511,43 @@ class LightMiguMusicClient(_LightSearchMixin, MiguMusicClient):
         return safeextractfromdict(resp2json(resp), ["songResultData", "result"], []) or []
 
 
+class LightKugouMusicClient(_LightSearchMixin, KugouMusicClient):
+    _item_parser = staticmethod(kugou_item_to_songinfo)
+
+    def _extract_items(self, resp) -> list[dict]:
+        return safeextractfromdict(resp2json(resp), ["data", "lists"], []) or []
+
+
+class LightKuwoMusicClient(_LightSearchMixin, KuwoMusicClient):
+    _item_parser = staticmethod(kuwo_item_to_songinfo)
+
+    def _extract_items(self, resp) -> list[dict]:
+        return safeextractfromdict(resp2json(resp), ["abslist"], []) or []
+
+
+class LightQianqianMusicClient(_LightSearchMixin, QianqianMusicClient):
+    _item_parser = staticmethod(qianqian_item_to_songinfo)
+
+    def _extract_items(self, resp) -> list[dict]:
+        return safeextractfromdict(resp2json(resp), ["data", "typeTrack"], []) or []
+
+
 _LIGHT_CLIENTS = {
     "QQMusicClient": LightQQMusicClient,
     "NeteaseMusicClient": LightNeteaseMusicClient,
     "MiguMusicClient": LightMiguMusicClient,
+    "KugouMusicClient": LightKugouMusicClient,
+    "KuwoMusicClient": LightKuwoMusicClient,
+    "QianqianMusicClient": LightQianqianMusicClient,
 }
 # 解析（下载地址）仍用 musicdl 原生客户端
 _RESOLVE_CLIENTS = {
     "QQMusicClient": QQMusicClient,
     "NeteaseMusicClient": NeteaseMusicClient,
     "MiguMusicClient": MiguMusicClient,
+    "KugouMusicClient": KugouMusicClient,
+    "KuwoMusicClient": KuwoMusicClient,
+    "QianqianMusicClient": QianqianMusicClient,
 }
 
 
@@ -512,6 +705,11 @@ _TIER_RESOLVERS = {
     "NeteaseMusicClient": _netease_resolve_tier,
     "MiguMusicClient": _migu_resolve_tier,
 }
+# 酷狗/酷我/千千：无逐档轻量接口，直接用 musicdl 官方级联一次解析出「最优可下」
+# （内部按音质从高到低尝试 + 链接探测），结果归到 standard 槽位（标签按真实格式）
+_BEST_OFFICIAL_SOURCES = {"KugouMusicClient", "KuwoMusicClient", "QianqianMusicClient"}
+# 有第三方解析级联可用的源（musicdl 上游实现；咪咕/千千无此机制）
+_THIRD_PARTY_SOURCES = {"QQMusicClient", "NeteaseMusicClient", "KugouMusicClient", "KuwoMusicClient"}
 
 _LOSSLESS_EXTS = {"flac", "ape", "wav", "dff", "dsf"}
 
@@ -595,9 +793,12 @@ class LightSearchService:
         return items, None
 
     def find_item(self, keyword: str, source: str, song_id: str) -> Optional[SongInfo]:
-        """按 song_id 定位搜索结果条目（缓存优先，未命中则重新轻量搜索一次）。"""
+        """按 song_id 定位条目：注册表优先（歌单导入等非搜索链路），未命中再走搜索缓存/重搜。"""
         if source not in _LIGHT_CLIENTS or not song_id:
             return None
+        registered = find_registered_song(source, song_id)
+        if registered is not None:
+            return registered
         items, _ = self.search(keyword, [source])
         for song in items:
             if str(song.identifier) == str(song_id):
@@ -663,7 +864,7 @@ class LightSearchService:
                 if t != tier and tier not in ("best", None, ""):
                     log.info("目标档位 %s 不可得，降级到 %s: %s", tier, t, item.song_name)
                 return song
-        # 官方渠道全部失败 → 第三方解析级联兜底（QQ/网易；咪咕无此机制）
+        # 官方渠道全部失败 → 第三方解析级联兜底（QQ/网易/酷狗/酷我；咪咕/千千无此机制）
         song = self._resolve_via_third_party(item, src)
         if song is not None:
             return song
@@ -674,11 +875,18 @@ class LightSearchService:
         cached = _resolve_cache.get(cache_key)
         if cached is not None:
             return cached
+        search_result = (item.raw_data or {}).get("search") or {}
+        result: dict[str, Optional[SongInfo]] = {t: None for t in TIERS}
+        if src in _BEST_OFFICIAL_SOURCES:
+            song = self._resolve_best_official(src, search_result)
+            if song is not None:
+                song._sonpick_source = src
+                result["standard"] = song
+            _resolve_cache.set(cache_key, result)
+            return result
         resolver = _TIER_RESOLVERS.get(src)
         if resolver is None:
             return {}
-        search_result = (item.raw_data or {}).get("search") or {}
-        result: dict[str, Optional[SongInfo]] = {t: None for t in TIERS}
         futures = {
             executor_submit(self._resolve_one_tier, resolver, src, search_result, tier, lane="search"): tier
             for tier in TIERS
@@ -704,8 +912,25 @@ class LightSearchService:
             label=f"{SOURCE_LABELS.get(src, src)} {tier} 解析",
         )
 
+    @staticmethod
+    def _resolve_best_official(src: str, search_result: dict) -> Optional[SongInfo]:
+        """酷狗/酷我/千千：musicdl 官方级联一次解析出最优可下版本。"""
+        client = _new_client(_RESOLVE_CLIENTS, src)
+        try:
+            song = run_with_hard_timeout(
+                lambda: client._parsewithofficialapiv1(search_result=search_result),
+                THIRD_PARTY_TIMEOUT_SECONDS,
+                label=f"{SOURCE_LABELS.get(src, src)} 官方解析",
+            )
+        except Exception as exc:
+            log.info("官方解析失败 src=%s err=%s", src, exc)
+            return None
+        if song is not None and getattr(song, "with_valid_download_url", False):
+            return song
+        return None
+
     def _resolve_via_third_party(self, item: SongInfo, src: str) -> Optional[SongInfo]:
-        if src not in ("QQMusicClient", "NeteaseMusicClient"):
+        if src not in _THIRD_PARTY_SOURCES:
             return None
         # 弹窗验证与 worker 下载会各走一次，缓存避免重复级联（空结果不缓存）
         cache_key = ("resolve3rd", src, str(item.identifier))
@@ -716,7 +941,8 @@ class LightSearchService:
             client = _new_client(_RESOLVE_CLIENTS, src)
             search_result = (item.raw_data or {}).get("search") or {}
             song = run_with_hard_timeout(
-                lambda: client._parsewiththirdpartapis(search_result=search_result),  # 私有级联（契约测试兜底）
+                # request_overrides 不能省：部分源（如酷狗）内部直接 .get 未判 None
+                lambda: client._parsewiththirdpartapis(search_result=search_result, request_overrides={}),  # 私有级联（契约测试兜底）
                 THIRD_PARTY_TIMEOUT_SECONDS,
                 label=f"{SOURCE_LABELS.get(src, src)} 第三方解析",
             )
@@ -734,3 +960,22 @@ class LightSearchService:
 
 _search_cache = _TTLCache()
 _resolve_cache = _TTLCache()
+# 歌曲注册表：(source, song_id) → SongInfo。歌单导入等非搜索来源的曲目在这里登记，
+# worker 下载时按 song_id 直接锁定，不依赖搜索关键词缓存（find_item 注册表优先）。
+_song_registry = _TTLCache()
+
+
+def register_songs(items) -> None:
+    """把一批 SongInfo 注册进歌曲注册表（歌单导入等非搜索链路的曲目锁定入口）。"""
+    for song in items:
+        src = getattr(song, "_sonpick_source", None) or getattr(song, "source", None)
+        identifier = getattr(song, "identifier", None)
+        if src and identifier:
+            _song_registry.set(("song", src, str(identifier)), song)
+
+
+def find_registered_song(source: str, song_id: str):
+    """按 (source, song_id) 查歌曲注册表，未命中返回 None。"""
+    if not source or not song_id:
+        return None
+    return _song_registry.get(("song", source, str(song_id)))

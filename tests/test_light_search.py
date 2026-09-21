@@ -12,8 +12,11 @@ from unittest import mock
 
 from app.services.light_search_service import (
     LightSearchService,
+    kugou_item_to_songinfo,
+    kuwo_item_to_songinfo,
     migu_item_to_songinfo,
     netease_item_to_songinfo,
+    qianqian_item_to_songinfo,
     qq_item_to_songinfo,
 )
 
@@ -62,8 +65,65 @@ MIGU_ITEM = {
     ],
 }
 
+# 酷狗/酷我/千千真实响应样例（2026-09 抓取，已裁剪）
+KUGOU_ITEM = {
+    "ID": "32100650",
+    "SongName": "晴天",
+    "SingerName": "周杰伦",
+    "AlbumName": "叶惠美",
+    "Duration": 269,
+    "FileSize": 4317292,
+    "ExtName": "mp3",
+    "HQFileSize": 10792943,
+    "HQExtName": "mp3",
+    "SQFileSize": 31633244,
+    "SQExtName": "flac",
+    "ResFileSize": 55397039,
+    "Image": "http://imge.kugou.com/stdmusic/{size}/20230920/abc.jpg",
+}
+
+KUWO_ITEM = {
+    "MUSICRID": "MUSIC_228908",
+    "SONGNAME": "晴天",
+    "NAME": "晴天",
+    "ARTIST": "周杰伦",
+    "ALBUM": "叶惠美",
+    "DURATION": "269",
+    "web_albumpic_short": "120/s3s94/93/211513640.jpg",
+    "MINFO": (
+        "level:ff,bitrate:2000,format:flac,size:52.83Mb;"
+        "level:p,bitrate:320,format:mp3,size:10.29Mb;"
+        "level:h,bitrate:128,format:mp3,size:4.12Mb;"
+        "level:s,bitrate:48,format:aac,size:1.57Mb"
+    ),
+    "N_MINFO": "level:zply,bitrate:20900,format:mflac,size:178.32Mb",  # 加密格式，不收录
+}
+
+QIANQIAN_ITEM = {
+    "TSID": "T10065400429",
+    "id": "T10065400429",
+    "title": "晴天",
+    "artist": [{"name": "周杰伦"}],
+    "albumTitle": "叶惠美",
+    "duration": 269,
+    "pic": "https://img01.dmhmusic.com/abc.jpg",
+    "rateFileInfo": {
+        "3000": {"size": 57635329, "format": "flac"},
+        "320": {"size": 10759932, "format": "mp3"},
+        "128": {"size": 4304124, "format": "mp3"},
+        "64": {"size": 2151918, "format": "aac"},
+    },
+}
+
 
 class QQMappingTests(unittest.TestCase):
+    def test_null_text_normalized(self):
+        """musicdl legalizestring 把空字段变成 'NULL'，mapper 出口必须归一为空串。"""
+        item = {**QQ_ITEM, "singer": [], "album": {}}
+        song = qq_item_to_songinfo(item)
+        self.assertEqual(song.singers, "")
+        self.assertEqual(song.album, "")
+
     def test_basic_fields(self):
         song = qq_item_to_songinfo(QQ_ITEM)
         self.assertEqual(song.identifier, "0039MnYb0qxYhV")
@@ -132,6 +192,72 @@ class MiguMappingTests(unittest.TestCase):
         # 数字型 size（MB）也要能解析
         pq = song.formats_meta[-1]
         self.assertEqual(pq["size_bytes"], int(4.1 * 1024 * 1024))
+
+
+class KugouMappingTests(unittest.TestCase):
+    def test_basic_fields(self):
+        song = kugou_item_to_songinfo(KUGOU_ITEM)
+        self.assertEqual(song.identifier, "32100650")
+        self.assertEqual(song.song_name, "晴天")
+        self.assertEqual(song.singers, "周杰伦")
+        self.assertEqual(song.album, "叶惠美")
+        self.assertEqual(song.duration_s, 269)
+        # 封面 {size} 占位符替换
+        self.assertNotIn("{size}", song.cover_url)
+
+    def test_formats_order_and_best(self):
+        song = kugou_item_to_songinfo(KUGOU_ITEM)
+        self.assertEqual(
+            [(f["label"], f["quality"]) for f in song.formats_meta],
+            [("Hi-Res", "lossless"), ("FLAC", "lossless"), ("MP3 320", "high"), ("MP3", "standard")],
+        )
+        self.assertEqual(song.ext, "flac")  # best = Hi-Res（flac）
+        self.assertEqual(song.file_size_bytes, 55397039)
+
+    def test_missing_id_returns_none(self):
+        self.assertIsNone(kugou_item_to_songinfo({"SongName": "x"}))
+
+
+class KuwoMappingTests(unittest.TestCase):
+    def test_basic_fields(self):
+        song = kuwo_item_to_songinfo(KUWO_ITEM)
+        self.assertEqual(song.identifier, "MUSIC_228908")
+        self.assertEqual(song.song_name, "晴天")
+        self.assertEqual(song.singers, "周杰伦")
+        self.assertEqual(song.duration_s, 269)
+        # 封面尺寸段 120 → 500
+        self.assertEqual(song.cover_url, "https://img1.kuwo.cn/star/albumcover/500/s3s94/93/211513640.jpg")
+
+    def test_minfo_parsed_and_encrypted_excluded(self):
+        song = kuwo_item_to_songinfo(KUWO_ITEM)
+        labels = [f["label"] for f in song.formats_meta]
+        self.assertEqual(labels, ["FLAC 2000k", "MP3 320k", "MP3 128k", "AAC 48k"])
+        self.assertNotIn("MFLAC", " ".join(labels))  # N_MINFO 加密格式不收录
+        self.assertEqual(song.formats_meta[0]["quality"], "lossless")
+        self.assertEqual(song.formats_meta[0]["size_bytes"], int(52.83 * 1024 * 1024))
+        self.assertEqual(song.ext, "flac")
+
+    def test_missing_rid_returns_none(self):
+        self.assertIsNone(kuwo_item_to_songinfo({"NAME": "x"}))
+
+
+class QianqianMappingTests(unittest.TestCase):
+    def test_basic_fields(self):
+        song = qianqian_item_to_songinfo(QIANQIAN_ITEM)
+        self.assertEqual(song.identifier, "T10065400429")
+        self.assertEqual(song.song_name, "晴天")
+        self.assertEqual(song.singers, "周杰伦")
+        self.assertEqual(song.duration_s, 269)
+        self.assertEqual(song.cover_url, "https://img01.dmhmusic.com/abc.jpg")
+
+    def test_rate_file_info_sorted_by_tier(self):
+        song = qianqian_item_to_songinfo(QIANQIAN_ITEM)
+        self.assertEqual(
+            [(f["label"], f["quality"]) for f in song.formats_meta],
+            [("FLAC", "lossless"), ("MP3 320k", "high"), ("MP3 128k", "standard"), ("AAC 64k", "standard")],
+        )
+        self.assertEqual(song.ext, "flac")
+        self.assertEqual(song.file_size_bytes, 57635329)
 
 
 class ResolveFlowTests(unittest.TestCase):
@@ -234,16 +360,23 @@ class MusicdlPrivateApiContractTests(unittest.TestCase):
     """本工程复用的 musicdl 私有方法/工具在上游升级后仍需存在且签名兼容。"""
 
     def test_private_surface_exists(self):
-        from musicdl.modules.sources import MiguMusicClient, NeteaseMusicClient, QQMusicClient
+        from musicdl.modules.sources import (
+            KugouMusicClient,
+            KuwoMusicClient,
+            MiguMusicClient,
+            NeteaseMusicClient,
+            QianqianMusicClient,
+            QQMusicClient,
+        )
         from musicdl.modules.utils import AudioLinkTester, SongInfo, SongInfoUtils
         from musicdl.modules.utils.neteaseutils import EapiCryptoUtils
         from musicdl.modules.utils.qqutils import Credential, QQMusicClientUtils
 
-        for cls in (QQMusicClient, NeteaseMusicClient, MiguMusicClient):
+        for cls in (QQMusicClient, NeteaseMusicClient, MiguMusicClient, KugouMusicClient, KuwoMusicClient, QianqianMusicClient):
             self.assertTrue(hasattr(cls, "_constructsearchurls"), cls.__name__)
             self.assertTrue(hasattr(cls, "_parsewithofficialapiv1"), cls.__name__)
-        self.assertTrue(hasattr(QQMusicClient, "_parsewiththirdpartapis"))
-        self.assertTrue(hasattr(NeteaseMusicClient, "_parsewiththirdpartapis"))
+        for cls in (QQMusicClient, NeteaseMusicClient, KugouMusicClient, KuwoMusicClient):
+            self.assertTrue(hasattr(cls, "_parsewiththirdpartapis"), cls.__name__)
         self.assertTrue(hasattr(MiguMusicClient, "_decryptresp"))
         self.assertTrue(hasattr(AudioLinkTester, "test"))
         self.assertTrue(hasattr(AudioLinkTester, "VALID_AUDIO_EXTS"))

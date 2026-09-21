@@ -23,7 +23,7 @@
 
 可部署在 NAS 上的**个人音乐下载与管理** Web 应用。
 
-- 搜索/批量下载音乐（基于 `musicdl`，当前主要 QQ 音乐源）
+- 搜索/批量下载音乐（基于 `musicdl`，6 个源：QQ/网易/咪咕/酷狗/酷我/千千）；支持歌单链接导入（粘贴歌单 URL → 勾选曲目 → song_id 锁定下载）
 - 曲库：播放、转码 MP3、删除
 - WebDAV：连接配置、目录浏览、代理播放、套件上传（音频+封面+歌词）
 - 操作日志：下载 / 上传 / 删除 / 转码可查询
@@ -143,7 +143,7 @@ music/
 | `/api/auth` | `auth.py` | 登录、JWT |
 | `/api/settings` | `settings.py` | 系统/WebDAV 相关设置 |
 | `/api/search` | `search.py` | 搜索（轻量：只取元数据，每源 1 请求、源间并发）；`POST /search/resolve` 单曲格式验证（下载确认弹窗用） |
-| `/api/download` | `download.py` | 创建下载任务 |
+| `/api/download` | `download.py` | 创建下载任务；`POST /download/playlist/parse` 歌单链接解析（只取元数据） |
 | `/api/songs` | `library.py` | 曲库、播放、转码、上传、删除 |
 | `/api/webdav` | `webdav.py` | 列表、流式播放 |
 | `/api/tasks` | `tasks.py` | 任务查询 |
@@ -173,7 +173,7 @@ music/
   - 列表接口取版本必须**批量**（`song_version_summary.songs_with_summary` 一次 `IN` 查询）；逐条查会把列表拖成 N+1。回归护栏见 `tests/test_song_list_versions.py`（SQL 条数不随歌曲数增长）。
 - **Song 不记录来源**：歌曲与来源的归属只由 `SongFile.library_source_id` 承载。可见性过滤（喜欢/艺术家/专辑/历史/歌单/统计）、批量任务按来源选歌、来源歌曲数统计，统一使用 `app/services/library_visibility.py`（`active_song_query` / `active_song_filter` / `has_version_in_source` / `count_songs_in_source`）；禁止再按 Song 判断来源或重新加回 `Song.library_source_id`。
 - **元数据 L0（展示/刮削成功只认）**：`Song` 文本字段 + 封面 `data/covers/by-hash/{sha}`（`Song.cover_path` 指向它）+ 歌词指针/provenance。侧车 `cover.jpg` / `.lrc` 与内嵌标签是 L1/L2 写穿；格式不支持内嵌（如 WMA）为 `unsupported`，不算刮削失败。详见 `docs/metadata-l0-cover-refactor.md`。
-- `Song.cover_path` / `Song.lrc_path` 是 L0 指针（封面应为 by-hash）；`SongFile.cover_path` / `SongFile.lrc_path` 是版本侧车资源。扫描和选中版本时可回填 L0。
+- `Song.cover_path` / `Song.lrc_path` 是 L0 指针（封面应为 by-hash）；`SongFile.cover_path` / `SongFile.lrc_path` 是版本侧车资源。扫描和选中版本时可回填 L0。**封面回填唯一入口是 `media_meta_service.backfill_song_cover_l0`**：已有合法 L0（by-hash 且文件存在）封面绝不覆盖，缺失/失效/历史非 by-hash 时才把候选侧车固化为 by-hash 回填；任何「版本侧车 → Song.cover_path」的写入都必须走它（v0.15.2-rc1 前 `SongFileResolver.refresh_song_assets` 无条件用侧车覆盖 L0，导致每次播放解析后 L0 被打回侧车）。歌词指针允许指向版本侧车，回填跟随选中版本。
 - 扫描接口 `/api/library/scan` 和 `/api/sources/{source_id}/scan` 会创建 `type=scan` 的异步任务；前端经任务中心/单任务 SSE 接收终态。
 - **扫描不覆盖已存在的 Song 文本元数据**：扫描仅补充缺失字段（title/artist/album 为空或仅为通用目录名时），绝不反向用文件名/目录派生值覆盖用户已刮削或手动修正的标题/艺人/专辑。封面/歌词侧车与时长/大小等物质事实可刷新，但文本归属数据以用户修正为准。回归测试要点：刮削修正后再次扫描不得回退。
 - 失效记录管理：`GET /api/songs?availability=available|all|unavailable` 筛选；`POST /api/songs/{id}/recheck` 单歌重检（本地 stat + WebDAV 探测，连接失败保留原状态）；`POST /api/library/cleanup/preview` 分析 + `POST /api/library/cleanup` 创建 `type=cleanup` 异步任务（`library_cleanup_service`：文件还在→恢复 available，确认失联→仅删 DB 记录，存储不可达→跳过防误删）。
@@ -189,6 +189,7 @@ music/
 ### 4.4 服务层
 
 - `library_layout.py`：曲库目录/命名规范（Artist/Album/Title、cover.jpg、artist.jpg、同名 lrc）
+- `playlist_import_service.py`：歌单链接导入的唯一入口（`parse_playlist`）。**故意不用 musicdl 的 `parseplaylist`**（它逐曲串行跑完整解析级联）；只拉曲目元数据（每源 1 列表请求 + 分页，网易另需批量 song/detail），映射复用 `light_search_service` 的 6 个 mapper（酷狗/酷我歌单形状不同，各有一个适配器），结果注册进歌曲注册表供 worker 按 song_id 锁定。六源接口与字段形状写在文件头注释，上游升级由 `tests/test_playlist_import.py` 契约测试兜底
 - `library_scan_service.py`：扫描与自愈。**排除判定的唯一入口是 `path_is_excluded(path, root, globs)`**（根内用相对路径，根外退回绝对路径组件匹配）；扫描开始时 `_heal_stale_paths` 标记失效版本，`_purge_excluded_local_versions` 删除命中排除规则的本地版本行（回收站 `.@#local/trash`、隐藏目录、`@eaDir` 等历史遗留不再长期驻留曲库，物理文件不动，改回规则重扫即重新入库）
 - `resolve_song_meta`（`media_meta_service`）：内嵌→侧车→DB→可选网络
 - 整理：`scripts/reorganize_library.py`（默认可独立运行，根=脚本目录；dry-run / `--apply`；可选 `--with-db`）
@@ -196,7 +197,7 @@ music/
 
 
 - `MusicDLService`：下载（按格式落盘）；`download_one` 只消费「已解析出 download_url 的 SongInfo」（`picked`），签名以源码为准，`task_worker` 必须匹配
-- `light_search_service.py`：轻量搜索 + 下载时解析的唯一入口（`LightSearchService`）。搜索只取元数据（复用 musicdl 的搜索 URL 构造/官方解析，跳过其逐条 URL 解析），源间并发 + 10min 内存 TTL 缓存（空结果不缓存）；`resolve_formats` 对锁定单曲定向验证三档格式（lossless/high/standard，每档 1 接口 + 1 探测、档间并行），官方三档全空（VIP/付费曲常见）时兜底一次第三方解析级联（条目 `via=third_party`、tier=best，带 10min 缓存避免弹窗与 worker 重复级联）；按 (ext, 体积) 去重、标签按实际 ext/码率诚实命名；`resolve_for_download` 按档位逐级回退，全空再兜底第三方接口。复用了 musicdl 私有方法（钉版依赖），上游升级时 `tests/test_light_search.py` 的契约测试会失败
+- `light_search_service.py`：轻量搜索 + 下载时解析的唯一入口（`LightSearchService`）。支持 6 源（QQ/网易/咪咕/酷狗/酷我/千千，`DEFAULT_DOWNLOAD_SOURCES` 顺序即默认优先级）。搜索只取元数据（复用 musicdl 的搜索 URL 构造/官方解析，跳过其逐条 URL 解析），源间并发 + 10min 内存 TTL 缓存（空结果不缓存）；`resolve_formats` 对锁定单曲定向验证三档格式（lossless/high/standard，每档 1 接口 + 1 探测、档间并行；酷狗/酷我/千千无逐档轻量接口，走 `_resolve_best_official` 官方级联一次出最优），官方三档全空（VIP/付费曲常见）时兜底一次第三方解析级联（QQ/网易/酷狗/酷我，条目 `via=third_party`、tier=best，带 10min 缓存避免弹窗与 worker 重复级联）；按 (ext, 体积) 去重、标签按实际 ext/码率诚实命名；`resolve_for_download` 按档位逐级回退。复用了 musicdl 私有方法（钉版依赖），上游升级时 `tests/test_light_search.py` 的契约测试会失败。注意：部分源（酷狗）的 `_parsewiththirdpartapis` 内部对 `request_overrides=None` 不判空，调用必须显式传 `{}`
 - `WebDAVService`：
   - list/stream/upload **共用** URL 根拆分逻辑，禁止再写死 `/music`
   - 上传为套件：音频 + 可选封面/歌词（同 stem）
@@ -242,6 +243,7 @@ music/
 ### 5.2 UI / 工程
 
 - 组件库：Naive UI；图标：`@vicons/ionicons5`
+- 下载源选择：统一用 `components/download/SourcePicker.vue`（单排 chips：实色已选在前、按顺序优先，可拖拽或点 ‹ › 排序、× 移除；虚线待选在后、点击追加到已选末尾），源清单与持久化在 `utils/downloadSources.js`（与后端 `SOURCE_LABELS` 对应，改一边必须改另一边）；**禁止**再用裸 `n-select` 各写一份
 - 新 Naive 组件要在 `web/src/main.js` **import 并注册**（未全量 unplugin 自动引入时尤其注意）
 - 全局播放器：Pinia `player` store；音频 URL 常带 `token` query
 - 系统媒体键/线控：`web/src/composables/useMediaSession.js`（Media Session API，挂载于 `GlobalPlayer.vue`）——单击播放/暂停、双击下一曲、三击上一曲由 OS 翻译成媒体命令，网页只收 action，无法感知按键次数
@@ -603,6 +605,7 @@ ssh qnap 'curl -sS http://127.0.0.1:8301/health'
 - 进度管线：`emit()` 非阻塞入队，flusher 协程每 0.5s 按任务合并批量落库 + 广播；任务写终态前强制冲刷；loop 未运行时回退同步直写
 - **watchdog**（60s 周期）：running 任务超 30 分钟无更新（`updated_at`）且 future 已丢失/完成（进程重启后 orphaned 同此）→ 标记 `failed`；判定只看 future，不看线程 ident
 - 任务认领为原子 claim（`UPDATE ... WHERE status='pending'` 按 rowcount 判归属），多进程/多 worker 下不会重复执行
+- 批量下载（`batch_download`）两种模式：① 关键词清单——按已选源有序搜索 → `_order_candidates` 按歌名规范化相等+歌手重叠重排（版本差异降级，与曲库比对同口径）→ `_resolve_first` 按序解析候选（上限 `_BATCH_CANDIDATE_LIMIT`=5），第一个验证通过的下载，全败才判失败；② `items` 确切曲目（歌单导入）——song_id 锁定，经歌曲注册表（`_song_registry`，`light_search_service.register_songs`）直接定位，跳过搜索与候选打分
 - 前端 TaskCenter 抽屉打开时 10s 兜底轮询
 - 注意：**整理（reorganize）不走任务系统**，是同步 HTTP（前端 timeout 120s/600s）；扫描、下载、转码和刮削走 TaskWorker 异步任务
 

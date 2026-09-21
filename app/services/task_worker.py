@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, get_engine
 from app.models import AppSettings, Song, SongFile, Task, iso_utc
+from app.services.library_match_service import _norm_artist, _norm_title, match_search_results
 from app.services.musicdl_service import MusicDLService
 from app.services.light_search_service import PREFER_TO_TIER, LightSearchService
 from app.services.operation_log_service import write_log
@@ -22,6 +23,57 @@ from app.services.song_file_resolver import SongFileResolver
 from app.services.webdav_service import WebDAVService
 
 log = logging.getLogger("sonpick.task")
+
+# 批量下载每首歌最多尝试的搜索候选数（第一条解析失败时回退下一条）
+_BATCH_CANDIDATE_LIMIT = 5
+
+
+def _split_keyword(kw: str) -> tuple[Optional[str], Optional[str]]:
+    """批量歌单行「歌名 - 歌手」→ (歌名, 歌手)；无分隔符时只有歌名。"""
+    parts = [p.strip() for p in str(kw or "").split(" - ", 1)]
+    title = parts[0] or None
+    artist = parts[1] if len(parts) > 1 and parts[1] else None
+    return title, artist
+
+
+def _candidate_score(item, kw: str) -> int:
+    """候选与关键词的匹配度：0 完全匹配，1 部分匹配（版本差异/歌手不符），2 歌名不符。"""
+    want_title, want_artist = _split_keyword(kw)
+    if not want_title:
+        return 0
+    want_base, want_tokens = _norm_title(want_title)
+    base, tokens = _norm_title(getattr(item, "song_name", None))
+    if base != want_base:
+        return 2
+    # 版本差异（伴奏/ Live/翻唱等）与歌手不重叠都降一级；与曲库比对同口径
+    if tokens - want_tokens:
+        return 1
+    if want_artist:
+        want_art = _norm_artist(want_artist)
+        art = _norm_artist(getattr(item, "singers", None))
+        if not art or not (set(art) & set(want_art)):
+            return 1
+    return 0
+
+
+def _order_candidates(items: list, kw: str) -> list:
+    """搜索结果按「歌名/歌手匹配度」重排：歌名规范化相等且歌手重叠的排最前（稳定排序）。
+
+    批量下载是无人值守的「取第一命中」，第一条是翻唱/现场版时原样照下；
+    用与曲库比对同一套归一化（_norm_title/_norm_artist）把明显更匹配的候选提前。
+    """
+    return sorted(items, key=lambda it: _candidate_score(it, kw))
+
+
+def _resolve_first(light: LightSearchService, items: list, tier: str, on_skip=None):
+    """按序尝试候选，返回第一个解析出可下载版本的 (item, resolved)；全部失败返回 (None, None)。"""
+    for cand in items[:_BATCH_CANDIDATE_LIMIT]:
+        try:
+            return cand, light.resolve_for_download(cand, tier)
+        except Exception as exc:
+            if on_skip:
+                on_skip(cand, exc)
+    return None, None
 
 
 class WSManager:
@@ -606,14 +658,31 @@ class TaskWorker:
             if task.type in ("search_download", "batch_download"):
                 keywords = payload.get("keywords") or [payload.get("keyword")]
                 keywords = [k for k in keywords if k]
-                prefer = payload.get("prefer", "any")
+                # 歌单导入的确切曲目（song_id 锁定）优先于关键词清单
+                entries = payload.get("items") or [{"keyword": k} for k in keywords]
+                # prefer 未显式指定时跟随系统设置 prefer_format，最后兜底 any
+                prefer = (
+                    payload.get("prefer")
+                    or (getattr(settings, "prefer_format", None) if settings else None)
+                    or "any"
+                )
+                # 批量：曲库已存在时的策略（skip 默认 / keep_both）；单曲锁定的决策由 payload 自带
+                batch_dup_action = str(payload.get("duplicate_action") or "skip") if task.type == "batch_download" else None
+                ok_count = fail_count = skip_count = 0
+                failed_items: list[str] = []
                 selected_source = str(payload.get("source") or "all").strip()
-                music_sources = None if selected_source == "all" else [selected_source]
-                total = max(len(keywords), 1)
+                # 有序多源：逗号分隔，顺序即优先级；all 表示全部默认源
+                music_sources = (
+                    None
+                    if selected_source == "all"
+                    else [s.strip() for s in selected_source.split(",") if s.strip()]
+                )
+                total = max(len(entries), 1)
                 storage = Path(settings.storage_path if settings else "./downloads")
                 storage.mkdir(parents=True, exist_ok=True)
 
-                for idx, kw in enumerate(keywords):
+                for idx, entry in enumerate(entries):
+                    kw = (entry.get("keyword") or "").strip() or entry.get("song_id") or "未知曲目"
                     if self._is_cancelled(task_id, db):
                         status = "cancelled"
                         task.status = "cancelled"
@@ -621,27 +690,45 @@ class TaskWorker:
                         return
 
                     pct = int(idx / total * 100)
-                    self.emit(task_id, f"搜索: {kw}", pct)
+                    self.emit(task_id, f"{'定位' if (entry.get('song_id') or payload.get('song_id')) else '搜索'}: {kw}", pct)
                     item = None
                     resolved = None
                     try:
-                        # 单曲锁定（搜索页下载）：按 song_id 定位该曲；
-                        # 批量/关键词下载：轻量搜索取第一命中。
-                        song_id = payload.get("song_id")
+                        # 单曲锁定（搜索页下载 / 歌单导入）：按 song_id 定位该曲（注册表优先）；
+                        # 关键词批量下载：轻量搜索，歌名歌手匹配优先，候选解析失败回退下一条。
+                        song_id = entry.get("song_id") or payload.get("song_id")
+                        entry_source = entry.get("source") or selected_source
                         tier = payload.get("format") or PREFER_TO_TIER.get(prefer, "best")
                         if song_id:
-                            item = light.find_item(kw, selected_source, song_id)
+                            item = light.find_item(kw, entry_source, song_id)
                             if item is None:
                                 raise RuntimeError("未找到该歌曲（搜索结果可能已变化），请重新搜索后再试")
+                            self.emit(task_id, "验证可下载格式…", pct)
+                            resolved = light.resolve_for_download(item, tier)
                         else:
                             items, search_errors = light.search(kw, music_sources=music_sources)
                             if not items and search_errors:
                                 raise RuntimeError("音乐源搜索失败：" + "；".join(search_errors))
-                            item = items[0] if items else None
-                        if item is not None:
-                            self.emit(task_id, "验证可下载格式…", pct)
-                            resolved = light.resolve_for_download(item, tier)
+                            ordered = _order_candidates(items, kw)
+                            # 歌名完全不符的候选不能下：宁可判未找到，也不把无关歌曲塞进曲库
+                            if ordered and _candidate_score(ordered[0], kw) >= 2:
+                                item = None
+                            else:
+                                item, resolved = _resolve_first(
+                                    light,
+                                    ordered,
+                                    tier,
+                                    on_skip=lambda cand, exc: self.emit(
+                                        task_id,
+                                        f"候选不可用: {getattr(cand, 'song_name', '') or kw}（{exc}）",
+                                        pct,
+                                    ),
+                                )
+                            if items and item is None and ordered and _candidate_score(ordered[0], kw) < 2:
+                                raise RuntimeError("所有候选均无可下载版本")
                     except Exception as e:
+                        fail_count += 1
+                        failed_items.append(f"{kw}（{e}）")
                         self.emit(task_id, f"搜索失败: {e}", pct)
                         write_log(
                             db,
@@ -656,6 +743,8 @@ class TaskWorker:
                         continue
 
                     if item is None:
+                        fail_count += 1
+                        failed_items.append(f"{kw}（搜索无结果）")
                         self.emit(task_id, f"未找到: {kw}", pct)
                         write_log(
                             db,
@@ -668,6 +757,28 @@ class TaskWorker:
                             detail={"keyword": kw},
                         )
                         continue
+
+                    # 批量：命中曲库时按策略处理（skip 直接跳过；keep_both 下载后并入同一逻辑 Song）
+                    batch_matched_song_id = None
+                    if task.type == "batch_download":
+                        matches = match_search_results(db, [{
+                            "song_name": getattr(item, "song_name", None),
+                            "singers": getattr(item, "singers", None),
+                            "album": getattr(item, "album", None),
+                            "duration": getattr(item, "duration_s", None) or getattr(item, "duration", None),
+                            "song_id": str(getattr(item, "identifier", "") or "") or None,
+                        }])
+                        matched = matches[0] if matches else None
+                        if matched and matched.get("status") == "exists":
+                            if batch_dup_action == "skip":
+                                skip_count += 1
+                                self.emit(
+                                    task_id,
+                                    f"曲库已存在，跳过: {getattr(item, 'song_name', '')} - {getattr(item, 'singers', '')}",
+                                    pct,
+                                )
+                                continue
+                            batch_matched_song_id = matched.get("song_id")
 
                     song_name = getattr(item, "song_name", None) or kw
                     singers = getattr(item, "singers", None) or ""
@@ -686,7 +797,12 @@ class TaskWorker:
                         if song is None:
                             raise RuntimeError("未找到可下载版本，或下载文件落盘失败")
                         # 曲库重复决策：保留两者并入同一逻辑 Song；替换走安全流程
+                        # 批量只有 skip/keep_both 且目标来自执行前的实时比对，replace 不开放
                         dup_action = payload.get("duplicate_action")
+                        matched_song_id = payload.get("matched_song_id")
+                        if task.type == "batch_download":
+                            dup_action = "keep_both" if batch_matched_song_id else None
+                            matched_song_id = batch_matched_song_id
                         dup_suffix = ""
                         replaced_path = None
                         if dup_action == "replace" and payload.get("replace_song_file_id"):
@@ -696,16 +812,16 @@ class TaskWorker:
                                 db,
                                 song,
                                 int(payload["replace_song_file_id"]),
-                                payload.get("matched_song_id"),
+                                matched_song_id,
                                 task_id=task_id,
                             )
                             replaced = db.get(SongFile, int(payload["replace_song_file_id"]))
                             replaced_path = replaced.local_path if replaced else None
                             dup_suffix = "并替换已有本地版本"
-                        elif dup_action == "keep_both" and payload.get("matched_song_id"):
+                        elif dup_action == "keep_both" and matched_song_id:
                             from app.services.download_duplicate_service import apply_keep_both
 
-                            song = apply_keep_both(db, song, payload.get("matched_song_id"))
+                            song = apply_keep_both(db, song, matched_song_id)
                             dup_suffix = "（保留两个版本）"
                         # 格式取自最终落地的 SongFile（Song 已不再保存 format）
                         downloaded_file = SongFileResolver(db).resolve_local(song)
@@ -729,6 +845,8 @@ class TaskWorker:
                             },
                         )
                     except Exception as e:
+                        fail_count += 1
+                        failed_items.append(f"{kw}（{e}）")
                         self.emit(task_id, f"下载失败: {e}", pct)
                         write_log(
                             db,
@@ -741,6 +859,8 @@ class TaskWorker:
                             detail={"keyword": kw},
                         )
                         continue
+
+                    ok_count += 1
 
                     if settings and not settings.lossless_preferred and settings.auto_convert_when_lossless_not_preferred:
                         try:
@@ -800,11 +920,25 @@ class TaskWorker:
                             )
 
             task.status = "completed"
-            task.result_json = json.dumps({"ok": True})
+            if task.type == "batch_download":
+                task.result_json = json.dumps({
+                    "ok": True,
+                    "success": ok_count,
+                    "failed": fail_count,
+                    "skipped": skip_count,
+                })
+            else:
+                task.result_json = json.dumps({"ok": True})
             status = "completed"
             task.updated_at = datetime.now(timezone.utc)
             db.commit()
-            self.emit(task_id, "完成", 100)
+            if task.type == "batch_download":
+                summary = f"完成：成功 {ok_count}，失败 {fail_count}，跳过 {skip_count}"
+                if failed_items:
+                    summary += "；失败项：" + "、".join(failed_items[:5]) + ("…" if len(failed_items) > 5 else "")
+                self.emit(task_id, summary, 100)
+            else:
+                self.emit(task_id, "完成", 100)
         except Exception as e:
             log.error(f"[_run_sync error] {e}")
             traceback.print_exc()
