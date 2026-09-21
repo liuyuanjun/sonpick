@@ -402,8 +402,12 @@ async function confirmDownload() {
 .toolbar {
   display: flex;
   gap: 10px;
-  flex-wrap: wrap;
   align-items: center;
+}
+/* n-input 默认块级 100% 宽，在 flex 行内会独占一行把按钮挤下去，必须显式收进 flex */
+.keyword-input {
+  flex: 1;
+  min-width: 0;
 }
 .toolbar-actions {
   display: flex;
