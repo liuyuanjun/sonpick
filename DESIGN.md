@@ -304,7 +304,7 @@ z-index 分带以 `AGENTS.md` §5.5 为唯一权威，此处不重复定义：`1
 | 区块间距 | 16px |
 | 卡片间距 | 12px |
 | 卡片内边距 | 14px |
-| 内容最大宽度 | 1280px 居中 |
+| 内容最大宽度 | 1280px（贴侧栏，右侧留白） |
 | 触控目标最小 | 36×36px |
 
 > ⚠️ **落地状态**：上表是 `tokens.js` 的**声明值**（详见 `LAYOUT` 注释）。已接入：`touchTargetMin`（→ naive.js 控件高度）；页面边距（`pagePad*`）与内容限宽 `contentMaxWidth`（1280px）由 `LayoutView` 的 `.content`/`.header` 消费；语义间距 `section`/`card-pad`/`card-gap` 已在「值匹配处」消费。`iconButtonSize`（圆形按钮 40px）已删除（无现实锚点）。其余值不匹配的间距（18/10/8/6px）留待「间距收敛」专项。
@@ -316,7 +316,7 @@ z-index 分带以 `AGENTS.md` §5.5 为唯一权威，此处不重复定义：`1
 | mobile | ≤768px | 极简顶栏 + 底部 Tab 栏（52px + 安全区） |
 | desktop | >768px | 完整侧栏 220px；折叠为 64px 由左下「折叠开关」手动触发 |
 
-> ⚠️ 当前代码只实现 768px 一处断点（`useIsMobile()` / CSS `max-width: 768px`）。「tablet / wide 分级」**尚未落地**；内容居中限宽已由 §5.1 的 `contentMaxWidth` 接入（见 §5.1 落地状态）。
+> ⚠️ 当前代码只实现 768px 一处断点（`useIsMobile()` / CSS `max-width: 768px`）。「tablet / wide 分级」**尚未落地**；内容限宽（贴侧栏）已由 §5.1 的 `contentMaxWidth` 接入（见 §5.1 落地状态）。
 
 **移动端字号降级**用 `--sp-fs-{display,h1,h2}-mobile`，不要另写 px。
 

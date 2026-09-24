@@ -345,9 +345,19 @@ function onUserSelect(key) {
 }
 .content {
   padding: var(--sp-layout-page-pad-y) var(--sp-layout-page-pad-x) 24px;
-  /* 内容限宽居中：1280 内容 + 两侧边距一起居中；仅在 >1500px 大屏触发 */
+  /* 内容限宽：1280 内容 + 两侧边距；超宽屏时左对齐（贴侧栏），右侧留白 */
   max-width: calc(var(--sp-layout-content-max) + 2 * var(--sp-layout-page-pad-x));
-  margin: 0 auto;
+  /*
+    sticky 穿透：n-layout-content 自身的 overflow:hidden 与其内部滚动容器的
+    overflow-y:auto 会把内部 sticky 元素（列表分页栏吸附底部、表头吸附顶部）的
+    滚动上下文截断在这里——而这个容器高度随内容增长、本身从不滚动，于是吸附失效。
+    改为 visible 让 sticky 相对真正滚动的外层 n-layout 容器生效；
+    该容器本就不产生滚动，此改动不改变任何页面的实际滚动行为。
+  */
+  overflow: visible;
+}
+.content > :deep(.n-layout-scroll-container) {
+  overflow: visible;
 }
 /* 悬浮播放胶囊浮在内容之上，为其预留底部空间；几何统一由 :root 的 --gp-* 变量驱动 */
 .content.has-mini-player {

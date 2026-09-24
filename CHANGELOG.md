@@ -1,10 +1,23 @@
 # Changelog
 
+## 0.15.2-rc6
+
+### 歌曲列表与分页
+
+- **修复分页栏「吸附底部」从未生效（根因）**：`SongTable` 分页栏一直是 `position: sticky; bottom`，但 `LayoutView` 里 `n-layout-content` 自身的 `overflow:hidden` 与其内部滚动容器的 `overflow-y:auto` 会把 sticky 的滚动上下文截断在一个「高度随内容增长、从不滚动」的容器上，导致分页栏沉在页尾、必须滚动到底才能翻页。现 `.content` 与其滚动容器改为 `overflow: visible`，sticky 穿透到真正滚动的外层容器；该容器本就不产生滚动，不改变任何页面滚动行为（Playwright 实测验证 + 概览/曲库页回归）。
+- **翻页后自动回到列表顶部**：吸附分页栏意味着翻页时用户多半在列表中段，不滚回去会落在下一页的中间位置。`page-change` 统一走 `changePage()`，`scrollIntoView` 对嵌套滚动容器生效。
+- **只有一页时不再浮条**：`totalPages <= 1` 时改为一行静态「共 N 首」，不再显示空的分页控件。
+- **吸附偏移避让与形态切换**：分页栏吸附时自动抬高到悬浮播放胶囊之上（`--gp-reserve`），移动端再让开 52px 底部 Tab 栏 + 安全区——此前两种场景都会被遮挡。播放胶囊可见时分页栏从全宽条收成紧凑居中胶囊（`width: fit-content` + pill 圆角），与播放胶囊构成一个悬浮簇，避免两条全宽浮条上下堆叠。
+- **当前播放行指示**：列表此前完全没有播放态标记。现播放行显示主色浅底 + 主色标题，序号列替换为频谱动效（播放中跳动、暂停定格、命中 `prefers-reduced-motion` 时静止）。
+- **长列表扫视优化**：行间加细分隔线（100 行/页横向对齐格式/大小/时长列）；桌面端列头吸附顶部（依赖同一 sticky 穿透修复），滚动时保住列语义。
+- **分页栏视觉细化**：双层柔和投影、背景透明度提升、Naive 分页项圆角接入 `--sp-radius-sm`。
+- **歌手 / 专辑 / 歌单卡片封面放大**：网格下限 136px → 180px（移动端 108px → 144px 两列）。实际渲染封面：1920 宽屏 130px → 176px（+35%，保持 6 列）；1440 视口 137px → 161px（+18%，列数 7 → 6）；移动端 119px → 178px。占位图标同步 36 → 44。
+
 ## 0.15.2-rc5
 
 ### 布局 token 接入
 
-- **页面边距与内容限宽 token 化**：`theme/tokens.js` 的 `LAYOUT` 里 `pagePadX/Y`、`contentMaxWidth` 等此前只有声明、未接布局。现新增 `--sp-layout-page-pad-*` / `--sp-layout-content-max` 变量，由 `LayoutView` 的 `.content`（页面边距 + 内容限宽 1280px 居中，仅 >1500px 大屏触发）与 `.header` 消费；`pagePadYMobile` 补齐移动端竖向边距。
+- **页面边距与内容限宽 token 化**：`theme/tokens.js` 的 `LAYOUT` 里 `pagePadX/Y`、`contentMaxWidth` 等此前只有声明、未接布局。现新增 `--sp-layout-page-pad-*` / `--sp-layout-content-max` 变量，由 `LayoutView` 的 `.content`（页面边距 + 内容限宽 1280px（贴侧栏），仅超宽屏触发）与 `.header` 消费；`pagePadYMobile` 补齐移动端竖向边距。
 - **语义间距落地**：`--sp-space-section`(16) / `-card-pad`(14) / `-card-gap`(12) 此前零消费，现替换 `DashboardView` 中「值匹配且语义匹配」的硬编码（页面区块 gap、KPI/面板卡片内边距、卡片网格间距）。值不匹配的间距（18/10/8/6px）留待后续「间距收敛」专项。
 - **移除无锚点 token**：`iconButtonSize`（圆形按钮 40px）全站无对应实现（圆形按钮均走 Naive tiny 26 / small 32 / medium 36），删除。
 

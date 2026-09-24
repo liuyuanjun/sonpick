@@ -31,7 +31,7 @@
 
 **非目标**：多用户、公网商用、版权绕过。仅供个人学习与备份。
 
-当前版本（以代码为准）：`0.15.1-rc7`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
+当前版本（以代码为准）：`0.15.2-rc6`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
 
 - **品牌视觉**：设计系统规范见 `DESIGN.md`（唯一权威）；品牌**资产**（LOGO / 20 图标 / 吉祥物 PNG）见 `web/public/brand/` 与 `docs/brand-guidelines.md`，设计稿在 Ardot 文件《Sonpick 拾音 · 品牌视觉系统》。
 
@@ -286,6 +286,12 @@ Naive 的 modal / drawer / popover 会被 teleport 到 `body`，脱离 `.app-lay
 - 叠层卡 / 封面皮肤：`PlayerArt .disc`（外投影，静止）+ `.disc.spin::before`（沟槽/高光/内阴影，转）。
 
 新增旋转动效时，同时给它留一条 `@media (prefers-reduced-motion: reduce)` 分支（`.arc`、两个盘面都已加）。
+
+#### sticky 失效排查（滚动上下文截断）
+
+`position: sticky` 相对**最近的滚动祖先**生效；Naive 的 `n-layout-content` 自身 `overflow:hidden` + 内部 `.n-layout-scroll-container` 的 `overflow-y:auto` 都会成为滚动上下文——而该容器高度随内容增长、从不真正滚动，于是 sticky 静默失效（不报错、布局正常，只是不吸附）。`LayoutView` 已把 `.content` 与其滚动容器统一改为 `overflow: visible`，让 sticky 穿透到真正滚动的外层 `n-layout` 容器（v0.15.2-rc6，分页栏吸附底部 / 列表头吸附顶部都依赖它）。**禁止**复原这两处 overflow，也不要在页面内部再包一层 `overflow:auto/hidden` 的容器；新增吸附元素后用浏览器实测 `getBoundingClientRect` 验证。
+
+吸附元素的偏移量要考虑全站固定浮层：桌面端让开悬浮播放胶囊（`--gp-reserve`，仅胶囊可见时），移动端让开 52px 底部 Tab 栏 + `env(safe-area-inset-bottom)`，参考 `SongTable .pagination-bar`。
 
 #### 覆盖 Naive 组件的颜色必须 `!important`
 

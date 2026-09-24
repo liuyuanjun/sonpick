@@ -127,7 +127,7 @@
             >
               <div class="media-cover circle">
                 <img v-if="a.cover_song_id" :src="coverOf(a.cover_song_id)" alt="" />
-                <n-icon v-else size="36"><person /></n-icon>
+                <n-icon v-else size="44"><person /></n-icon>
               </div>
               <div class="media-title">{{ a.name }}</div>
               <div class="media-sub">{{ a.song_count }} 首 · {{ a.album_count }} 张专辑</div>
@@ -157,7 +157,7 @@
             >
               <div class="media-cover">
                 <img v-if="a.cover_song_id" :src="coverOf(a.cover_song_id)" alt="" />
-                <n-icon v-else size="36"><disc /></n-icon>
+                <n-icon v-else size="44"><disc /></n-icon>
               </div>
               <div class="media-title">{{ a.name }}</div>
               <div class="media-sub">{{ a.artist }} · {{ a.song_count }} 首</div>
@@ -188,7 +188,7 @@
             >
               <div class="media-cover">
                 <img v-if="p.cover_song_id" :src="coverOf(p.cover_song_id)" alt="" />
-                <n-icon v-else size="36"><list /></n-icon>
+                <n-icon v-else size="44"><list /></n-icon>
               </div>
               <div class="media-title">{{ p.name }}</div>
               <div class="media-sub">{{ p.song_count }} 首</div>
@@ -777,7 +777,9 @@ onMounted(async () => {
 
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
+  /* 封面黄金尺寸：min 180px → 桌面实际渲染 ~190-200px（5-6 列），
+     比旧值（min 136 → 渲染 ~157px）放大约 1/4 到 1/3，对齐 Spotify/Apple Music 的浏览密度 */
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 14px;
   padding-bottom: 12px;
 }
@@ -893,7 +895,8 @@ onMounted(async () => {
     font-size: var(--sp-fs-h2-mobile);
   }
   .card-grid {
-    grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+    /* 移动端两列媒体卡（min 144 → 390px 视口渲染 ~170px），对齐 Apple Music 手机端密度 */
+    grid-template-columns: repeat(auto-fill, minmax(144px, 1fr));
     gap: 10px;
   }
 }

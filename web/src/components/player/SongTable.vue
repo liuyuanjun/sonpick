@@ -1,5 +1,5 @@
 <template>
-  <div ref="rootEl" class="song-table">
+  <div ref="rootEl" class="song-table" :class="{ 'above-player': miniPlayerVisible }">
     <div class="toolbar">
       <n-space>
         <n-button type="primary" :disabled="!songs.length" @click="playPage">
@@ -37,11 +37,18 @@
         v-for="(row, i) in visibleSongs"
         :key="row.id"
         class="song-row"
+        :class="{ 'is-playing': isCurrent(row) }"
         role="listitem"
         @click="onRowTap(row)"
         @dblclick="playAt(row)"
       >
-        <span class="col-idx">{{ i + 1 }}</span>
+        <span class="col-idx">
+          <!-- 当前播放行：序号换成频谱动效，播放中跳动 / 暂停时定格 -->
+          <span v-if="isCurrent(row)" class="eq" :class="{ paused: !player.playing }" aria-hidden="true">
+            <i></i><i></i><i></i>
+          </span>
+          <template v-else>{{ i + 1 }}</template>
+        </span>
         <div class="col-main song-cell">
           <div class="mini-cover-wrap">
             <img
@@ -132,14 +139,18 @@
       </div>
     </div>
     <n-empty v-else description="暂无歌曲" class="song-table-empty" />
-    <div v-if="serverPaginated" class="pagination-bar" :class="[`tier-${paginationTier}`, { 'with-total': showTotalText }]">
+    <!-- 只有一页时不浮条：一行静态总数即可，避免空的分页控件占视觉 -->
+    <div v-if="serverPaginated && totalPages <= 1" class="total-line">
+      <n-text depth="3">共 {{ total }} 首</n-text>
+    </div>
+    <div v-else-if="serverPaginated" class="pagination-bar" :class="[`tier-${paginationTier}`, { 'with-total': showTotalText }]">
       <n-text depth="3" class="total-text">共 {{ total }} 首</n-text>
       <div v-if="paginationTier === 'simple'" class="simple-pager">
-        <n-button quaternary circle size="small" :disabled="page <= 1" aria-label="上一页" @click="emit('page-change', page - 1)">
+        <n-button quaternary circle size="small" :disabled="page <= 1" aria-label="上一页" @click="changePage(page - 1)">
           <n-icon :size="16"><chevron-back /></n-icon>
         </n-button>
         <span class="page-indicator">{{ page }} / {{ totalPages }}</span>
-        <n-button quaternary circle size="small" :disabled="page >= totalPages" aria-label="下一页" @click="emit('page-change', page + 1)">
+        <n-button quaternary circle size="small" :disabled="page >= totalPages" aria-label="下一页" @click="changePage(page + 1)">
           <n-icon :size="16"><chevron-forward /></n-icon>
         </n-button>
       </div>
@@ -149,7 +160,7 @@
         :page-size="pageSize"
         :item-count="total"
         :page-slot="pageSlot"
-        @update:page="emit('page-change', $event)"
+        @update:page="changePage"
       />
     </div>
 
@@ -238,6 +249,18 @@ const paginationTier = computed(() => {
 const showTotalText = computed(() => paginationTier.value === 'full')
 const pageSlot = computed(() => (paginationTier.value === 'full' ? 9 : 7))
 const totalPages = computed(() => Math.max(1, Math.ceil(props.total / props.pageSize)))
+
+// 当前播放行高亮（列表唯一的播放态指示）
+const isCurrent = (row) => player.current?.id === row.id
+// 底部悬浮胶囊显示时，吸附分页栏要抬高到胶囊之上
+const miniPlayerVisible = computed(() => player.showPlayer && !!player.current)
+
+// 翻页后回到列表顶部：吸附分页栏意味着翻页时用户多半在列表中段，
+// 不滚回去会落在下一页的中间位置。scrollIntoView 对嵌套滚动容器同样生效。
+function changePage(page) {
+  emit('page-change', page)
+  rootEl.value?.scrollIntoView({ block: 'start' })
+}
 
 // 移动端没有双击概念，单击行即播放
 function onRowTap(row) {
@@ -353,6 +376,11 @@ function onCoverError(e) {
 .search-input {
   width: min(260px, 100%);
 }
+.total-line {
+  margin-top: 14px;
+  padding: 0 6px;
+  font-size: var(--sp-fs-caption);
+}
 .pagination-bar {
   position: sticky;
   bottom: 12px;
@@ -366,14 +394,31 @@ function onCoverError(e) {
   font-size: var(--sp-fs-caption);
   border: 1px solid rgba(127, 127, 127, 0.16);
   border-radius: var(--sp-radius-xl);
-  background: color-mix(in srgb, var(--sp-ui-card) 88%, transparent);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.10);
+  background: color-mix(in srgb, var(--sp-ui-card) 92%, transparent);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.06),
+    0 8px 24px rgba(0, 0, 0, 0.10);
   backdrop-filter: blur(14px);
+}
+/*
+  悬浮播放胶囊出现时：吸附分页栏抬高到胶囊之上避免遮挡，
+  并从全宽条收成紧凑居中胶囊——与播放胶囊构成一个悬浮簇，
+  避免两条全宽浮条上下堆叠的笨重感。
+*/
+.song-table.above-player .pagination-bar {
+  bottom: calc(var(--gp-reserve) + 4px);
+  width: fit-content;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 6px 14px;
+  border-radius: var(--sp-radius-pill);
+  transition: bottom 0.2s ease;
 }
 .pagination-bar :deep(.n-pagination) {
   justify-content: flex-end;
   font-size: var(--sp-fs-caption);
   --n-font-size: var(--sp-fs-caption);
+  --n-item-border-radius: var(--sp-radius-sm);
 }
 
 /* 分页渐进降级（tier/with-total 由 ResizeObserver 按容器宽度计算，见 script） */
@@ -422,18 +467,81 @@ function onCoverError(e) {
   min-width: 0;
 }
 .song-list-head {
+  /* 吸附列头：长列表滚动时保住列语义（依赖 LayoutView 的 sticky 穿透修复） */
+  position: sticky;
+  top: 0;
+  z-index: 3;
   padding: 8px 6px;
   font-size: var(--sp-fs-caption);
   color: var(--sp-ui-text-3);
+  background: var(--sp-ui-body);
+  border-bottom: 1px solid rgba(127, 127, 127, 0.12);
 }
 .song-row {
   padding: 8px 6px;
   border-radius: var(--sp-radius-md);
   cursor: pointer;
   transition: background 0.12s ease;
+  /* 细分隔线帮助 100 行长列表横向扫视对齐 */
+  border-bottom: 1px solid rgba(127, 127, 127, 0.07);
+}
+.song-row:last-child {
+  border-bottom: none;
 }
 .song-row:hover {
   background: color-mix(in srgb, var(--sp-ui-primary) 7%, transparent);
+}
+.song-row:active {
+  background: color-mix(in srgb, var(--sp-ui-primary) 10%, transparent);
+}
+/* 当前播放行：主色浅底 + 标题主色 */
+.song-row.is-playing {
+  background: color-mix(in srgb, var(--sp-ui-primary) 8%, transparent);
+}
+.song-row.is-playing:hover {
+  background: color-mix(in srgb, var(--sp-ui-primary) 12%, transparent);
+}
+.song-row.is-playing .song-title {
+  color: var(--sp-ui-primary);
+}
+
+/* 频谱动效：播放中跳动，暂停定格为等高度 */
+.eq {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 14px;
+}
+.eq i {
+  width: 3px;
+  height: 5px;
+  border-radius: 1px;
+  background: var(--sp-ui-primary);
+  animation: eq-bounce 0.9s ease-in-out infinite;
+}
+.eq i:nth-child(2) {
+  animation-delay: 0.25s;
+}
+.eq i:nth-child(3) {
+  animation-delay: 0.5s;
+}
+.eq.paused i {
+  animation-play-state: paused;
+}
+@keyframes eq-bounce {
+  0%,
+  100% {
+    height: 4px;
+  }
+  50% {
+    height: 14px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .eq i {
+    animation: none;
+    height: 9px;
+  }
 }
 
 .col-idx {
@@ -601,9 +709,14 @@ function onCoverError(e) {
     width: 100%;
   }
   .pagination-bar {
-    bottom: 8px;
+    /* 移动端底部有 52px 固定 Tab 栏 + 安全区，吸附偏移必须让开 */
+    bottom: calc(52px + env(safe-area-inset-bottom, 0px) + 8px);
     padding: 8px 10px;
     gap: 8px;
+  }
+  .song-table.above-player .pagination-bar {
+    /* --gp-reserve 已内含 Tab 栏与安全区高度 */
+    bottom: calc(var(--gp-reserve) + 4px);
   }
   .pagination-bar :deep(.n-text) {
     display: none;
