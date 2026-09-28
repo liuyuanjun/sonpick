@@ -61,13 +61,15 @@ DEFAULT_DOWNLOAD_SOURCES = [
     "KuwoMusicClient",
     "QianqianMusicClient",
 ]
+# 下载源展示名：用平台简称，不加「音乐」后缀（错误提示、歌单解析的 source_label 都走这里）。
+# 与前端 web/src/utils/downloadSources.js 的 label 必须逐项一致 —— 改一边必须改另一边。
 SOURCE_LABELS = {
-    "QQMusicClient": "QQ 音乐",
-    "NeteaseMusicClient": "网易云音乐",
-    "MiguMusicClient": "咪咕音乐",
-    "KugouMusicClient": "酷狗音乐",
-    "KuwoMusicClient": "酷我音乐",
-    "QianqianMusicClient": "千千音乐",
+    "QQMusicClient": "QQ",
+    "NeteaseMusicClient": "网易云",
+    "MiguMusicClient": "咪咕",
+    "KugouMusicClient": "酷狗",
+    "KuwoMusicClient": "酷我",
+    "QianqianMusicClient": "千千",
 }
 # 轻量搜索每源结果数：一次请求一页，成本与条数无关，取与前端页大小一致
 DEFAULT_SEARCH_SIZE_PER_SOURCE = 20

@@ -9,6 +9,7 @@
  *
  * 各函数的语义边界（不要合并，也不要互相替代）：
  *   - formatClock      : 秒 → `mm:ss`，音频时间轴刻度（进度条、歌词时间）
+ *   - formatTrackDuration: 曲目 → `3:45`，逐曲元数据的时长（列表 / 信息行）
  *   - formatDurationText: 秒 → `3 小时 25 分`，给人读的"时长"（总时长、任务耗时）
  *   - formatRelativeTime: 秒 → `3 分钟前`，相对当下
  *   - formatDateTime   : ISO/时间戳 → 本地时间字符串，给人读的"时刻"
@@ -60,6 +61,27 @@ export function formatClock(seconds) {
   const r = s % 60
   if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`
   return `${m}:${String(r).padStart(2, '0')}`
+}
+
+/**
+ * 曲目时长 → `3:45`（逐曲列表、信息行的统一口径）。
+ *
+ * 与 formatClock 的分工：formatClock 是**时间轴刻度**，缺数据按 0 渲染
+ * （进度条上 `0:00` 比留白合理）；曲目时长是**元数据**，「未知」必须留占位
+ * （默认 `--`，与表格类 UI 的惯例一致），**不能谎报成 `0:00`**。
+ * 与 formatDurationText 的分工：后者给人读总时长（`3 小时 25 分`），不用于逐曲列表。
+ *
+ * 只认 `duration_s`（秒）：后端另有 musicdl 预格式化的 `duration` 字符串
+ * （`00:03:45` 口径），展示层不消费 —— 否则同一个时长会在歌单表里显示
+ * `00:03:45`、在播放器里显示 `3:45`。
+ *
+ * @param {{ duration_s?: unknown } | null | undefined} track 曲目（下载搜索结果 / 歌单曲目 / 曲库歌曲）
+ * @param {{ fallback?: string }} [options] 缺数据或非正数时返回该占位符
+ *   （默认 `--`；**只在容器自身用另一套占位符时**才需要覆盖，如歌曲详情弹窗的 `—`）
+ */
+export function formatTrackDuration(track, { fallback = '--' } = {}) {
+  const seconds = toFiniteNumber(track?.duration_s)
+  return seconds !== null && seconds > 0 ? formatClock(seconds) : fallback
 }
 
 /**

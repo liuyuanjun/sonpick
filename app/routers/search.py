@@ -34,6 +34,7 @@ def _to_result_item(item) -> SearchResultItem:
         ext=getattr(item, "ext", None),
         filesize=str(size) if size is not None else None,
         file_size=str(size) if size is not None else None,
+        duration_s=getattr(item, "duration_s", None),
         duration=getattr(item, "duration", None),
         source=getattr(item, "_sonpick_source", None) or getattr(item, "source", None),
         song_id=str(getattr(item, "identifier", "") or "") or None,

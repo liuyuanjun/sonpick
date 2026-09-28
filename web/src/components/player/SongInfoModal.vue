@@ -91,7 +91,7 @@ import { NIcon } from 'naive-ui'
 import { MusicalNotes } from '@vicons/ionicons5'
 import { coverUrl, fetchSources } from '@/api/music'
 import { useAuthStore } from '@/stores/auth'
-import { formatClock, formatFileSize } from '@/utils/format'
+import { formatFileSize, formatTrackDuration } from '@/utils/format'
 import {
   availabilityLabel,
   availabilityTagType,
@@ -126,7 +126,10 @@ const artistLine = computed(() => {
   return [song.artist, song.album].filter(Boolean).join(' · ') || '未知艺术家'
 })
 
-const durationText = computed(() => (props.song?.duration ? formatClock(props.song.duration) : '—'))
+// 本卡片的占位符统一是 `—`（年份 / 风格 / 来源平台同款），故显式覆盖默认的 `--`
+const durationText = computed(() =>
+  formatTrackDuration({ duration_s: props.song?.duration }, { fallback: '—' }),
+)
 
 const availabilityText = computed(() => {
   if (!props.song) return '—'

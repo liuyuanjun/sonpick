@@ -243,7 +243,7 @@ music/
 ### 5.2 UI / 工程
 
 - 组件库：Naive UI；图标：`@vicons/ionicons5`
-- 下载源选择：统一用 `components/download/SourcePicker.vue`（单排 chips：实色已选在前、按顺序优先，可拖拽或点 ‹ › 排序、× 移除；虚线待选在后、点击追加到已选末尾），源清单与持久化在 `utils/downloadSources.js`（与后端 `SOURCE_LABELS` 对应，改一边必须改另一边）；**禁止**再用裸 `n-select` 各写一份
+- 下载源选择：统一用 `components/download/SourcePicker.vue`（单排 chips：实色已选在前、按顺序优先，可拖拽或点 ‹ › 排序、× 移除；虚线待选在后、点击追加到已选末尾），源清单与持久化在 `utils/downloadSources.js`（与后端 `SOURCE_LABELS` 对应，改一边必须改另一边）；**禁止**再用裸 `n-select` 各写一份。展示名一律用**平台简称**（QQ / 网易云 / 咪咕 / 酷狗 / 酷我 / 千千，不加「音乐」后缀），展示处取 `sourceLabel(key)`，**不要**直接渲染 `QQMusicClient` 这类内部 key
 - 新 Naive 组件要在 `web/src/main.js` **import 并注册**（未全量 unplugin 自动引入时尤其注意）
 - 全局播放器：Pinia `player` store；音频 URL 常带 `token` query
 - 系统媒体键/线控：`web/src/composables/useMediaSession.js`（Media Session API，挂载于 `GlobalPlayer.vue`）——单击播放/暂停、双击下一曲、三击上一曲由 OS 翻译成媒体命令，网页只收 action，无法感知按键次数
@@ -366,6 +366,7 @@ Naive 的 modal / drawer / popover 会被 teleport 到 `body`，脱离 `.app-lay
 |------|----------|------|
 | 字节 → `1.5 MB` | `utils/format.js` `formatFileSize` | 覆盖 B/KB/MB/GB/TB；`{ fallback }` 由调用方定占位符（表格 `-`、统计卡 `0 B`） |
 | 秒 → `mm:ss` | `utils/format.js` `formatClock` | **音频时间轴专用**（进度条 / 歌词） |
+| 曲目 → `3:45` | `utils/format.js` `formatTrackDuration` | **逐曲时长专用**（搜索结果 / 歌单曲目 / 曲库列表 / 刮削候选 / DB·内嵌时长）；缺数据固定 `--`（**不谎报 `0:00`**），仅当所在卡片自带另一套占位符时才覆盖 |
 | 秒 → `3 小时 25 分` | `utils/format.js` `formatDurationText` | 给人读的时长；`{ withSeconds: false }` 用于总时长 |
 | 秒 → `3 分钟前` | `utils/format.js` `formatRelativeTime` | `{ coarse: true }` 用于活动流（`刚刚 / 3 小时前 / 2 天前`） |
 | ISO → 本地时刻 | `utils/format.js` `formatDateTime` / `formatTimeOfDay` | 秒与年可开关 |
@@ -374,7 +375,8 @@ Naive 的 modal / drawer / popover 会被 teleport 到 `body`，脱离 `.app-lay
 
 配套约束：
 
-- **不要为了"少写代码"合并语义不同的函数**：`formatClock`（时间轴刻度）与 `formatDurationText`（人读时长）刻意分开，靠 if 分支合体只会更难维护。
+- **不要为了"少写代码"合并语义不同的函数**：`formatClock`（时间轴刻度）、`formatTrackDuration`（逐曲时长）、`formatDurationText`（人读总时长）刻意分开，靠 if 分支合体只会更难维护。
+- **时长字段只认秒**：后端搜索结果 / 歌单曲目同时给 `duration_s`（秒）与 `duration`（musicdl 预格式化的 `HH:MM:SS`），**展示层一律用 `duration_s`** —— 消费 `duration` 会让同一个时长在歌单表显示 `00:03:45`、在列表里显示 `3:45`。
 - 页面若需绑定固定口径，允许写**只有一行、纯转发**的包装（如 DashboardView 的 `formatSize`），但必须注释说明"逻辑在 utils"，不得往里加实现。
 - 数值入参一律经 `toFiniteNumber` 这类严格转换：`Number(null) === 0`，直接 `Number()` 会把"缺数据"渲染成"0 秒 / 0 字节"。
 - **改 utils 必须同步跑单测**：`pnpm test`（`node --test "src/utils/*.test.js"`）。新增格式化函数必须带用例。

@@ -97,7 +97,8 @@
         <span class="col-size">
           {{ row.preferred_version ? formatFileSize(row.preferred_version.file_size) : '—' }}
         </span>
-        <span class="col-time">{{ formatClock(row.duration || 0) }}</span>
+        <!-- 缺时长显示 `--`（元数据未知），不能用 `formatClock(row.duration || 0)` 谎报 0:00 -->
+        <span class="col-time">{{ formatTrackDuration({ duration_s: row.duration }) }}</span>
         <div class="col-actions">
           <n-button v-if="!isMobile" quaternary circle size="tiny" class="hover-only" @click.stop="playAt(row)">
             <n-icon :size="16"><play /></n-icon>
@@ -186,7 +187,7 @@ import { usePlayerStore } from '@/stores/player'
 import { addFavorite, removeFavorite, coverUrl } from '@/api/music'
 import { useAuthStore } from '@/stores/auth'
 import { useIsMobile } from '@/composables/useIsMobile'
-import { formatClock, formatFileSize } from '@/utils/format'
+import { formatFileSize, formatTrackDuration } from '@/utils/format'
 import { formatLabel, versionLocationLabel } from '@/utils/media'
 import SongInfoModal from '@/components/player/SongInfoModal.vue'
 

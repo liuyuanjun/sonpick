@@ -97,6 +97,7 @@ import PlayerTransport from '@/components/player/PlayerTransport.vue'
 import PlayerUtils from '@/components/player/PlayerUtils.vue'
 import { usePlayerStore } from '@/stores/player'
 import { useIsMobile } from '@/composables/useIsMobile'
+import { formatFileSize, formatTrackDuration } from '@/utils/format'
 import { formatLabel } from '@/utils/media'
 
 // 皮肤渲染器：按 playerSkin 切换整套布局（叠层卡 / 唱片 / 纯歌词 / 纯封面）。
@@ -121,27 +122,17 @@ const lyricsEmptyDescription = computed(() =>
 const vinylSubline = computed(() =>
   [player.current?.artist, player.current?.album].filter(Boolean).join(' · '),
 )
-// 纯封面视图的技术信息行（格式 · 时长 · 体积）：是曲库用户关心、且别处没有的信息
+// 纯封面视图的技术信息行（格式 · 时长 · 体积）：是曲库用户关心、且别处没有的信息。
+// 三项都是「有则显示」的补充信息，取不到就整段省略 —— 故 fallback 传 ''，不占位。
 const techLine = computed(() => {
   const v = player.current?.preferred_version
   const parts = []
   if (v?.format) parts.push(formatLabel(v.format, ''))
-  if (player.current?.duration) parts.push(formatDuration(player.current.duration))
-  if (v?.file_size) parts.push(formatSize(v.file_size))
+  if (player.current?.duration) parts.push(formatTrackDuration({ duration_s: player.current.duration }))
+  if (v?.file_size) parts.push(formatFileSize(v.file_size, { fallback: '' }))
   return parts.filter(Boolean).join(' · ')
 })
 
-function formatDuration(sec) {
-  const s = Number(sec) || 0
-  const m = Math.floor(s / 60)
-  return `${m}:${String(s % 60).padStart(2, '0')}`
-}
-function formatSize(bytes) {
-  const b = Number(bytes) || 0
-  if (b <= 0) return ''
-  if (b < 1024 * 1024) return `${Math.round(b / 1024)} KB`
-  return `${(b / 1024 / 1024).toFixed(1)} MB`
-}
 function onLyricSeek(time) {
   const t = Number(time)
   if (!Number.isFinite(t) || t < 0) return

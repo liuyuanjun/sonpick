@@ -1,12 +1,21 @@
 // 下载源清单（与后端 light_search_service.DEFAULT_DOWNLOAD_SOURCES / SOURCE_LABELS 对应，改一边必须改另一边）
+//
+// 展示名一律用**平台简称**（QQ / 网易云 / 咪咕 / 酷狗 / 酷我 / 千千），不加「音乐」后缀：
+// 下载来源 chips、搜索结果「来源」列、后端错误提示三处同源，别再各写一份清单。
 export const DOWNLOAD_SOURCES = [
-  { value: 'QQMusicClient', label: 'QQ 音乐' },
-  { value: 'NeteaseMusicClient', label: '网易云音乐' },
-  { value: 'MiguMusicClient', label: '咪咕音乐' },
-  { value: 'KugouMusicClient', label: '酷狗音乐' },
-  { value: 'KuwoMusicClient', label: '酷我音乐' },
-  { value: 'QianqianMusicClient', label: '千千音乐' },
+  { value: 'QQMusicClient', label: 'QQ' },
+  { value: 'NeteaseMusicClient', label: '网易云' },
+  { value: 'MiguMusicClient', label: '咪咕' },
+  { value: 'KugouMusicClient', label: '酷狗' },
+  { value: 'KuwoMusicClient', label: '酷我' },
+  { value: 'QianqianMusicClient', label: '千千' },
 ]
+
+/** 源 key（`QQMusicClient`…）→ 展示名；未知 key 原样返回，便于排查新源没登记 */
+export function sourceLabel(value) {
+  if (!value) return ''
+  return DOWNLOAD_SOURCES.find((s) => s.value === value)?.label || String(value)
+}
 
 const STORAGE_KEY = 'sonpick_download_sources'
 

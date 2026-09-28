@@ -31,7 +31,9 @@
         <div v-for="row in results" :key="rowKey(row)" class="result-card">
           <div class="result-meta">
             <div class="result-title">{{ row.song_name || '未知歌曲' }}</div>
-            <div class="result-sub">{{ row.singers || '未知歌手' }} · {{ row.album || '未知专辑' }}</div>
+            <div class="result-sub">
+              {{ row.singers || '未知歌手' }} · {{ row.album || '未知专辑' }}<template v-if="row.duration_s"> · {{ formatTrackDuration(row) }}</template>
+            </div>
             <div class="result-tags">
               <n-tag
                 v-for="f in row.formats || []"
@@ -41,7 +43,7 @@
               >
                 {{ f.label || formatLabel(f.ext, '-') }}
               </n-tag>
-              <n-tag size="small" :bordered="false">{{ row.source || '-' }}</n-tag>
+              <n-tag size="small" :bordered="false">{{ sourceLabel(row.source) || '-' }}</n-tag>
               <n-tag
                 v-if="row.library_match"
                 size="small"
@@ -81,7 +83,7 @@
         <n-text depth="3">
           {{ downloadRow?.singers || '未知歌手' }}
           <template v-if="downloadRow?.album"> · {{ downloadRow.album }}</template>
-          <template v-if="downloadRow?.duration"> · {{ downloadRow.duration }}</template>
+          <template v-if="downloadRow?.duration_s"> · {{ formatTrackDuration(downloadRow) }}</template>
         </n-text>
 
         <div v-if="resolving" class="resolve-loading">
@@ -161,8 +163,8 @@ import api from '@/api/client'
 import { resolveMusicFormats, searchMusic } from '@/api/music'
 import SourcePicker from '@/components/download/SourcePicker.vue'
 import { useIsMobile } from '@/composables/useIsMobile'
-import { DOWNLOAD_SOURCES, loadSourcePref, saveSourcePref } from '@/utils/downloadSources'
-import { formatFileSize } from '@/utils/format'
+import { DOWNLOAD_SOURCES, loadSourcePref, saveSourcePref, sourceLabel } from '@/utils/downloadSources'
+import { formatFileSize, formatTrackDuration } from '@/utils/format'
 import { formatLabel } from '@/utils/media'
 
 const message = useMessage()
@@ -211,6 +213,9 @@ const columns = [
   { title: '歌名', key: 'song_name', ellipsis: { tooltip: true } },
   { title: '歌手', key: 'singers', ellipsis: { tooltip: true } },
   { title: '专辑', key: 'album', ellipsis: { tooltip: true } },
+  // 时长（与歌单链接页同口径）：曲目时长是判断「搜到的是不是同一首」的关键信号，
+  // 同名翻唱/伴奏/remix 光看歌名歌手分不出来
+  { title: '时长', key: 'duration_s', width: 80, render: (row) => formatTrackDuration(row) },
   {
     title: '可得格式',
     key: 'formats',
@@ -219,7 +224,8 @@ const columns = [
       return formatBadges(row)
     },
   },
-  { title: '来源', key: 'source', width: 100 },
+  // 来源宽 80：展示名是平台简称（QQ / 网易云 / 酷狗…），100px 会把英文类名折成两行、行高不齐
+  { title: '来源', key: 'source', width: 80, ellipsis: { tooltip: true }, render: (row) => sourceLabel(row.source) },
   {
     title: '曲库',
     key: 'library_match',

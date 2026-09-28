@@ -7,6 +7,7 @@ import {
   formatDurationText,
   formatFileSize,
   formatRelativeTime,
+  formatTrackDuration,
   secondsBetween,
 } from './format.js'
 
@@ -35,6 +36,28 @@ test('时间轴：mm:ss，超过一小时进位 h:mm:ss', () => {
   assert.equal(formatClock(215), '3:35')
   assert.equal(formatClock(3725), '1:02:05')
   assert.equal(formatClock(null), '0:00')
+})
+
+test('曲目时长：秒 → mm:ss，缺数据留 -- 而不是 0:00', () => {
+  assert.equal(formatTrackDuration({ duration_s: 215 }), '3:35')
+  assert.equal(formatTrackDuration({ duration_s: 3725 }), '1:02:05')
+  // 元数据语义：未知时长不能谎报 0:00
+  assert.equal(formatTrackDuration({ duration_s: 0 }), '--')
+  assert.equal(formatTrackDuration({ duration_s: null }), '--')
+  assert.equal(formatTrackDuration({}), '--')
+  assert.equal(formatTrackDuration(null), '--')
+})
+
+test('曲目时长：占位符可自定义（拼接场景传空串、卡片自带占位符时覆盖）', () => {
+  assert.equal(formatTrackDuration({ duration_s: 215 }, { fallback: '' }), '3:35')
+  assert.equal(formatTrackDuration({ duration_s: null }, { fallback: '' }), '')
+  assert.equal(formatTrackDuration({ duration_s: null }, { fallback: '—' }), '—')
+})
+
+test('曲目时长：只认 duration_s，忽略 musicdl 预格式化的 duration 字符串', () => {
+  // 后端 duration 是 `00:03:45` 口径；消费它会让同一时长在两个页面显示不一致
+  assert.equal(formatTrackDuration({ duration: '00:03:45' }), '--')
+  assert.equal(formatTrackDuration({ duration_s: 225, duration: '00:03:45' }), '3:45')
 })
 
 test('时长文案：默认带秒，总时长场景可关掉秒', () => {

@@ -435,7 +435,7 @@ const sourceHealthHint = computed(() => {
 })
 
 const quickActions = [
-  { key: 'download', title: '搜索下载', desc: 'QQ 音乐搜歌入库', icon: CloudDownloadOutline, color: 'var(--sp-accent-teal)', bg: 'var(--sp-accent-teal-soft)', to: '/download' },
+  { key: 'download', title: '搜索下载', desc: '多源搜歌入库', icon: CloudDownloadOutline, color: 'var(--sp-accent-teal)', bg: 'var(--sp-accent-teal-soft)', to: '/download' },
   { key: 'player', title: '打开播放器', desc: '舞台 / 队列 / 歌词', icon: PlayCircleOutline, color: 'var(--sp-accent-green)', bg: 'var(--sp-accent-green-soft)', to: '/player' },
   { key: 'library', title: '管理曲库', desc: '浏览、扫描、整理', icon: LibraryOutline, color: 'var(--sp-accent-blue)', bg: 'var(--sp-accent-blue-soft)', to: '/library' },
   { key: 'sources', title: '曲库源', desc: '本地 / WebDAV 配置', icon: CloudUploadOutline, color: 'var(--sp-accent-sky)', bg: 'var(--sp-accent-sky-soft)', to: { path: '/library', query: { manage: '1' } } },

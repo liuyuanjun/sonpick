@@ -1,7 +1,7 @@
 <template>
   <n-space vertical size="large" style="width: 100%" class="playlist-import" :class="{ mobile: isMobile }">
     <n-alert type="info" :bordered="false">
-      粘贴歌单链接（支持 QQ 音乐 / 网易云 / 咪咕 / 酷狗 / 酷我 / 千千），解析后勾选曲目下载。曲目按平台 song_id 锁定，下载时自动验证可用格式。
+      粘贴歌单链接（支持 {{ sourceHint }}），解析后勾选曲目下载。曲目按平台 song_id 锁定，下载时自动验证可用格式。
     </n-alert>
     <div class="url-bar">
       <n-input
@@ -41,7 +41,7 @@
             <div class="track-title">{{ i + 1 }}. {{ t.song_name || '未知歌曲' }}</div>
             <div class="track-sub">{{ t.singers || '未知歌手' }} · {{ t.album || '未知专辑' }}</div>
           </div>
-          <span class="track-duration">{{ formatDuration(t) }}</span>
+          <span class="track-duration">{{ formatTrackDuration(t) }}</span>
         </div>
       </div>
 
@@ -63,15 +63,18 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import api from '@/api/client'
 import { useIsMobile } from '@/composables/useIsMobile'
+import { DOWNLOAD_SOURCES } from '@/utils/downloadSources'
 import { DUPLICATE_ACTION_OPTIONS, FORMAT_PREFER_OPTIONS } from '@/utils/downloadOptions'
-import { formatClock } from '@/utils/format'
+import { formatTrackDuration } from '@/utils/format'
 
 const message = useMessage()
 const isMobile = useIsMobile()
+// 支持来源的说明从源清单派生，别再手写一份（历史上这里第 4 份清单，加源必漏）
+const sourceHint = computed(() => DOWNLOAD_SOURCES.map((s) => s.label).join(' / '))
 const url = ref('')
 const parsing = ref(false)
 const playlist = ref(null)
@@ -98,17 +101,13 @@ function rowKey(row) {
   return `${row.source_index}`
 }
 
-function formatDuration(t) {
-  return t.duration || (t.duration_s ? formatClock(t.duration_s) : '-')
-}
-
 const columns = [
   { type: 'selection' },
   { title: '#', key: 'source_index', width: 56, render: (row) => row.source_index + 1 },
   { title: '歌名', key: 'song_name', ellipsis: { tooltip: true } },
   { title: '歌手', key: 'singers', ellipsis: { tooltip: true } },
   { title: '专辑', key: 'album', ellipsis: { tooltip: true } },
-  { title: '时长', key: 'duration', width: 80, render: (row) => formatDuration(row) },
+  { title: '时长', key: 'duration_s', width: 80, render: (row) => formatTrackDuration(row) },
 ]
 
 async function doParse() {

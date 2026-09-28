@@ -218,6 +218,9 @@ class SearchResultItem(BaseModel):
     song_name: str
     singers: Optional[str] = None
     album: Optional[str] = None
+    # 时长：展示层一律用 duration_s（秒，交给前端 formatTrackDuration 统一成 `3:45`）。
+    # duration 是 musicdl 预格式化的 `HH:MM:SS`，保留仅为兼容，**不要**在新 UI 里消费。
+    duration_s: Optional[int] = None
     duration: Optional[str] = None
     filesize: Optional[str] = None
     file_size: Optional[str] = None

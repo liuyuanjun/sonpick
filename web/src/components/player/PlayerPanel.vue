@@ -389,7 +389,7 @@ import { usePlayerStore } from '@/stores/player'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useIsMobile } from '@/composables/useIsMobile'
-import { formatClock, formatDateTime, formatFileSize } from '@/utils/format'
+import { formatDateTime, formatFileSize, formatTrackDuration } from '@/utils/format'
 import { extractAccentFromImage } from '@/utils/color'
 import { normalizeSongFiles, normalizedScrapeValue, shouldSelectScrapeField } from '@/utils/scrapeApply'
 import PlayerSkin from '@/components/player/PlayerSkin.vue'
@@ -559,7 +559,8 @@ const lyricsTargetLabel = computed(() => {
 const lyricsQueryText = computed(() => {
   const query = lyricsQuery.value
   if (!query) return ''
-  const duration = query.duration ? formatClock(query.duration) : '未知时长'
+  // 这句话是给人读的一行摘要，缺时长用「未知时长」比 `--` 通顺；格式化逻辑仍走统一入口
+  const duration = formatTrackDuration({ duration_s: query.duration }, { fallback: '未知时长' })
   return `${query.artist_name || '未知艺术家'} · ${query.album_name || '未知专辑'} · ${duration}`
 })
 
@@ -640,14 +641,14 @@ const tagRows = computed(() => {
     { key: 'db_album', label: 'DB 专辑', value: db.album },
     { key: 'db_year', label: 'DB 年份', value: db.year },
     { key: 'db_genre', label: 'DB 风格', value: db.genre },
-    { key: 'db_duration', label: 'DB 时长', value: formatClock(db.duration || 0) },
+    { key: 'db_duration', label: 'DB 时长', value: formatTrackDuration({ duration_s: db.duration }) },
     { key: 'db_cover', label: 'DB 封面', value: db.cover_path },
     { key: 'tag_title', label: '内嵌标题', value: em.title },
     { key: 'tag_artist', label: '内嵌艺术家', value: em.artist },
     { key: 'tag_album', label: '内嵌专辑', value: em.album },
     { key: 'tag_year', label: '内嵌年份', value: em.year },
     { key: 'tag_genre', label: '内嵌风格', value: em.genre },
-    { key: 'tag_duration', label: '内嵌时长', value: formatClock(em.duration || 0) },
+    { key: 'tag_duration', label: '内嵌时长', value: formatTrackDuration({ duration_s: em.duration }) },
     { key: 'tag_cover', label: '内嵌封面', value: em.cover_embedded ? `有（${em.cover_size || 0} bytes）` : '无' },
     { key: 'tag_lyrics', label: '内嵌歌词', value: em.lyrics ? `${String(em.lyrics).slice(0, 120)}...` : '' },
     { key: 'file_version', label: '文件版本', value: tagData.value?.file_version_id ? `#${tagData.value.file_version_id}` : '无可用本地版本' },
@@ -657,7 +658,7 @@ const tagRows = computed(() => {
 const scrapeQueryText = computed(() => {
   const q = scrapeQuery.value
   if (!q) return ''
-  return `查询：${q.keyword || ''} / 时长 ${q.duration ? formatClock(q.duration) : '-'}`
+  return `查询：${q.keyword || ''} / 时长 ${formatTrackDuration({ duration_s: q.duration })}`
 })
 
 const candidateColumns = computed(() => [
@@ -666,7 +667,7 @@ const candidateColumns = computed(() => [
   { title: '标题', key: 'title', ellipsis: { tooltip: true } },
   { title: '艺术家', key: 'artist', ellipsis: { tooltip: true } },
   { title: '专辑', key: 'album', ellipsis: { tooltip: true } },
-  { title: '时长', key: 'duration', width: 76, render: (row) => row.duration ? formatClock(row.duration) : '-' },
+  { title: '时长', key: 'duration', width: 76, render: (row) => formatTrackDuration({ duration_s: row.duration }) },
   { title: '封面', key: 'cover_url', width: 92, render: (row) => row.has_cover || row.cover_url ? (row.cover_source ? `有/${row.cover_source}` : '有') : '无' },
   { title: '操作', key: 'actions', width: 90, render: (row) => h('button', { class: 'mini-apply-btn', onClick: () => openApplyCandidate(row) }, '采用') },
 ])

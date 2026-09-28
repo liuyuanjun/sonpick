@@ -1,11 +1,13 @@
 """轻量搜索/解析的契约与逻辑测试。
 
-分两类：
+分三类：
 
 1. 元数据映射（纯函数）：用真实抓取的各源搜索响应样例，
    断言 SongInfo 字段（identifier/时长/封面/可得格式/VIP 标记）。
 2. musicdl 私有 API 契约：本工程复用了 musicdl 的私有方法
    （精确钉版 + Dependabot 周检），上游升级导致签名漂移时这里直接失败。
+3. 搜索接口字段映射：`/api/search` 的响应里时长必须带秒数字段，
+   供前端统一格式化（`duration` 是 musicdl 的 HH:MM:SS，展示层不消费）。
 """
 import unittest
 from unittest import mock
@@ -258,6 +260,44 @@ class QianqianMappingTests(unittest.TestCase):
         )
         self.assertEqual(song.ext, "flac")
         self.assertEqual(song.file_size_bytes, 57635329)
+
+
+class SearchResultItemMappingTests(unittest.TestCase):
+    """搜索结果 → API 响应字段：时长必须给出秒数，展示口径在前端统一。"""
+
+    def _item(self):
+        song = qq_item_to_songinfo(QQ_ITEM)
+        song._sonpick_source = "QQMusicClient"
+        return song
+
+    def test_duration_seconds_exposed_for_frontend(self):
+        from app.routers.search import _to_result_item
+
+        out = _to_result_item(self._item())
+        self.assertEqual(out.duration_s, 269)
+        # musicdl 预格式化的 HH:MM:SS 保留为兼容字段，前端不应消费（口径见 utils/format.js）
+        self.assertEqual(out.duration, "00:04:29")
+
+    def test_duration_seconds_none_when_unknown(self):
+        from app.routers.search import _to_result_item
+
+        item = self._item()
+        item.duration_s = None
+        item.duration = None
+        out = _to_result_item(item)
+        self.assertIsNone(out.duration_s)
+        self.assertIsNone(out.duration)
+
+    def test_missing_duration_attributes_do_not_raise(self):
+        """防御：上游 SongInfo 字段漂移时映射层不应 500，只退化为 None。"""
+        from app.routers.search import _to_result_item
+
+        class _Bare:
+            song_name = "晴天"
+
+        out = _to_result_item(_Bare())
+        self.assertIsNone(out.duration_s)
+        self.assertIsNone(out.duration)
 
 
 class ResolveFlowTests(unittest.TestCase):
