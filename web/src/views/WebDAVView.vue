@@ -3,13 +3,13 @@
     <n-card :title="pageTitle">
       <template #header-extra>
         <n-space>
-          <n-button size="small" @click="goBackSources">返回曲库</n-button>
+          <n-button size="small" @click="goBackSources">返回曲源</n-button>
           <n-button size="small" :loading="loading" @click="loadList">刷新</n-button>
         </n-space>
       </template>
 
       <n-alert v-if="!sourceId" type="warning" style="margin-bottom: 12px">
-        请从「曲库」中的 WebDAV 源进入浏览。
+        请从「曲源」中的 WebDAV 源进入浏览。
       </n-alert>
       <n-alert v-else-if="error" type="error" style="margin-bottom: 12px">
         {{ error }}

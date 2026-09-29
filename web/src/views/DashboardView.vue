@@ -150,12 +150,12 @@
         <div class="panel">
           <div class="panel-head">
             <div>
-              <h2 class="panel-title">曲库源</h2>
+              <h2 class="panel-title">曲源</h2>
               <p class="panel-desc">连通状态与曲目规模</p>
             </div>
             <n-button text type="primary" @click="go({ path: '/library', query: { manage: '1' } })">管理</n-button>
           </div>
-          <n-empty v-if="!(stats.sources || []).length" description="暂无曲库源" size="small" />
+          <n-empty v-if="!(stats.sources || []).length" description="暂无曲源" size="small" />
           <div v-else class="source-list">
             <div v-for="s in stats.sources" :key="s.id" class="source-item">
               <div class="source-top">
@@ -392,7 +392,7 @@ const kpiItems = computed(() => [
   },
   {
     key: 'sources',
-    label: '曲库源',
+    label: '曲源',
     value: (stats.value.sources || []).length,
     hint: sourceHealthHint.value,
     icon: LibraryOutline,
@@ -438,7 +438,7 @@ const quickActions = [
   { key: 'download', title: '搜索下载', desc: '多源搜歌入库', icon: CloudDownloadOutline, color: 'var(--sp-accent-teal)', bg: 'var(--sp-accent-teal-soft)', to: '/download' },
   { key: 'player', title: '打开播放器', desc: '舞台 / 队列 / 歌词', icon: PlayCircleOutline, color: 'var(--sp-accent-green)', bg: 'var(--sp-accent-green-soft)', to: '/player' },
   { key: 'library', title: '管理曲库', desc: '浏览、扫描、整理', icon: LibraryOutline, color: 'var(--sp-accent-blue)', bg: 'var(--sp-accent-blue-soft)', to: '/library' },
-  { key: 'sources', title: '曲库源', desc: '本地 / WebDAV 配置', icon: CloudUploadOutline, color: 'var(--sp-accent-sky)', bg: 'var(--sp-accent-sky-soft)', to: { path: '/library', query: { manage: '1' } } },
+  { key: 'sources', title: '曲源', desc: '本地 / WebDAV 配置', icon: CloudUploadOutline, color: 'var(--sp-accent-sky)', bg: 'var(--sp-accent-sky-soft)', to: { path: '/library', query: { manage: '1' } } },
   { key: 'logs', title: '操作日志', desc: '下载上传删除记录', icon: DocumentTextOutline, color: 'var(--sp-accent-amber)', bg: 'var(--sp-accent-amber-soft)', to: '/logs' },
   { key: 'settings', title: '系统设置', desc: '路径、格式、刮削源', icon: SettingsOutline, color: 'var(--sp-accent-slate)', bg: 'var(--sp-accent-slate-soft)', to: '/settings' },
 ]

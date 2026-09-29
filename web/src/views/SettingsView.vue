@@ -101,8 +101,8 @@
               <n-form-item label="下载后自动上传">
                 <n-space class="switch-row" align="center" :wrap="true">
                   <n-switch v-model:value="form.auto_upload_webdav" />
-                  <n-text depth="3">上传至曲库中的默认 WebDAV 源</n-text>
-                  <n-button text type="primary" @click="$router.push({ path: '/library', query: { manage: '1' } })">去配置曲库源</n-button>
+                  <n-text depth="3">上传至默认 WebDAV 曲源</n-text>
+                  <n-button text type="primary" @click="$router.push({ path: '/library', query: { manage: '1' } })">去配置曲源</n-button>
                 </n-space>
               </n-form-item>
               <n-form-item label="AcoustID API Key">
@@ -128,7 +128,7 @@
             </n-form>
           </n-card>
           <n-card title="说明">
-            <n-text depth="3">本地/WebDAV 连接、扫描目录、默认上传源、冲突策略等请到「曲库」页面管理。</n-text>
+            <n-text depth="3">本地/WebDAV 连接、扫描目录、默认上传源、冲突策略等请到「曲源」页面管理。</n-text>
           </n-card>
           <n-card title="其它">
             <n-space vertical>

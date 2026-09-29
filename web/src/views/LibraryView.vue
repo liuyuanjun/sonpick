@@ -1,18 +1,18 @@
 <template>
   <div class="library-layout" :class="{ mobile: isMobile }">
     <div v-if="!isMobile" class="library-side">
-      <n-card class="source-panel" title="曲库来源" size="small">
+      <n-card class="source-panel" title="曲源" size="small">
         <template #header-extra>
           <n-space size="small">
             <n-dropdown trigger="click" :options="createOptions" @select="openCreate">
-              <n-button type="primary" size="small">添加曲库</n-button>
+              <n-button type="primary" size="small">添加曲源</n-button>
             </n-dropdown>
             <n-button size="small" @click="openCleanup">清理失效</n-button>
             <n-button size="small" :loading="sourcesLoading" @click="loadSources">刷新</n-button>
           </n-space>
         </template>
 
-        <n-empty v-if="!sources.length && !sourcesLoading" description="暂无曲库" />
+        <n-empty v-if="!sources.length && !sourcesLoading" description="暂无曲源" />
         <n-spin :show="sourcesLoading">
           <n-space vertical size="small">
             <n-card
@@ -63,8 +63,8 @@
       <div v-if="isMobile" class="mobile-source-bar">
         <button type="button" class="mobile-source-trigger" @click="showSourceSheet = true">
           <div class="mobile-source-meta">
-            <span class="mobile-source-label">当前曲库</span>
-            <strong class="mobile-source-name">{{ selectedSource?.name || '选择曲库' }}</strong>
+            <span class="mobile-source-label">当前曲源</span>
+            <strong class="mobile-source-name">{{ selectedSource?.name || '选择曲源' }}</strong>
             <span class="mobile-source-sub">
               {{ selectedSource ? (selectedSource.type === 'webdav' ? 'WebDAV' : '本地') : '未选择' }}
               · 歌曲 {{ selectedSource?.song_count ?? '-' }}
@@ -189,17 +189,17 @@
   </div>
 
   <n-drawer v-model:show="showSourceSheet" placement="bottom" :height="'78%'" class="source-sheet-drawer">
-    <n-drawer-content title="选择曲库" closable>
+    <n-drawer-content title="选择曲源" closable>
       <n-space justify="space-between" align="center" style="margin-bottom: 12px">
         <n-text depth="3">共 {{ sources.length }} 个来源</n-text>
         <n-space size="small">
           <n-dropdown trigger="click" :options="createOptions" @select="(key) => { showSourceSheet = false; openCreate(key) }">
-            <n-button size="small" type="primary">添加曲库</n-button>
+            <n-button size="small" type="primary">添加曲源</n-button>
           </n-dropdown>
           <n-button size="small" :loading="sourcesLoading" @click="loadSources">刷新</n-button>
         </n-space>
       </n-space>
-      <n-empty v-if="!sources.length && !sourcesLoading" description="暂无曲库" />
+      <n-empty v-if="!sources.length && !sourcesLoading" description="暂无曲源" />
       <n-spin :show="sourcesLoading">
         <n-space vertical size="small">
           <n-card
@@ -249,7 +249,7 @@
   <n-modal v-model:show="showForm" preset="card" :title="formTitle" class="library-modal" style="width: 640px; max-width: 96vw">
     <n-form :label-placement="isMobile ? 'top' : 'left'" :label-width="isMobile ? 'auto' : 130">
       <n-form-item label="名称">
-        <n-input v-model:value="form.name" placeholder="例如 本地曲库 / NAS WebDAV" :disabled="isEditingBuiltin" />
+        <n-input v-model:value="form.name" placeholder="例如 本地 / NAS WebDAV" :disabled="isEditingBuiltin" />
       </n-form-item>
       <n-form-item label="类型">
         <n-tag>{{ form.type === 'local' ? '本地' : 'WebDAV' }}</n-tag>
@@ -261,7 +261,7 @@
       <template v-if="form.type === 'local'">
         <n-form-item label="根目录">
           <n-input v-model:value="form.root_path" placeholder="/app/downloads 或 NAS 路径" :disabled="isEditingBuiltin" />
-          <n-text v-if="isEditingBuiltin" depth="3" style="margin-left: 8px; font-size: var(--sp-fs-caption)">内置本地曲库路径不可修改</n-text>
+          <n-text v-if="isEditingBuiltin" depth="3" style="margin-left: 8px; font-size: var(--sp-fs-caption)">内置本地源路径不可修改</n-text>
         </n-form-item>
         <n-form-item label="扫描子目录">
           <n-input v-model:value="form.scan_dirs_text" type="textarea" :rows="3" placeholder="每行一个，相对根目录或绝对路径；空表示扫根目录" />
@@ -313,7 +313,7 @@
   <n-modal v-model:show="showReorg" preset="card" title="整理曲库" class="library-modal" style="width: 960px; max-width: 96vw">
     <n-form :label-placement="isMobile ? 'top' : 'left'" :label-width="isMobile ? 'auto' : 110">
       <n-alert type="info" style="margin-bottom: 12px">
-        当前曲库：{{ reorgSource?.name || '-' }}；目录：/{{ reorgForm.relative_dir || '' }}
+        当前曲源：{{ reorgSource?.name || '-' }}；目录：/{{ reorgForm.relative_dir || '' }}
       </n-alert>
       <n-form-item label="选择目录">
         <n-space vertical style="width: 100%">
@@ -343,7 +343,7 @@
       <n-form-item label="按格式归档">
         <n-space align="center">
           <n-switch v-model:value="reorgForm.relocate_format_dirs" />
-          <n-text depth="3" style="font-size: var(--sp-fs-caption)">开启后，整理时会把错放的无损文件（FLAC/APE/WAV 等）移入「无损存放目录」、MP3/AAC 等有损文件移入「有损存放目录」下对应的艺术家/专辑位置（目录在设置页配置，默认不开启）。内置曲库未开启时会分别在有损/无损存放目录内整理；目标已存在同一首歌时保留音质较好的文件。仅本地曲库生效。</n-text>
+          <n-text depth="3" style="font-size: var(--sp-fs-caption)">开启后，整理时会把错放的无损文件（FLAC/APE/WAV 等）移入「无损存放目录」、MP3/AAC 等有损文件移入「有损存放目录」下对应的艺术家/专辑位置（目录在设置页配置，默认不开启）。内置源未开启时会分别在有损/无损存放目录内整理；目标已存在同一首歌时保留音质较好的文件。仅本地源生效。</n-text>
         </n-space>
       </n-form-item>
       <n-form-item label="允许网络补全">
@@ -363,12 +363,12 @@
   <BatchLyricsModal
     v-model:show="showBatchLyrics"
     :library-source-id="batchLyricsSource?.id"
-    :target-label="batchLyricsSource ? `当前曲库：${batchLyricsSource.name}` : '当前曲库'"
+    :target-label="batchLyricsSource ? `当前曲源：${batchLyricsSource.name}` : '当前曲源'"
   />
   <n-modal v-model:show="showScrape" preset="card" title="刮削信息" class="library-modal" style="width: 640px; max-width: 96vw">
     <n-form :label-placement="isMobile ? 'top' : 'left'" :label-width="isMobile ? 'auto' : 130">
       <n-alert type="info" style="margin-bottom: 12px">
-        当前曲库：{{ scrapeTarget?.name || '-' }}
+        当前曲源：{{ scrapeTarget?.name || '-' }}
       </n-alert>
       <n-form-item label="网络补全">
         <n-switch v-model:value="scrapeForm.allow_network" />
@@ -576,8 +576,8 @@ const uploadConflictData = ref(null)
 const uploadConflictLoading = ref(false)
 
 const createOptions = [
-  { label: '添加本地曲库', key: 'local' },
-  { label: '添加 WebDAV 曲库', key: 'webdav' },
+  { label: '添加本地曲源', key: 'local' },
+  { label: '添加 WebDAV 曲源', key: 'webdav' },
 ]
 const conflictOptions = [
   { label: '重命名', value: 'rename' },
@@ -586,7 +586,7 @@ const conflictOptions = [
 ]
 const selectedSource = computed(() => sources.value.find((s) => s.id === selectedSourceId.value) || null)
 const isEditingBuiltin = computed(() => editingBuiltin.value)
-const formTitle = computed(() => (editingId.value ? '编辑曲库' : `添加${form.type === 'webdav' ? ' WebDAV ' : '本地'}曲库`))
+const formTitle = computed(() => (editingId.value ? '编辑曲源' : `添加${form.type === 'webdav' ? ' WebDAV ' : '本地'}曲源`))
 const browseSegments = computed(() => (browsePath.value || '').split('/').filter(Boolean))
 
 
@@ -811,7 +811,7 @@ function sourceActionOptions(source, { compact = false } = {}) {
   opts.push({ label: '浏览文件', key: 'browse' })
   if (!compact) opts.push({ label: '清理失效记录', key: 'cleanup' })
   if (source.type === 'webdav' && !source.is_default_upload) opts.push({ label: '设为默认上传', key: 'default' })
-  if (source.deletable !== false && !source.is_builtin) opts.push({ label: '删除曲库', key: 'delete' })
+  if (source.deletable !== false && !source.is_builtin) opts.push({ label: '删除曲源', key: 'delete' })
   return opts
 }
 function onSourceAction(key, source) {
@@ -837,7 +837,7 @@ async function loadSources() {
     sources.value = res.data || res || []
     webdavSources.value = sources.value.filter((s) => s.type === 'webdav' && s.enabled !== false).sort((a, b) => Number(b.is_default_upload) - Number(a.is_default_upload))
     selectDefaultSource(sources.value)
-  } catch (err) { message.error(formatApiError(err, '加载曲库失败')) }
+  } catch (err) { message.error(formatApiError(err, '加载曲源失败')) }
   finally { sourcesLoading.value = false }
 }
 async function loadSongs({ resetPage = false } = {}) {
@@ -919,9 +919,9 @@ async function onScan(row) {
     await loadSources(); await loadSongs()
   } catch (err) { message.error(formatApiError(err, '扫描失败')) }
 }
-async function onDefault(row) { try { await setDefaultUploadSource(row.id); message.success('已设为默认上传曲库'); await loadSources() } catch (err) { message.error(formatApiError(err, '设置失败')) } }
+async function onDefault(row) { try { await setDefaultUploadSource(row.id); message.success('已设为默认上传曲源'); await loadSources() } catch (err) { message.error(formatApiError(err, '设置失败')) } }
 async function onDeleteSource(row) {
-  if (!window.confirm(`删除曲库「${row.name}」？歌曲关联会被解除。`)) return
+  if (!window.confirm(`删除曲源「${row.name}」？歌曲关联会被解除。`)) return
   try { await deleteSource(row.id); message.success('已删除'); selectedSourceId.value = null; await loadSources(); await loadSongs() }
   catch (err) { message.error(formatApiError(err, '删除失败')) }
 }
@@ -937,7 +937,7 @@ async function onReorgEnterDir(path) { if (!path) return; reorgForm.relative_dir
 async function reorgGoRoot() { reorgForm.relative_dir = ''; reorgPreview.value = { total: 0, changed: 0, scanned: 0, items: [] }; reorgResult.value = null; await loadReorgDirs() }
 async function reorgGoUp() { const parts = String(reorgForm.relative_dir || '').replaceAll('\\', '/').replace(/^\/+|\/+$/g, '').split('/').filter(Boolean); parts.pop(); reorgForm.relative_dir = parts.join('/'); reorgPreview.value = { total: 0, changed: 0, scanned: 0, items: [] }; reorgResult.value = null; await loadReorgDirs() }
 async function openReorg(row) {
-  if (row.type !== 'local') { message.warning('仅本地曲库支持整理'); return }
+  if (row.type !== 'local') { message.warning('仅本地曲源支持整理'); return }
   reorgSource.value = row; reorgResult.value = null; reorgPreview.value = { total: 0, changed: 0, scanned: 0, items: [] }
   reorgForm.relative_dir = ''; reorgForm.limit = 20; reorgForm.include_failed = false; reorgForm.allow_network = false; reorgForm.relocate_format_dirs = false; reorgDirOptions.value = []; showReorg.value = true; await loadReorgDirs()
 }
@@ -949,7 +949,7 @@ async function runReorgPreview() {
   finally { reorgLoading.value = false }
 }
 async function runReorgApply() {
-  if (!reorgSource.value || !window.confirm(`确认整理曲库「${reorgSource.value.name}」？`)) return
+  if (!reorgSource.value || !window.confirm(`确认整理曲源「${reorgSource.value.name}」？`)) return
   reorgLoading.value = true
   try { reorgResult.value = (await applyReorganize(reorgSource.value.id, reorgPayload())).data || {}; message.success('整理完成'); await loadSources(); await loadSongs() }
   catch (err) { message.error(formatApiError(err, '整理失败')) }
@@ -1092,7 +1092,7 @@ async function onDeleteBrowseItem(row) {
 function consumeManageQuery() {
   const manage = route.query.manage
   if (manage == null || manage === '' || manage === '0' || manage === 'false') return
-  // 桌面端左侧已有曲库来源面板；仅移动端打开底部管理抽屉
+  // 桌面端左侧已有曲源面板；仅移动端打开底部管理抽屉
   if (isMobile.value) showSourceSheet.value = true
   const nextQuery = { ...route.query }
   delete nextQuery.manage
