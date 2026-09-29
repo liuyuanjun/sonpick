@@ -33,6 +33,12 @@ const routes = [
       },
       { path: 'sources', redirect: '/library' },
       { path: 'webdav', name: 'WebDAV', component: () => import('@/views/WebDAVView.vue') },
+      // 管理歌单（排序/改名/删除）独立成页：它不属于「播放器」分区，侧边栏「歌单」子菜单直接跳这里
+      {
+        path: 'playlists/manage',
+        name: 'PlaylistManage',
+        component: () => import('@/views/PlaylistManageView.vue'),
+      },
       { path: 'logs', name: 'Logs', component: () => import('@/views/LogsView.vue') },
       { path: 'settings', name: 'Settings', component: () => import('@/views/SettingsView.vue') },
     ],

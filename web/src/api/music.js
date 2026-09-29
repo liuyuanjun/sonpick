@@ -67,6 +67,15 @@ export function removeSongFromPlaylist(playlistId, songId) {
   return api.delete(`/playlists/${playlistId}/songs/${songId}`)
 }
 
+/**
+ * 歌单手动排序（管理歌单页拖拽后调用）。
+ * ids 按新顺序给出；后端未列出的歌单会保持相对顺序排到末尾。
+ * 返回按新顺序排好的完整列表，调用方可直接用它刷新本地缓存。
+ */
+export function reorderPlaylists(ids) {
+  return api.put('/playlists/order', { ids })
+}
+
 export function fetchHistory(limit = 50) {
   return api.get('/history', { params: { limit } })
 }
@@ -79,8 +88,15 @@ export function fetchLyrics(songId) {
   return api.get(`/songs/${songId}/lyrics`)
 }
 
-export function recordPlay(songId) {
-  return api.post(`/songs/${songId}/play`)
+/**
+ * 播放上报。
+ *
+ * `playedS` = 本次该歌曲的**累计真实播放时长**（秒，仅播放中累加），必传：
+ * 后端按设置项 `recent_play_threshold_s` 判定，未达标不写最近播放、也不加播放次数。
+ * （不传 played_s 会被后端当成"无条件记录"，那是留给旧客户端的兼容路径，业务侧不要走。）
+ */
+export function recordPlay(songId, playedS) {
+  return api.post(`/songs/${songId}/play`, { played_s: playedS })
 }
 
 

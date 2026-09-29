@@ -70,6 +70,7 @@ class SettingsUpdate(BaseModel):
     scrape_sources: Optional[list[dict[str, Any]]] = None
     lyrics_sources: Optional[list[dict[str, Any]]] = None
     acoustid_api_key: Optional[str] = Field(default=None, max_length=512)
+    recent_play_threshold_s: Optional[int] = Field(default=None, ge=0, le=3600)
 
 
 class SettingsResponse(BaseModel):
@@ -96,6 +97,7 @@ class SettingsResponse(BaseModel):
     scrape_sources: list[dict[str, Any]] = Field(default_factory=list)
     lyrics_sources: list[dict[str, Any]] = Field(default_factory=list)
     acoustid_ready: bool = False
+    recent_play_threshold_s: int = 3
     acoustid_message: Optional[str] = None
     updated_at: Optional[str]
 
@@ -381,14 +383,30 @@ class PlaylistOut(BaseModel):
     description: Optional[str]
     cover_song_id: Optional[int]
     song_count: int = 0
+    # 手动排序位（列表即按它升序返回）
+    sort_order: int = 0
     # 仅当 list_playlists 带 song_id 查询时填充：该歌是否已在此歌单
     contains_song: Optional[bool] = None
     created_at: Optional[str]
     updated_at: Optional[str]
 
 
+class PlaylistOrder(BaseModel):
+    """管理歌单页拖拽后的落库请求：按新顺序给出歌单 id（未列出的自动排到末尾）。"""
+    ids: list[int] = Field(default_factory=list)
+
+
 class PlaylistAddSongs(BaseModel):
     song_ids: list[int] = Field(default_factory=list)
+
+
+class PlayRecord(BaseModel):
+    """
+    播放上报。`played_s` = 本次该歌曲的**累计真实播放时长**（秒，仅 playing 时累加）。
+    未达阈值则不写最近播放、也不累加播放次数（见 record_play）。
+    为兼容老前端留 None：不传即视为「无条件记录」。
+    """
+    played_s: Optional[float] = Field(default=None, ge=0)
 
 
 class PlayHistoryOut(BaseModel):

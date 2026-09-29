@@ -81,6 +81,23 @@
                   <n-text depth="3">仅「速度」默认播放模式下生效；缺失 MP3 时自动把无损转码为 MP3。</n-text>
                 </n-space>
               </n-form-item>
+              <n-form-item label="计入最近播放的门槛">
+                <n-space class="switch-row" align="center" :wrap="true">
+                  <n-input-number
+                    v-model:value="form.recent_play_threshold_s"
+                    :min="0"
+                    :max="3600"
+                    :step="1"
+                    style="width: 120px"
+                  >
+                    <template #suffix>秒</template>
+                  </n-input-number>
+                  <n-text depth="3">
+                    累计播放时长到这一步才算「听过」：达标才写进最近播放、播放次数也才 +1。
+                    默认 3 秒 —— 点开听两秒就切走的那种不该进最近播放。填 0 表示一播就记。
+                  </n-text>
+                </n-space>
+              </n-form-item>
               <n-form-item label="下载后自动上传">
                 <n-space class="switch-row" align="center" :wrap="true">
                   <n-switch v-model:value="form.auto_upload_webdav" />
@@ -284,6 +301,7 @@ import api from '@/api/client'
 import { useIsMobile } from '@/composables/useIsMobile'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
+import { DEFAULT_RECENT_PLAY_THRESHOLD_S, useSettingsStore } from '@/stores/settings'
 import ChangePasswordModal from '@/components/ChangePasswordModal.vue'
 import SpPillTabs from '@/components/SpPillTabs.vue'
 
@@ -292,6 +310,7 @@ const isMobile = useIsMobile()
 const router = useRouter()
 const auth = useAuthStore()
 const themeStore = useThemeStore()
+const settingsStore = useSettingsStore()
 const showPasswordModal = ref(false)
 
 function handleLogout() {
@@ -330,6 +349,7 @@ const form = reactive({
   lossless_preferred: false,
   auto_convert_when_lossless_not_preferred: false,
   auto_upload_webdav: false,
+  recent_play_threshold_s: DEFAULT_RECENT_PLAY_THRESHOLD_S,
 })
 
 // 与后端 resolve_output_dir 规则保持一致：留空→存储目录/<默认名>；单段（含 /MP3 写法）→基于存储目录；多段绝对路径→原样
@@ -453,6 +473,9 @@ async function load() {
       lossless_preferred: !!d.lossless_preferred,
       auto_convert_when_lossless_not_preferred: !!d.auto_convert_when_lossless_not_preferred,
       auto_upload_webdav: !!d.auto_upload_webdav,
+      recent_play_threshold_s: Number.isFinite(Number(d.recent_play_threshold_s))
+        ? Number(d.recent_play_threshold_s)
+        : DEFAULT_RECENT_PLAY_THRESHOLD_S,
     })
     scrapeSources.value = d.scrape_sources || []
     lyricsSources.value = d.lyrics_sources || []
@@ -472,6 +495,7 @@ async function saveGeneral() {
     lossless_preferred: form.lossless_preferred,
     auto_convert_when_lossless_not_preferred: form.auto_convert_when_lossless_not_preferred,
     auto_upload_webdav: form.auto_upload_webdav,
+    recent_play_threshold_s: Number(form.recent_play_threshold_s) || 0,
     acoustid_api_key: acoustidApiKey.value || undefined,
   }, '设置已保存')
   acoustidApiKey.value = ''
@@ -493,6 +517,9 @@ async function save(payload, success) {
     lyricsSources.value = data.lyrics_sources || lyricsSources.value
     acoustidReady.value = !!data.acoustid_ready
     acoustidMessage.value = data.acoustid_message || acoustidMessage.value
+    // 让共享缓存立刻跟上：播放器读的是 store 里的阈值，
+    // 不回写的话要等下次整页刷新才生效
+    settingsStore.applyPayload(data)
     message.success(success)
   } catch (err) {
     message.error(err.response?.data?.detail || '保存失败')

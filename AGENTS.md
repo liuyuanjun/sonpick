@@ -58,7 +58,8 @@
   2. 底部悬浮胶囊 `GlobalPlayer` → 唯一音频出口；
   3. 全局大播放器抽屉 `GlobalPlayerDrawer` → `PlayerPanel` 与 `PlayerQueue` 的唯一宿主，桌面与移动端均为视口全覆盖浮层（沉浸式接管，含侧边栏）。
 - `player.fullPlayerOpen` 表示「大播放器抽屉打开」；`player.showQueue` 表示「队列展开」，队列渲染在抽屉内部，任意入口打开队列都会同时带出抽屉。
-- **布局约定（v0.15.1-rc15 起；v0.15.2-rc7 改为分组两级）**：桌面端无顶栏；侧边栏为**分组导航 + 二级** —— 「音乐」组（概览 / 下载 / 收藏▸喜欢·歌单·歌曲 / 发现▸歌手·专辑·最近）与「系统」组（曲库 / 操作日志 / 设置），原先收在左下系统管理下拉里的曲库 / 日志 / 设置已上收为一级项；左下功能区常驻任务中心、主题切换、用户入口与折叠开关。侧边栏组件与硬约定见 §5.9。移动端保留极简顶栏（标题 + 任务中心）+ 底部 Tab，**不渲染侧边栏**；主题/密码/退出入口在设置页「账户」区。修改密码弹窗为共用组件 `components/ChangePasswordModal.vue`，勿再各写一份。
+- **布局约定（v0.15.1-rc15 起；v0.15.2-rc9 调整分组）**：桌面端无顶栏；侧边栏为**分组导航 + 二级** —— 「音乐」组（概览 / 喜欢 / 最近 / 歌单▸〔手动排序后的前 5 个 + 管理歌单〕/ 曲库▸〔歌曲·歌手·专辑〕/ 下载）与「系统」组（曲源 / 日志 / 设置）。
+  **命名分工别搞混**：「曲库」在音乐组里指「按 歌曲/歌手/专辑 浏览」的口子（走 `/player/*`）；系统组的「曲源」是原来的曲库页 `/library`（含媒体源管理），只是导航换了叫法。侧边栏组件与硬约定见 §5.9；「歌单」子菜单是**动态数据**（顺序由「管理歌单」页决定，见 §4.3）。左下功能区常驻任务中心、主题切换、用户入口与折叠开关。移动端保留极简顶栏（标题 + 任务中心）+ 底部 Tab，**不渲染侧边栏**；主题/密码/退出入口在设置页「账户」区。修改密码弹窗为共用组件 `components/ChangePasswordModal.vue`，勿再各写一份。
 - 歌词工作台支持查询条件、候选、当前/候选比较、保存和明确清空。
 - 元信息候选采用前会逐项比较；封面显示新旧图片、图片尺寸和旧文件大小；旧封面缺失时默认选择候选封面，已有旧封面时默认保留。
 - 刮削信息与歌词保存/清空会写入同一逻辑歌曲的全部可用本地 `SongFile` 版本及各自侧车；WebDAV 版本只展示并明确标记为远端只读。
@@ -106,6 +107,9 @@ music/
 │   ├── src/components/player/PlayerStage.vue    # 舞台视图（黑胶 / 叠层 / 纯歌词），纯展示组件
 │   ├── src/components/nav/SpSidebar.vue         # 侧边栏导航（分组两级 / 跟随胶囊 / 图标轨折叠，§5.9）
 │   ├── src/components/SpPillTabs.vue            # 页内胶囊 tab（横轴胶囊 + 文字反色擦除，§5.10）
+│   ├── src/stores/playlists.js                  # 歌单列表共享缓存（侧边栏子菜单 / 播放器 / 管理页同源）
+│   ├── src/stores/settings.js                   # 全局设置共享缓存（目前只放播放阈值）
+│   ├── src/views/PlaylistManageView.vue         # 管理歌单（拖拽排序 / 改名 / 删除 / 新建）
 │   ├── src/utils/flowingPill.js                 # 胶囊位移投影（零依赖手写 FLIP，纵向 / 横向共用）
 │   ├── scripts/gen-prototype-tokens.mjs  # 把 tokens.js 派生变量注入原型页（原型不参与构建，见 §7.1）
 │   ├── prototype/            # 免构建原型页（vite build 不会打包，只用于「定稿前看真实浏览器」）
@@ -150,6 +154,7 @@ music/
 | `/api/search` | `search.py` | 搜索（轻量：只取元数据，每源 1 请求、源间并发）；`POST /search/resolve` 单曲格式验证（下载确认弹窗用） |
 | `/api/download` | `download.py` | 创建下载任务；`POST /download/playlist/parse` 歌单链接解析（只取元数据） |
 | `/api/songs` | `library.py` | 曲库、播放、转码、上传、删除 |
+| `/api/playlists` | `playlists.py` | 歌单 CRUD 与曲目增删；`PUT /playlists/order` 手动排序（**必须声明在 `/{playlist_id}` 之前**，否则 `order` 会被当 id 转 int 报 422） |
 | `/api/webdav` | `webdav.py` | 列表、流式播放 |
 | `/api/tasks` | `tasks.py` | 任务查询 |
 | `/api/sources` | `sources.py` | 多媒体源 CRUD / 测试 / 默认上传 / 扫描 |
@@ -165,7 +170,9 @@ music/
   - `webdav_conflict_policy`：`rename` \| `overwrite` \| `skip`（默认 `rename`）
   - `webdav_delete_local_after_upload`（仅音频真正上传/覆盖/重命名成功后删本地；`skip` 不删）
   - `webdav_remote_dir`
+  - `recent_play_threshold_s`（默认 3）：**累计真实播放时长**达标才算「听过」——达标才写最近播放、播放次数才 +1；`0` 表示一播就记。判定在后端 `POST /songs/{id}/play`（前端传 `played_s`），所以策略只有一处；前端只负责累计时长与上报时机（`stores/player.js` 的 `trackPlayedTime`，换歌重置、同一首歌只报一次、拖动跳变不计入）。
 - `Song.status`：`local` / `uploaded` / `both` / `remote`（历史值需兼容）
+- `Playlist.sort_order`：手动排序位，「管理歌单」页拖拽后落库；`GET /api/playlists` **按它升序**返回，不再按 `updated_at`（改个名/加首歌就把歌单顶到最前不是用户要的）。新建歌单取 `max+1` 排到末尾。新增该列时由 `_backfill_playlist_sort_order` 按旧的 `updated_at DESC` 回填一次，**幂等**（已有真实顺序就不动）。侧边栏「歌单」子菜单取排序后的前 5 个。
 - `OperationLog.action`：`download` / `upload` / `delete` / `convert`
 - SQLite 迁移顺序：`init_db()` 依次执行建表、`_ensure_columns`、默认媒体源、SongFile 索引以及路径责任迁移；迁移会将历史 Song 路径/侧车回填到 SongFile 后重建 `songs` 表删除旧路径列。
 - SQLite 单写者纪律：`database.py` 在数据访问层（engine 事件）用进程内 `RLock` 串行化写事务——执行写语句（INSERT/UPDATE/DELETE/REPLACE/CREATE/ALTER/DROP）前取锁，提交/回滚时释放；纯读事务不阻塞。业务代码无需感知此锁，也不要自建写锁绕过它。
@@ -403,6 +410,7 @@ Naive 的 modal / drawer / popover 会被 teleport 到 `body`，脱离 `.app-lay
 | 收起可聚焦性 | 收起态的 `.sp-sub` 必须 `inert`。`inert` 是「存在即生效」的布尔属性，**`:inert="false"` 会渲染成 `inert="false"` 反而打开它** —— 关闭态传 `true`、展开态传 `undefined` |
 | 胶囊坐标 | 位移投影模块 `utils/flowingPill.js`（零依赖，框架无关）。容器**必须是 `.sp-nav`**（胶囊的包含块）；传外层 `.sp-sider` 会把头部高度算进 y，整块高亮下移。横向不做 JS 动画：`left/right` 跟随宽度自动伸缩 |
 | 折叠态提示 | 一律 `n-tooltip`（`:disabled="!collapsed"`，placement right），**不用原生 `title`** |
+| 深链高亮 | 子菜单项可以带 query（例：歌单子项是 `/player/playlists?pl=3`）。`findTargetEl` 的解析顺序：叶子精确命中 → **父项自己的 key**（落到分组首页、没选中任何子项时高亮该父项）→ 所属父项（子项被折叠）。父项 key 因此可以复用真实路由（「歌单」的 key 就是 `/player/playlists`） |
 | 无障碍 | 刻意**不套 ARIA `menu/menuitem` 模式**：侧边栏是链接列表，主路径是 Tab；方向键只作增强（↓↑ 相邻项、←→ 展开/收拢与进出子项、Esc 收起本组、Home/End 首尾）。键盘走位同样驱动悬停胶囊（`focusin`），否则鼠标与键盘是两套观感 |
 | 折叠时文字让位 | 插槽内容（logo 文字等）挂全局工具类 `.sp-collapse-fade`，由 `SpSidebar` 在根上提供 `--sp-fade-opacity/shift/dur/delay`。**为什么用 CSS 变量而不是 `:slotted()`**：插槽内容编译在父级作用域，子组件 scoped 选择器够不到它，而自定义属性天然沿 DOM 继承 |
 | 动效参数 | 全部走 `tokens.js` 的 `MOTION` / `LAYOUT.sider*`，组件内**不写死时长与曲线**；`prefers-reduced-motion` 在 `flowingPill.js` 里单独判断（WAAPI 不受 CSS 媒体查询影响） |

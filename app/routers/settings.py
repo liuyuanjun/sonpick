@@ -42,6 +42,7 @@ def _to_response(s: AppSettings) -> SettingsResponse:
         lossless_output_path=getattr(s, "lossless_output_path", None) or str(Path(s.storage_path) / "LOSSLESS"),
         lossless_preferred=bool(getattr(s, "lossless_preferred", False)),
         auto_convert_when_lossless_not_preferred=bool(getattr(s, "auto_convert_when_lossless_not_preferred", False)),
+        recent_play_threshold_s=int(getattr(s, "recent_play_threshold_s", 3) or 0),
         auto_upload_webdav=bool(s.auto_upload_webdav),
         webdav_delete_local_after_upload=bool(getattr(s, "webdav_delete_local_after_upload", False)),
         webdav_upload_sidecar=bool(getattr(s, "webdav_upload_sidecar", True)),
@@ -151,6 +152,8 @@ def update_settings(req: SettingsUpdate, user: str = Depends(get_current_user), 
         s.lossless_preferred = req.lossless_preferred
     if req.auto_convert_when_lossless_not_preferred is not None:
         s.auto_convert_when_lossless_not_preferred = req.auto_convert_when_lossless_not_preferred
+    if req.recent_play_threshold_s is not None:
+        s.recent_play_threshold_s = req.recent_play_threshold_s
     if req.auto_upload_webdav is not None:
         s.auto_upload_webdav = req.auto_upload_webdav
     if req.webdav_delete_local_after_upload is not None:

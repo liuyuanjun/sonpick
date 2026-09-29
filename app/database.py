@@ -109,6 +109,7 @@ def init_db():
 
     Base.metadata.create_all(bind=engine)
     _ensure_columns(engine)
+    _backfill_playlist_sort_order(engine)
     _migrate_settings_lossy_output(engine)
     _seed_media_sources(engine)
     _ensure_song_file_indexes(engine)
@@ -142,6 +143,10 @@ def _ensure_columns(engine: Engine):
             "lossless_output_path": "VARCHAR(512)",
             "lossless_preferred": "BOOLEAN DEFAULT 0",
             "auto_convert_when_lossless_not_preferred": "BOOLEAN DEFAULT 0",
+            "recent_play_threshold_s": "INTEGER NOT NULL DEFAULT 3",
+        },
+        "playlists": {
+            "sort_order": "INTEGER NOT NULL DEFAULT 0",
         },
         "media_sources": {
             "playback_priority": "INTEGER NOT NULL DEFAULT 0",
@@ -192,6 +197,29 @@ def _ensure_columns(engine: Engine):
             conn.execute(text(
                 "UPDATE tasks SET started_at = created_at WHERE started_at IS NULL"
             ))
+
+
+def _backfill_playlist_sort_order(engine: Engine):
+    """
+    新增 `playlists.sort_order` 后，按**旧的展示顺序**回填（`updated_at DESC`），
+    让升级那一刻歌单顺序保持不变；之后由「管理歌单」页的手动排序接管。
+
+    幂等判据：只有「还没有真实顺序」（所有行同一个值）时才回填。
+    回填后各值互不相同，新建歌单取 max+1，所以这个条件不会再成立。
+    """
+    with engine.begin() as conn:
+        rows = conn.exec_driver_sql("SELECT id, sort_order FROM playlists").fetchall()
+        if len(rows) <= 1:
+            return
+        if len({r[1] for r in rows}) > 1:
+            return
+        ordered = conn.exec_driver_sql(
+            "SELECT id FROM playlists ORDER BY updated_at DESC, id DESC"
+        ).fetchall()
+        for idx, (pid,) in enumerate(ordered):
+            conn.exec_driver_sql(
+                "UPDATE playlists SET sort_order = ? WHERE id = ?", (idx, pid)
+            )
 
 
 def _migrate_settings_lossy_output(engine: Engine):

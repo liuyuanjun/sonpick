@@ -101,7 +101,7 @@
 </template>
 
 <script setup>
-import { computed, h, ref } from 'vue'
+import { computed, h, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NIcon, useMessage, useThemeVars } from 'naive-ui'
 import {
@@ -120,15 +120,13 @@ import {
   ChevronForward,
   HeartOutline,
   ListOutline,
-  PersonOutline,
   PersonCircleOutline,
-  DiscOutline,
-  MusicalNotes,
   TimeOutline,
-  CompassOutline,
 } from '@vicons/ionicons5'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
+import { usePlaylistsStore } from '@/stores/playlists'
+import { useSettingsStore } from '@/stores/settings'
 import { useIsMobile } from '@/composables/useIsMobile'
 import { usePlayerStore } from '@/stores/player'
 import GlobalPlayer from '@/components/GlobalPlayer.vue'
@@ -165,15 +163,24 @@ const message = useMessage()
 const collapsed = ref(false)
 const isMobile = useIsMobile()
 const player = usePlayerStore()
+const playlistsStore = usePlaylistsStore()
+const settingsStore = useSettingsStore()
 // Naive UI 不会全局注入 --n-* 变量，直接用主题变量才能区分激活态
 const themeVars = useThemeVars()
+
+// 侧边栏「歌单」子菜单要列前 5 个歌单；播放阈值也只有这里有全局的加载时机。
+// 两个都用 ensure()：幂等、失败静默（拉不到不该让导航或播放报错）
+onMounted(() => {
+  playlistsStore.ensure()
+  settingsStore.ensure()
+})
 
 // 移动端底部 Tab
 const tabs = [
   { label: '概览', key: '/', icon: HomeOutline },
   { label: '播放器', key: '/player', icon: PlayCircleOutline },
   { label: '下载', key: '/download', icon: CloudDownloadOutline },
-  { label: '曲库', key: '/library', icon: LibraryOutline },
+  { label: '曲源', key: '/library', icon: LibraryOutline },
   { label: '设置', key: '/settings', icon: SettingsOutline },
 ]
 
@@ -181,10 +188,11 @@ const routeTitle = computed(() => {
   const titles = {
     Dashboard: '概览',
     Download: '下载',
-    Library: '曲库',
-    Sources: '曲库',
-    Logs: '操作日志',
+    Library: '曲源',
+    Sources: '曲源',
+    Logs: '日志',
     Settings: '设置',
+    PlaylistManage: '管理歌单',
   }
   if (route.name === 'Player') {
     const sec = route.params.section || 'favorites'
@@ -203,50 +211,59 @@ const routeTitle = computed(() => {
 
 /**
  * 导航树：分组 + 二级。
- * 把「我的音乐」六项收成 收藏 / 发现 两个二级组，是为了给侧边栏腾出容纳新入口的余量
- * （曲库 / 日志 / 设置已经上收进「系统」组），同时把两类不同的心智分开。
- * 父项的 key 只是分组标识，不参与路由 —— 点父项只展开，不跳转（叶子项才导航）。
- * icon 传组件本身，尺寸由 SpSidebar 按 token 控制，不再各处套一层 NIcon。
+ * 父项（歌单 / 曲库）的 key 只是分组标识，不参与路由 —— 点父项只展开、不跳转。
+ * 例外：「歌单」的 key 直接用 /player/playlists，这样落到歌单网格页（没带 ?pl=）时
+ * 高亮能通过 `findTargetEl` 的父项回退落在它身上（见 SpSidebar）。
+ * 子项不配 icon：二级项在 UI 上统一渲染成小圆点，配了也用不上。
+ *
+ * 「歌单」的子菜单是**动态数据**：取手动排序后的前 5 个，第 6 项固定是「管理歌单」。
+ * 顺序由「管理歌单」页的拖拽决定，所以这里读的是 playlists store 的缓存。
  */
-const navGroups = [
+const navGroups = computed(() => [
   {
     key: 'music',
     label: '音乐',
     items: [
       { label: '概览', key: '/', icon: HomeOutline },
+      { label: '喜欢', key: '/player/favorites', icon: HeartOutline },
+      { label: '最近', key: '/player/history', icon: TimeOutline },
+      {
+        label: '歌单',
+        key: '/player/playlists',
+        icon: ListOutline,
+        children: [
+          ...playlistsStore.forSidebar.map((pl) => ({
+            label: pl.name,
+            key: `/player/playlists?pl=${pl.id}`,
+          })),
+          { label: '管理歌单', key: '/playlists/manage' },
+        ],
+      },
+      {
+        label: '曲库',
+        key: 'player-library',
+        icon: LibraryOutline,
+        children: [
+          { label: '歌曲', key: '/player/songs' },
+          { label: '歌手', key: '/player/artists' },
+          { label: '专辑', key: '/player/albums' },
+        ],
+      },
       { label: '下载', key: '/download', icon: CloudDownloadOutline },
-      {
-        label: '收藏',
-        key: 'collection',
-        icon: HeartOutline,
-        children: [
-          { label: '喜欢', key: '/player/favorites', icon: ListOutline },
-          { label: '歌单', key: '/player/playlists', icon: ListOutline },
-          { label: '歌曲', key: '/player/songs', icon: MusicalNotes },
-        ],
-      },
-      {
-        label: '发现',
-        key: 'discover',
-        icon: CompassOutline,
-        children: [
-          { label: '歌手', key: '/player/artists', icon: PersonOutline },
-          { label: '专辑', key: '/player/albums', icon: DiscOutline },
-          { label: '最近', key: '/player/history', icon: TimeOutline },
-        ],
-      },
     ],
   },
   {
     key: 'system',
     label: '系统',
     items: [
-      { label: '曲库', key: '/library', icon: LibraryOutline },
-      { label: '操作日志', key: '/logs', icon: DocumentTextOutline },
+      // 「曲源」= 现在的曲库页（那里管媒体源），只是导航换了叫法；
+      // 「曲库」这个名字让给了音乐组里按 歌曲/歌手/专辑 浏览的入口
+      { label: '曲源', key: '/library', icon: LibraryOutline },
+      { label: '日志', key: '/logs', icon: DocumentTextOutline },
       { label: '设置', key: '/settings', icon: SettingsOutline },
     ],
   },
-]
+])
 
 const userOptions = [
   { label: '修改密码', key: 'change-password', icon: () => h(NIcon, null, { default: () => h(KeyOutline) }) },
@@ -260,11 +277,17 @@ const collapseHint = computed(() => {
 
 const activeKey = computed(() => {
   const p = route.path
+  // 「管理歌单」是独立页面，导航项 key 就是它自己的路径
+  if (p.startsWith('/playlists')) return p
   if (p.startsWith('/download') || p.startsWith('/search') || p.startsWith('/import')) return '/download'
   if (p.startsWith('/library') || p.startsWith('/sources') || p.startsWith('/webdav')) return '/library'
   if (p.startsWith('/player')) {
     const sec = route.params.section
-    return sec ? `/player/${sec}` : '/player/favorites'
+    const base = sec ? `/player/${sec}` : '/player/favorites'
+    // 歌单深链：把 ?pl= 一并带进 activeKey，侧边栏子菜单项才能被标成当前项。
+    // 不带 pl 时落到 /player/playlists，由 SpSidebar 回退高亮到「歌单」父项
+    if (sec === 'playlists' && route.query.pl) return `${base}?pl=${route.query.pl}`
+    return base
   }
   if (p.startsWith('/logs')) return '/logs'
   if (p.startsWith('/settings')) return '/settings'

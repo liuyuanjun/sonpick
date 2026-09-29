@@ -59,6 +59,9 @@ class AppSettings(Base):
     scrape_sources_json = Column(Text, default="[]")
     lyrics_sources_json = Column(Text, default="[]")
     acoustid_api_key_enc = Column(String(1024), nullable=True)
+    # 播放阈值：累计真实播放时长达到该秒数才计入最近播放并累加播放次数。
+    # 目的是挡掉「点开听了两秒就切走」——那种明显不是想听，不该污染最近播放与播放次数。
+    recent_play_threshold_s = Column(Integer, nullable=False, default=3, server_default="3")
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
@@ -265,6 +268,9 @@ class Playlist(Base):
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     cover_song_id = Column(Integer, nullable=True)
+    # 手动排序位（「管理歌单」页拖拽后落库）；列表默认按它升序。
+    # 刻意不吃 updated_at：改个名字就把歌单顶到最前面不是用户想要的行为。
+    sort_order = Column(Integer, nullable=False, default=0, server_default="0")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -274,6 +280,7 @@ class Playlist(Base):
             "name": self.name,
             "description": self.description,
             "cover_song_id": self.cover_song_id,
+            "sort_order": self.sort_order or 0,
             "song_count": song_count,
             "created_at": iso_utc(self.created_at),
             "updated_at": iso_utc(self.updated_at),

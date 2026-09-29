@@ -295,6 +295,7 @@ import {
 } from '@vicons/ionicons5'
 import { useAuthStore } from '@/stores/auth'
 import { usePlayerStore, normalizePlayerSection } from '@/stores/player'
+import { usePlaylistsStore } from '@/stores/playlists'
 import { useIsMobile } from '@/composables/useIsMobile'
 import SongTable from '@/components/player/SongTable.vue'
 import {
@@ -309,7 +310,6 @@ import {
   fetchHistory,
   fetchLibraryStats,
   fetchPlaylistSongs,
-  fetchPlaylists,
   fetchSongs,
   fetchRandomPool,
   fetchSources,
@@ -340,10 +340,11 @@ const songsQuery = ref('')
 const playingAllSongs = ref(false)
 let songsRequestId = 0
 let songsSearchTimer = null
+const playlistsStore = usePlaylistsStore()
 const favorites = ref([])
 const artists = ref([])
 const albums = ref([])
-const playlists = ref([])
+const playlists = computed(() => playlistsStore.items)
 const history = ref([])
 const stats = ref(null)
 
@@ -517,8 +518,11 @@ function resetDetailState() {
 function switchSection(key) {
   const next = normalizeSection(key)
   resetDetailState()
-  if (route.params.section !== next) {
-    router.replace({ name: 'Player', params: { section: next } })
+  // 歌单深链参数要清掉：否则「点歌单 Tab 想回到网格」会被 refresh() 里的
+  // openPlaylistFromQuery 又打开一遍
+  const query = next === 'playlists' ? {} : route.query
+  if (route.params.section !== next || (next === 'playlists' && route.query.pl)) {
+    router.replace({ name: 'Player', params: { section: next }, query })
   }
   if (section.value === next) {
     refresh()
@@ -540,6 +544,16 @@ watch(
   },
 )
 
+// 侧边栏在歌单之间切换时只有 ?pl= 变、section 不变，上面的 watcher 不会触发
+watch(
+  () => route.query.pl,
+  async () => {
+    if (section.value !== 'playlists') return
+    if (!playlistsStore.loaded) await playlistsStore.refresh().catch(() => {})
+    await openPlaylistFromQuery()
+  },
+)
+
 async function refresh() {
   loading.value = true
   try {
@@ -548,7 +562,10 @@ async function refresh() {
     else if (section.value === 'songs') await loadSongs()
     else if (section.value === 'artists') await loadArtists()
     else if (section.value === 'albums') await loadAlbums()
-    else if (section.value === 'playlists') await loadPlaylists()
+    else if (section.value === 'playlists') {
+      await loadPlaylists()
+      await openPlaylistFromQuery()
+    }
     else if (section.value === 'history') await loadHistory()
   } finally {
     loading.value = false
@@ -643,8 +660,23 @@ async function openAlbum(row) {
 }
 
 async function loadPlaylists() {
-  const res = await fetchPlaylists()
-  playlists.value = res.data || []
+  // 走共享 store：侧边栏「歌单」子菜单与这里读的是同一份缓存，
+  // 在管理歌单页拖拽排序后两边顺序一致，不需要各自再拉一遍
+  await playlistsStore.refresh()
+}
+
+/**
+ * 侧边栏「歌单」子菜单的链接形如 /player/playlists?pl=<id>。
+ * 带 pl 就自动打开该歌单；不带（例如从子项切回父项）回到歌单网格。
+ */
+async function openPlaylistFromQuery() {
+  const id = Number(route.query.pl)
+  if (!Number.isFinite(id) || id <= 0) {
+    selectedPlaylist.value = null
+    return
+  }
+  const found = playlists.value.find((p) => p.id === id)
+  if (found) await openPlaylist(found)
 }
 
 async function openPlaylist(row) {

@@ -27,6 +27,7 @@ from app.schemas import (
     LyricsLineOut,
     LyricsOut,
     PlayHistoryOut,
+    PlayRecord,
     SongOut,
 )
 from app.services.lyrics_service import load_lyrics_for_song
@@ -193,12 +194,28 @@ def organize_song_apply(
 @router.post("/songs/{song_id}/play", response_model=SongOut)
 def record_play(
     song_id: int,
+    body: PlayRecord | None = None,
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     song = db.get(Song, song_id)
     if not song:
         raise HTTPException(status_code=404, detail="歌曲不存在")
+
+    # 播放阈值 gate（默认 3 秒）：挡掉「点开听了两秒就切走」——那种不是想听，
+    # 既不该进最近播放，也不该把播放次数加上去（同一次判定，语义一致）。
+    # played_s 为 None 视为「无条件记录」，兼容还没升级的前端。
+    settings = db.get(AppSettings, 1)
+    threshold = int(getattr(settings, "recent_play_threshold_s", 3) or 0)
+    if body is not None and body.played_s is not None and body.played_s < threshold:
+        log.debug(
+            "播放时长不足阈值，不计入最近播放: song_id=%s played_s=%s threshold=%s",
+            song_id,
+            body.played_s,
+            threshold,
+        )
+        return song_with_summary(db, song, _favorite_ids(db, [song.id]))
+
     song.play_count = (song.play_count or 0) + 1
     song.updated_at = datetime.now(timezone.utc)
     db.add(PlayHistory(song_id=song_id))

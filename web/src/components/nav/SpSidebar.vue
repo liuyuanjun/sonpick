@@ -178,9 +178,15 @@ function findLeafEl(key) {
 }
 
 function findTargetEl(key) {
-  // 二级项在父项未展开时不可见，胶囊退回到父项上，避免高亮块落在折叠区里
-  const el = findLeafEl(key)
-  if (el) return el
+  // 1) 叶子项：精确命中
+  const leaf = findLeafEl(key)
+  if (leaf) return leaf
+  // 2) 父项自己的 key（如「歌单」组的分组 key）：父项没有 data-key，
+  //    但它的 key 就在 data-parent 上。用于「落到分组首页、没选中任何子项」的场景
+  //    （例：/player/playlists 没带 ?pl=，子项都对不上，高亮该落在父项上）
+  const own = navEl.value?.querySelector(`.sp-item-btn[data-parent="${key}"]`)
+  if (own) return own
+  // 3) 二级项在父项未展开时不可见，胶囊退回到父项上，避免高亮块落在折叠区里
   const parent = parentOf(key)
   return parent ? navEl.value?.querySelector(`.sp-item-btn[data-parent="${parent.key}"]`) || null : null
 }

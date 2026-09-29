@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { fetchLyrics, recordPlay, streamUrl, coverUrl, scrapeSongs, waitTask } from '@/api/music'
 import { useAuthStore } from '@/stores/auth'
+import { DEFAULT_RECENT_PLAY_THRESHOLD_S, useSettingsStore } from '@/stores/settings'
 import { useIsMobile } from '@/composables/useIsMobile'
 import { findLyricIndex, parseLrc } from '@/utils/lrc'
 
@@ -70,6 +71,8 @@ function migrateLegacySkin() {
 }
 
 export const usePlayerStore = defineStore('player', () => {
+  // 播放阈值要从设置里读（跨模块共享），所以这里拿一下 settings store
+  const settingsStore = useSettingsStore()
   const current = ref(null)
   const src = ref('')
   const cover = ref('')
@@ -137,7 +140,41 @@ export const usePlayerStore = defineStore('player', () => {
     lyrics.value = []
     const requestSeq = ++lyricsRequestSeq
     loadLyrics(song.id, requestSeq)
-    recordPlay(song.id).catch(() => {})
+    // 播放上报改为「累计听够阈值才报」——见 trackPlayedTime。换歌即重置计数
+    resetPlayReporting()
+  }
+
+  /* ── 播放上报：累计真实播放时长 ────────────────────────────────
+     为什么不在 applySong 里直接上报：那样「点开听了两秒就切走」也会进最近播放、
+     播放次数也会 +1，而那种明显不是想听。现在只在**播放中**累加 currentTime 的
+     正向增量，攒够阈值才上报一次；阈值本身是后端设置项（默认 3 秒）。
+
+     拖动进度条造成的跳变不计入：增量 > SEEK_JUMP_S 或为负，视为 seek 而非"听"。 */
+  const SEEK_JUMP_S = 1.5
+  let playedAccum = 0
+  let reportedSongId = null
+
+  function resetPlayReporting() {
+    playedAccum = 0
+    reportedSongId = null
+  }
+
+  function playThresholdS() {
+    const value = Number(settingsStore.recentPlayThresholdS)
+    return Number.isFinite(value) && value >= 0 ? value : DEFAULT_RECENT_PLAY_THRESHOLD_S
+  }
+
+  function trackPlayedTime(prevTime, nextTime) {
+    const song = current.value
+    if (!playing.value || !song?.id) return
+    const delta = nextTime - prevTime
+    if (delta <= 0 || delta > SEEK_JUMP_S) return
+    playedAccum += delta
+    if (reportedSongId === song.id) return
+    if (playedAccum < playThresholdS()) return
+    reportedSongId = song.id
+    // 保留一位小数：阈值是整数秒，精度够用且日志可读
+    recordPlay(song.id, Math.round(playedAccum * 10) / 10).catch(() => {})
   }
 
   async function scrapeCurrent(options = {}) {
@@ -353,7 +390,10 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   function setProgress(time, total) {
-    currentTime.value = Number(time) || 0
+    const next = Number(time) || 0
+    // 先按「上一帧 → 本帧」的增量累计播放时长，再落 currentTime
+    trackPlayedTime(currentTime.value, next)
+    currentTime.value = next
     const d = Number(total)
     if (Number.isFinite(d) && d > 0) duration.value = d
     lyricIndex.value = findLyricIndex(lyrics.value, currentTime.value)
