@@ -46,6 +46,7 @@ import {
   NThing,
   NP,
   NPageHeader,
+  NPopconfirm,
   NPagination,
   NProgress,
   NRadio,
@@ -90,8 +91,8 @@ const naive = create({
     NLoadingBarProvider, NMenu, NMessageProvider,
   NDialogProvider, NModal,
     NBreadcrumb, NBreadcrumbItem, NCollapseTransition, NDrawer, NDrawerContent, NBadge, NEmpty, NResult, NList, NListItem, NThing,
-    NP, NPageHeader,
-    NPagination, NProgress, NRadio, NRadioButton, NRadioGroup, NSelect, NSlider, NSpace,
+  NP, NPageHeader, NPopconfirm,
+  NPagination, NProgress, NRadio, NRadioButton, NRadioGroup, NSelect, NSlider, NSpace,
     NSpin, NSwitch, NTabPane, NTabs, NTag, NText, NTooltip,
   ],
 })

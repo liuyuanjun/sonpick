@@ -256,7 +256,10 @@ music/
 - 前端文案：当前仓库以中文硬编码为主；**若新增 React 代码**，全局规则要求走 i18n、禁止硬编码用户可见字符串。现有 Vue 页面保持项目既有风格，不强制一次性 i18n 化
 - **改动即核对组件注册**：模板用了新 Naive 组件（`<n-xxx>`）或 `h(NXxx)`，必须在 `web/src/main.js` 的 `create({ components: [...] })` 里 import 并注册，否则构建产物在运行时对未注册标签渲染为原生未知元素（白屏/样式全丢），**编译不报错**。加组件后顺手 `grep -c "<n-组件名" src/` 确认模板与注册对得上。
 - **项目自有组件不要塞进 `create({ components })`**（`SpTable` / `StateEmpty` 这类）：`naive-ui` 的 `create()` 只做 `app.component('N' + component.name, c)`，而 SFC 用 `<script setup>` 时**没有 `name`**，于是被注册成 `Nundefined` —— 模板里的 `<sp-table>` 解析不到，被当成未知元素渲染，**控制台连警告都没有**（实测表现：表格整块消失）。自有组件一律用 `app.component('SpTable', SpTable)` 显式注册。验证方式：控制台跑 `[...document.querySelectorAll('*')].map(e=>e.tagName.toLowerCase()).filter(t=>t.startsWith('sp-'))`，结果必须是 `[]`。
-- **改动即核对模板标识符**：模板里的函数/变量必须已在 `<script setup>` 声明或 import。漏了 `import { formatFileSize }` 这类问题 `pnpm build` **同样不报错**，但渲染时抛 `TypeError: _ctx.xxx is not a function`，那一块子树直接渲染失败（表现为「弹窗打开后空白 / 只剩占位文案」）。改完模板跑 `pnpm check:template-refs`（`web/scripts/check-template-refs.mjs`）。
+- **改动即核对模板标识符与组件标签**：模板里的函数/变量必须已在 `<script setup>` 声明或 import，模板里的组件标签必须已注册或已 import。两类漏法 `pnpm build` **都不报错**：
+  - 漏 `import { formatFileSize }` → 渲染时抛 `TypeError: _ctx.xxx is not a function`，那一块子树直接渲染失败（表现为「弹窗打开后空白 / 只剩占位文案」）；
+  - 漏注册的组件标签（`<n-popconfirm>`、`<person />`）→ Vue 只打一条 warning，把未知元素**原样渲染**：插槽内容以纯文本摊在页面上、交互全失效。实测踩过两次：设置页「确认退出登录」浮层从未出现过、播放器空状态图标长期空白。
+  改完模板跑 `pnpm check:template-refs`（`web/scripts/check-template-refs.mjs`）—— 两类都查。它按 `src/main.js` 的全局注册表判定，所以**别把 Naive 组件写进自定义注册**（`create({ components })` 注册的是 `'N' + component.name`，例如 `NA` 实际注册成 `NAnchor`，模板必须写 `<n-anchor>`，写 `<n-a>` 永远解析不到）。
 - **自定义组件的 v-model 契约必须与调用点一致**：全站约定用 Naive 风格的 `value` / `update:value`（即 `v-model:value`），**不要**在自定义组件里声明 `modelValue` / `update:modelValue`。契约不匹配时 prop 为 undefined，组件渲染期抛错、整棵子树静默渲染为注释节点（构建和 `check:template-refs` 都不报错，页面其余部分正常）——v0.15.2-rc1 的 SourcePicker 因此整行消失。改完组件契约后用浏览器实际渲染验证（本地可用 Playwright 无头浏览器跑 `127.0.0.1:8000`）。
 
 ### 5.5 前端硬规范（避免重复踩坑）
@@ -414,7 +417,7 @@ Naive 的 modal / drawer / popover 会被 teleport 到 `body`，脱离 `.app-lay
 | 为什么必须有反色副本 | 没有它时，胶囊还在路上、新标签已经是主色文字 + 主色底 = 白底白字看不见。副本要 `aria-hidden`，并 `padding/gap: inherit`，否则会比正本差一个内边距 |
 | 选中态**不加粗** | 加粗会改该 tab 宽度 → 每切一次整条重排、胶囊目标漂移。靠反色副本表达选中感，字重恒定 |
 | 无障碍 | 用 **ARIA tabs 模式**（`tablist`/`tab`/`tabpanel` + `aria-controls` + `aria-labelledby`），与 §5.9 侧边栏「刻意不用 menu 模式」相反 —— tab 就该用 tab。仅选中项可 Tab（漫游 tabindex），方向键 / Home / End 在 tablist 内切换 |
-| 受控 | 只提供 `v-model` 受控用法，位移由 `modelValue` 变化驱动，组件不自行维护选中态 |
+| 受控 | 只提供受控用法，且遵循 §5.5 的全站契约 `value` / `update:value`（`v-model:value`，**不用 `modelValue`**）；位移由 `value` 变化驱动，组件不自行维护选中态 |
 | 面板不进组件 | 组件只渲染 tab 条，面板由使用方挂着（`id` 与 `aria-labelledby` 用约定拼：`${idPrefix}-tab-${key}`）。这样使用方才能决定「tab 条吸顶、面板不吸顶」 |
 | 移动端 | 断点内 tab 等宽铺满、隐藏图标（窄屏塞不下「图标 + 文字」），由组件内 `@media (max-width: 768px)` 处理，不需要 JS 分支 |
 
@@ -647,12 +650,6 @@ ssh qnap 'curl -sS http://127.0.0.1:8301/health'
 - 部分浏览器 FLAC 播放差，可转码 MP3
 - 不同 WebDAV 服务器路径/LIST 行为不一致
 - remote-only（上传后删本地）曲库体验仍不完整
-
-**已知缺陷（未修，待确认优先级）**
-
-- `SettingsView.vue:216` 用了 `<n-popconfirm>`、`:103` 用了 `<n-a>`（Naive 的链接组件），两者都**没在 `main.js` 注册**（`create({ components })` 清单里没有 `NPopconfirm` / `NA`）→ 运行期 `Failed to resolve component`：**确认退出登录的浮层不会出现**，插槽文案「确认退出当前登录吗?」直接以纯文本渲染在账户区里（实测截图可见）。改法：把 `NPopconfirm` / `NA` 补进 `main.js` 的注册清单 —— 这是 §5.5 硬规范第 1 条的漏网之鱼。
-- `PlayerView.vue:130` 的空状态图标写成 `<person />`，而该组件从未 import/注册 `Person`（只注册过 Naive 全局组件与本项目自有组件）→ 运行期 `[Vue warn]: Failed to resolve component: person`，图标位置空白。同文件第 371 行用的是 `People`（歌手分类图标）。改法：改用已 import 的图标，或补 `import { Person } from '@vicons/ionicons5'`。
-- 静态哨兵 `scripts/check-template-refs.mjs` 只查**模板里的函数调用**，查不到**未注册的组件标签**（上面两条正是它漏掉的类型）。若要覆盖，需再加一条规则：模板里出现的小写连字符/单词标签必须能在 `<script setup>` 的 import 或全局注册表里找到。
 
 **待办**
 

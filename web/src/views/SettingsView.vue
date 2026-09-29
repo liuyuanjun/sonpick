@@ -4,7 +4,7 @@
          胶囊本身留在组件里 —— 组件不该替使用方决定「贴不贴顶」。 -->
     <div class="settings-tabbar">
       <sp-pill-tabs
-        v-model="activeSection"
+        v-model:value="activeSection"
         :items="tabItems"
         id-prefix="settings"
         panel-id="settings-panel"
@@ -100,7 +100,7 @@
                   <n-text depth="3">用于 Chromaprint 音频指纹识别：当本地标签、国内源和海外源都未命中时，可按实际音频内容识别歌曲。密钥仅加密保存，不会在接口中返回。</n-text>
                   <n-text depth="3">
                     申请与说明：
-                    <n-a href="https://acoustid.org" target="_blank">acoustid.org</n-a>
+                    <a href="https://acoustid.org" target="_blank" rel="noreferrer noopener">acoustid.org</a>
                     ；运行环境还需安装 <code>fpcalc</code>（chromaprint）。
                   </n-text>
                 </n-space>

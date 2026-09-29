@@ -2,6 +2,8 @@
   <n-config-provider
     :theme="themeStore.naiveTheme"
     :theme-overrides="themeStore.naiveOverrides"
+    :locale="zhCN"
+    :date-locale="dateZhCN"
   >
     <n-loading-bar-provider>
       <n-dialog-provider>
@@ -16,6 +18,7 @@
 </template>
 
 <script setup>
+import { zhCN, dateZhCN } from 'naive-ui'
 import { useThemeStore } from '@/stores/theme'
 
 // 颜色一律由 @/theme/tokens 派生：

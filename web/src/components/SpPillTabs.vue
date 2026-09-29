@@ -11,9 +11,9 @@
         class="sp-pill-tab"
         type="button"
         role="tab"
-        :aria-selected="item.key === modelValue"
+        :aria-selected="item.key === value"
         :aria-controls="panelId || undefined"
-        :tabindex="item.key === modelValue ? undefined : -1"
+        :tabindex="item.key === value ? undefined : -1"
         @click="select(item.key)"
         @keydown="onKeydown"
       >
@@ -58,14 +58,15 @@ let uidSeq = 0
  * - **不用 ARIA menu 模式**（那是侧边栏的做法）；tab 就该用 tablist/tab/tabpanel，
  *   方向键在 tablist 内切换是这套模式的标配。
  *
- * 受控组件：必须用 `v-model` 绑定，位移由 `modelValue` 的变化驱动（不自行维护选中态）。
+ * 受控组件：必须用 `v-model:value` 绑定（全站约定 Naive 风格的 `value` / `update:value`，不用 `modelValue`），
+ * 位移由 `value` 的变化驱动（不自行维护选中态）。
  */
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { createFlowingPill } from '@/utils/flowingPill'
 
 const props = defineProps({
   /** 当前选中的 tab key */
-  modelValue: { type: String, required: true },
+  value: { type: String, required: true },
   /** [{ key, label, icon? }]，icon 传组件本身，尺寸由本组件按 token 控制 */
   items: { type: Array, required: true },
   /** tablist 的无障碍名称 */
@@ -76,7 +77,7 @@ const props = defineProps({
   panelId: { type: String, default: '' },
 })
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:value'])
 
 // 实例级唯一前缀。不用 useId()：它要 Vue 3.5+，本项目锁定在 3.4；序号在模块作用域（见上方 <script>）
 const uid = `sp-tabs-${(uidSeq += 1)}`
@@ -103,13 +104,13 @@ function setTabEl(key, el) {
 /* ── 选择 ─────────────────────────────────────────────────── */
 
 function select(key, focus = false) {
-  if (key !== props.modelValue) emit('update:modelValue', key)
+  if (key !== props.value) emit('update:value', key)
   if (focus) nextTick(() => tabEls.get(key)?.focus())
 }
 
 function onKeydown(event) {
   const keys = props.items.map((item) => item.key)
-  const index = keys.indexOf(props.modelValue)
+  const index = keys.indexOf(props.value)
   let next = null
   if (event.key === 'ArrowRight') next = keys[(index + 1) % keys.length]
   else if (event.key === 'ArrowLeft') next = keys[(index - 1 + keys.length) % keys.length]
@@ -167,12 +168,12 @@ function moveTo(key, animate) {
 /** 尺寸变了（窗口缩放、断点切换、字体加载）：重新量静态几何，再瞬时对位 */
 function onGeometryChange() {
   measureLabels()
-  const target = tabEls.get(props.modelValue)
+  const target = tabEls.get(props.value)
   if (target && mover) mover.place(target, false)
   syncClips()
 }
 
-watch(() => props.modelValue, (key) => moveTo(key, true))
+watch(() => props.value, (key) => moveTo(key, true))
 
 watch(() => props.items, () => {
   nextTick(onGeometryChange)

@@ -127,7 +127,7 @@
             >
               <div class="media-cover circle">
                 <img v-if="a.cover_song_id" :src="coverOf(a.cover_song_id)" alt="" />
-                <n-icon v-else size="44"><person /></n-icon>
+                <n-icon v-else size="44"><people /></n-icon>
               </div>
               <div class="media-title">{{ a.name }}</div>
               <div class="media-sub">{{ a.song_count }} 首 · {{ a.album_count }} 张专辑</div>
