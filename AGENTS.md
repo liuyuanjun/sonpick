@@ -58,7 +58,7 @@
   2. 底部悬浮胶囊 `GlobalPlayer` → 唯一音频出口；
   3. 全局大播放器抽屉 `GlobalPlayerDrawer` → `PlayerPanel` 与 `PlayerQueue` 的唯一宿主，桌面与移动端均为视口全覆盖浮层（沉浸式接管，含侧边栏）。
 - `player.fullPlayerOpen` 表示「大播放器抽屉打开」；`player.showQueue` 表示「队列展开」，队列渲染在抽屉内部，任意入口打开队列都会同时带出抽屉。
-- **布局约定（v0.15.1-rc15 起）**：桌面端无顶栏；侧边栏菜单扁平不分区（概览 → 我的音乐六项 → 下载），低频入口（曲库/日志/设置/修改密码/退出登录）收进左下账户抽屉，左下功能区常驻任务中心、主题切换与折叠开关（替代 Naive 默认底边 trigger）；移动端保留极简顶栏（标题 + 任务中心），主题/密码/退出入口在设置页「账户」区。修改密码弹窗为共用组件 `components/ChangePasswordModal.vue`，勿再各写一份。
+- **布局约定（v0.15.1-rc15 起；v0.15.2-rc7 改为分组两级）**：桌面端无顶栏；侧边栏为**分组导航 + 二级** —— 「音乐」组（概览 / 下载 / 收藏▸喜欢·歌单·歌曲 / 发现▸歌手·专辑·最近）与「系统」组（曲库 / 操作日志 / 设置），原先收在左下系统管理下拉里的曲库 / 日志 / 设置已上收为一级项；左下功能区常驻任务中心、主题切换、用户入口与折叠开关。侧边栏组件与硬约定见 §5.9。移动端保留极简顶栏（标题 + 任务中心）+ 底部 Tab，**不渲染侧边栏**；主题/密码/退出入口在设置页「账户」区。修改密码弹窗为共用组件 `components/ChangePasswordModal.vue`，勿再各写一份。
 - 歌词工作台支持查询条件、候选、当前/候选比较、保存和明确清空。
 - 元信息候选采用前会逐项比较；封面显示新旧图片、图片尺寸和旧文件大小；旧封面缺失时默认选择候选封面，已有旧封面时默认保留。
 - 刮削信息与歌词保存/清空会写入同一逻辑歌曲的全部可用本地 `SongFile` 版本及各自侧车；WebDAV 版本只展示并明确标记为远端只读。
@@ -104,6 +104,11 @@ music/
 │   ├── src/components/player/GlobalPlayerDrawer.vue  # 大播放器抽屉（PlayerPanel/PlayerQueue 唯一宿主）
 │   ├── src/components/player/PlayerPanel.vue    # 播放面板编排（工具栏 / 元信息 / 进度 / 控件 / 弹窗）
 │   ├── src/components/player/PlayerStage.vue    # 舞台视图（黑胶 / 叠层 / 纯歌词），纯展示组件
+│   ├── src/components/nav/SpSidebar.vue         # 侧边栏导航（分组两级 / 跟随胶囊 / 图标轨折叠，§5.9）
+│   ├── src/components/SpPillTabs.vue            # 页内胶囊 tab（横轴胶囊 + 文字反色擦除，§5.10）
+│   ├── src/utils/flowingPill.js                 # 胶囊位移投影（零依赖手写 FLIP，纵向 / 横向共用）
+│   ├── scripts/gen-prototype-tokens.mjs  # 把 tokens.js 派生变量注入原型页（原型不参与构建，见 §7.1）
+│   ├── prototype/            # 免构建原型页（vite build 不会打包，只用于「定稿前看真实浏览器」）
 │   └── dist/                 # 构建产物（Docker 默认 COPY 这里）
 ├── docs/
 │   ├── ui-smoke-checklist.md # 前端人工冒烟清单（前端改动/发布前必跑）
@@ -382,6 +387,47 @@ Naive 的 modal / drawer / popover 会被 teleport 到 `body`，脱离 `.app-lay
 - **改 utils 必须同步跑单测**：`pnpm test`（`node --test "src/utils/*.test.js"`）。新增格式化函数必须带用例。
 - ⚠️ `utils/media.js` 的常量与后端 `app/services/constants.py` 是**跨语言的两份**，改一边必须改另一边（同样适用于"无损"语义）。后续建议加 CI 断言，与版本号三处一致的检查放在一起。
 
+### 5.9 侧边栏导航（`components/nav/SpSidebar.vue`）
+
+桌面端侧边栏是**自研组件，不是 `n-menu`**（`LayoutView` 只提供分组数据与 footer 插槽）。理由：Naive 菜单的高亮是「逐项开关」，跨项移动没有任何位移信息；而我们要「高亮块游过去」，这需要共享布局投影，且 Naive 菜单内部结构不给插槽承载跨项浮动层 —— 硬做只能覆盖 `.n-menu-item` 私有类，比自研更脆。
+
+| 关注点 | 约定 |
+|--------|------|
+| 数据 | `groups: [{ key?, label, items: [{ key, label, icon, children? }] }]`；`icon` 传组件本身，尺寸由组件按 token 控制（**不要**外层再套 `NIcon`） |
+| 事件 | `navigate(key)` / `update:collapsed`；组件**不引 store**，路由与折叠状态归 `LayoutView` |
+| 父项语义 | 有 `children` 的项渲染成 `<button>`，点击**只展开不导航**；叶子渲染成 `<a href>`（保住右键新标签），跳转仍走 `router.push` |
+| 高度形变 | 子菜单用 `height: 0 ↔ scrollHeight` + `overflow:hidden`（= 自上而下的擦除），**不用 `clip-path`**（同观感、少一层合成）；错峰延迟由 `--i` / `--rev` 在 CSS 里算，JS 不写 delay |
+| 收起可聚焦性 | 收起态的 `.sp-sub` 必须 `inert`。`inert` 是「存在即生效」的布尔属性，**`:inert="false"` 会渲染成 `inert="false"` 反而打开它** —— 关闭态传 `true`、展开态传 `undefined` |
+| 胶囊坐标 | 位移投影模块 `utils/flowingPill.js`（零依赖，框架无关）。容器**必须是 `.sp-nav`**（胶囊的包含块）；传外层 `.sp-sider` 会把头部高度算进 y，整块高亮下移。横向不做 JS 动画：`left/right` 跟随宽度自动伸缩 |
+| 折叠态提示 | 一律 `n-tooltip`（`:disabled="!collapsed"`，placement right），**不用原生 `title`** |
+| 无障碍 | 刻意**不套 ARIA `menu/menuitem` 模式**：侧边栏是链接列表，主路径是 Tab；方向键只作增强（↓↑ 相邻项、←→ 展开/收拢与进出子项、Esc 收起本组、Home/End 首尾）。键盘走位同样驱动悬停胶囊（`focusin`），否则鼠标与键盘是两套观感 |
+| 折叠时文字让位 | 插槽内容（logo 文字等）挂全局工具类 `.sp-collapse-fade`，由 `SpSidebar` 在根上提供 `--sp-fade-opacity/shift/dur/delay`。**为什么用 CSS 变量而不是 `:slotted()`**：插槽内容编译在父级作用域，子组件 scoped 选择器够不到它，而自定义属性天然沿 DOM 继承 |
+| 动效参数 | 全部走 `tokens.js` 的 `MOTION` / `LAYOUT.sider*`，组件内**不写死时长与曲线**；`prefers-reduced-motion` 在 `flowingPill.js` 里单独判断（WAAPI 不受 CSS 媒体查询影响） |
+
+### 5.10 页内胶囊 tab（`components/SpPillTabs.vue`）
+
+设置页的页内导航。**桌面与移动同一套**（原先桌面 `n-menu` 左栏 + 移动 `n-tabs` 是两套实现、两种观感）。
+
+| 关注点 | 约定 |
+|--------|------|
+| 两个动效层 | ① 胶囊位移：单个绝对定位元素，用 `utils/flowingPill.js` 的 `axis: 'x'`（x 与 width 同时动，因为每个 tab 宽度不同）。② **文字反色擦除**：每个 tab 内放一份 `--sp-ui-on-primary` 副本，用 `clip-path: inset()` 裁到胶囊当前矩形。**两层必须同帧**，所以裁切走与胶囊动画同生命周期的 rAF（动画一停即退出，不做常驻循环） |
+| 为什么必须有反色副本 | 没有它时，胶囊还在路上、新标签已经是主色文字 + 主色底 = 白底白字看不见。副本要 `aria-hidden`，并 `padding/gap: inherit`，否则会比正本差一个内边距 |
+| 选中态**不加粗** | 加粗会改该 tab 宽度 → 每切一次整条重排、胶囊目标漂移。靠反色副本表达选中感，字重恒定 |
+| 无障碍 | 用 **ARIA tabs 模式**（`tablist`/`tab`/`tabpanel` + `aria-controls` + `aria-labelledby`），与 §5.9 侧边栏「刻意不用 menu 模式」相反 —— tab 就该用 tab。仅选中项可 Tab（漫游 tabindex），方向键 / Home / End 在 tablist 内切换 |
+| 受控 | 只提供 `v-model` 受控用法，位移由 `modelValue` 变化驱动，组件不自行维护选中态 |
+| 面板不进组件 | 组件只渲染 tab 条，面板由使用方挂着（`id` 与 `aria-labelledby` 用约定拼：`${idPrefix}-tab-${key}`）。这样使用方才能决定「tab 条吸顶、面板不吸顶」 |
+| 移动端 | 断点内 tab 等宽铺满、隐藏图标（窄屏塞不下「图标 + 文字」），由组件内 `@media (max-width: 768px)` 处理，不需要 JS 分支 |
+
+**升级路径（先别引，知道在哪就行）**：共享元素转场一旦成为常规需求（歌单封面 → 大播放器、卡片 → 详情、缩略图 → 预览），
+可评估 **`motion-v`**（Motion 官方 Vue 移植，`layout` / `layoutId` / `LayoutGroup` / `AnimatePresence.popLayout` 全支持，
+可直接替掉 `flowingPill.js` 与那套 rAF 位置追踪）。代价两条：
+① bundlephobia 整包 **66.6KB gzip**（当前前端 gzip 总量约 315KB，等于 +21%；tree-shake 能压一部分，但投影引擎与核心耦合、压不干净）；
+② 动效参数会从 `tokens.js` 迁到 JS 对象里，**削弱「动效单一真相源」**。
+判据：**≥3 处共享转场再引入**，只有 1 处时自研更划算。
+另注：`shadcn-vue` 官方有 `Sidebar` 组件（⌘B / storageKey 持久化 / 移动端 sheet / collapsible group），
+它是本组件的**设计参照**（beUI 那个动画版就是包在 shadcn Sidebar 上的 Motion 层）；
+但 shadcn-vue / Inspira UI / Vue Bits 三类「漂亮组件集合」**全部要求 Tailwind**，与本项目 tokens.js + 朴素 CSS 体系冲突，只作设计参考、不引依赖。
+
 ### 5.4 主题与配色（明暗双模）
 
 **唯一真相源：`web/src/theme/tokens.js`**。任何颜色都从这里派生，业务组件**禁止写死色值**。
@@ -499,6 +545,25 @@ perl -pi -e 's|/旧的项目绝对路径/venv|'"$PWD"'/venv|g' venv/pyvenv.cfg
 curl -sS http://127.0.0.1:8000/health
 ```
 
+### 7.1 免构建原型页（视觉/动效定稿前看真实浏览器）
+
+`web/prototype/*.html` 是**自包含原型页**：不依赖 vite、不依赖后端、不参与 `vite build`
+（vite 默认只以 `web/index.html` 为入口，`prototype/` 下的 html 不会被打包），
+双击或 `python3 -m http.server` 起个静态服务就能看。
+
+用途：调参类观感问题（弹簧曲线、透明度、模糊、时长）**看代码判断不了**，
+先在原型里用真实浏览器定稿，再把定稿值落进 `tokens.js` 与正式组件。
+
+**纪律：原型页里的 Design Token 是生成的，不是抄的。**
+`web/src/theme/tokens.js` 仍是唯一真相源，原型页里 `<style id="sp-tokens">` 的
+`/* @tokens:start */ … /* @tokens:end */` 之间由 `node web/scripts/gen-prototype-tokens.mjs`
+从 `buildCssVars()` 注入。改了 token 必须重跑该脚本，**不要手改那段**。
+
+现有原型：`prototype/sidebar-motion.html`（侧边栏动效，含右下角实时参数面板）。
+⚠️ 侧边栏已落地为 `components/nav/SpSidebar.vue`，原型现在的独特价值只剩**参数面板**
+（滑移时长 / 缓动 / 两胶囊浓度 / 错峰步长 / 子项模糊 / 展开与轨道宽度）；它的
+**导航结构是 `LayoutView.navGroups` 的镜像，改一边必须改另一边**。
+
 ---
 
 ## 8. 部署（镜像化发布 / NAS）
@@ -582,6 +647,12 @@ ssh qnap 'curl -sS http://127.0.0.1:8301/health'
 - 部分浏览器 FLAC 播放差，可转码 MP3
 - 不同 WebDAV 服务器路径/LIST 行为不一致
 - remote-only（上传后删本地）曲库体验仍不完整
+
+**已知缺陷（未修，待确认优先级）**
+
+- `SettingsView.vue:216` 用了 `<n-popconfirm>`、`:103` 用了 `<n-a>`（Naive 的链接组件），两者都**没在 `main.js` 注册**（`create({ components })` 清单里没有 `NPopconfirm` / `NA`）→ 运行期 `Failed to resolve component`：**确认退出登录的浮层不会出现**，插槽文案「确认退出当前登录吗?」直接以纯文本渲染在账户区里（实测截图可见）。改法：把 `NPopconfirm` / `NA` 补进 `main.js` 的注册清单 —— 这是 §5.5 硬规范第 1 条的漏网之鱼。
+- `PlayerView.vue:130` 的空状态图标写成 `<person />`，而该组件从未 import/注册 `Person`（只注册过 Naive 全局组件与本项目自有组件）→ 运行期 `[Vue warn]: Failed to resolve component: person`，图标位置空白。同文件第 371 行用的是 `People`（歌手分类图标）。改法：改用已 import 的图标，或补 `import { Person } from '@vicons/ionicons5'`。
+- 静态哨兵 `scripts/check-template-refs.mjs` 只查**模板里的函数调用**，查不到**未注册的组件标签**（上面两条正是它漏掉的类型）。若要覆盖，需再加一条规则：模板里出现的小写连字符/单词标签必须能在 `<script setup>` 的 import 或全局注册表里找到。
 
 **待办**
 

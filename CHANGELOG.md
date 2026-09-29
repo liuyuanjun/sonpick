@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.15.2-rc8
+
+### 设置页页内导航（胶囊 tab）
+
+- **页内导航从「两套」收成「一套」**：原先桌面是左侧 `n-menu` 竖栏、移动端是 `n-tabs` 分段条，两套实现两种观感。现统一为**顶部胶囊 tab 条**（`components/SpPillTabs.vue`），桌面与移动同形；同时去掉 1+5 栅格（左侧导航列），设置内容改为单列全宽。
+- **胶囊指示器是单个元素在 tab 之间投影**：用 `utils/flowingPill.js` 的横轴模式，`x` 与 `width` 同时动（每个 tab 宽度不同，如 92 → 78 → 64px），走 `--sp-dur-glide` / `--sp-ease-glide`（临界阻尼、不过冲）。
+- **标签文字的反色擦除是逐帧同步的**：每个 tab 里有一份 `--sp-ui-on-primary` 的副本，用 `clip-path: inset()` 裁到胶囊当前矩形。少了这一层，胶囊还在路上时新标签已是主色文字 + 主色底 = **白底白字看不见**。实测单次切页产生 22 帧中间态裁切。裁切同步与胶囊动画同生命周期（动画一停即退出），不做常驻 rAF。
+- **选中态不加粗**：加粗会改该 tab 宽度 → 每切一次整条重排、胶囊目标漂移；选中感由反色副本承担，字重恒定。
+- **无障碍**：按 ARIA tabs 模式接线（`tablist`/`tab`/`tabpanel` + `aria-controls` + `aria-labelledby`），仅选中项可 Tab（漫游 tabindex），方向键 / Home / End 在条内切换 —— 这里用 tabs 模式，与侧边栏「刻意不用 menu 模式」是两回事，各自都是对的。
+- **顺带泛化**：`flowingPill.js` 增加 `axis` 参数（纵向给侧边栏、横向给 tab），并从 `components/nav/` 移到 `utils/`（它现在是两个组件的共用件）。侧边栏行为经实测无回归。
+- **代价**：胶囊 tab + FLIP 泛化共 **+0.13KB gzip**（对比：引入 `motion-v` 整包 66.6KB gzip、`shadcn-vue` 系组件集合还要先引入 Tailwind）。
+
+### 侧边栏导航（分组两级 + 跟随高亮）
+
+- **侧边栏改为「分组 + 二级」**：原先「扁平 8 项 + 左下系统管理下拉」的结构收成两组 —— 「音乐」组（概览 / 下载 / 收藏▸喜欢·歌单·歌曲 / 发现▸歌手·专辑·最近）与「系统」组（曲库 / 操作日志 / 设置）。**曲库、操作日志、设置从下拉里上收为一级项**（分组化之后侧边栏有了容纳它们的余量），同时把「收藏」与「发现」两类不同心智分开，也给后续入口留出位置。收起状态的文字提示统一改 Naive tooltip。
+- **高亮从「逐项开关」换成跟随胶囊**：`n-menu` 的高亮是「悬停到哪一项，只有那一项变色」，跨项移动没有任何位移信息；现改为两个胶囊 —— 激活胶囊常驻当前项（`--sp-ui-primary-soft`），悬停胶囊跟指针走（`--sp-ui-hover`），跨项是**滑移**而不是闪。胶囊横向不做 JS 动画，`left/right` 跟随侧边栏宽度自动伸缩。
+- **折叠成图标轨**：宽度形变走临界阻尼曲线（`cubic-bezier(.32,.72,0,1)`，**永不过冲** —— 终点是零宽边界，过冲会「撞到底再弹回」）；文字先让位（120ms 立刻淡出）、展开时延迟 80ms 再淡入，宽度先长出来。折叠态图标严格居中，靠 `paddingLeft = (轨道宽 − 图标宽)/2`，不依赖 `justify-content`。
+- **无障碍**：收起态的子菜单加 `inert`（此前用 `clip` 收起的元素仍能被 Tab 进入）；方向键作增强导航（↓↑ 相邻项、←→ 展开/收拢与进出子项、Esc 收起本组、Home/End 首尾），刻意**不套 ARIA `menu/menuitem`** 以免 Tab 被菜单吞掉；**键盘走位同样驱动悬停胶囊**（`focusin`），否则鼠标与键盘是两套观感；新增 ⌘B / Ctrl+B 折叠快捷键（输入框内不抢键）。
+- **移除 `n-menu` + `n-layout-sider`**，改为自研 `components/nav/SpSidebar.vue`（无 store 依赖，只收 props / emit）。理由：Naive 菜单不给插槽承载跨项浮动层，硬做只能覆盖 `.n-menu-item` 私有类。顺带删掉左下功能条的绝对定位贴底与「给菜单留 padding 规避遮挡」的补偿写法。
+- **动效与几何一律进 token**：`LAYOUT` 新增 `siderWidth / siderRailWidth / siderPad / siderItemHeight / siderSubItemHeight / siderGroupLabelHeight`，`MOTION` 新增 `durMorph / durGlide / durStagger / durStaggerOut / durLabelDelay / easeGlide / subBlur`；新增全局工具类 `.sp-collapse-fade`（折叠时插槽内容让位，变量由 SpSidebar 在根上提供 —— 插槽内容编译在父级作用域，子组件 scoped 选择器够不到它）。
+
+### 文档
+
+- 新增 `AGENTS.md` §5.9「侧边栏导航」硬约定（数据契约 / 父项语义 / 高度形变 / `inert` 陷阱 / 胶囊坐标基准 / 提示与无障碍口径）与 §5.10「页内胶囊 tab」（两个动效层如何同步 / 反色副本为何必需 / 为何选中态不加粗 / ARIA tabs 接线）；§1.1 布局约定改写；§3 目录树补 `components/nav/`、`components/SpPillTabs.vue`、`utils/flowingPill.js` 与 `prototype/`。
+- 新增 `AGENTS.md` §7.1「免构建原型页」：`web/prototype/*.html` 不参与 `vite build`，其中的 Design Token 由 `scripts/gen-prototype-tokens.mjs` 从 `tokens.js` 注入（**禁止手抄**）。调参类观感问题先在此处用真实浏览器定稿，再落到组件。
+- `AGENTS.md` §10 记录两处**未注册组件**缺陷（`SettingsView` 的 `n-popconfirm` / `n-a`、`PlayerView` 的 `person`）与静态哨兵的盲区（只查模板函数调用、查不到未注册标签）。
+
 ## 0.15.2-rc7
 
 ### 下载搜索

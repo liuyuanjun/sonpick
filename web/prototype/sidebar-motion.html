@@ -1,0 +1,883 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>侧边栏动效原型 · 拾音 Sonpick</title>
+<link rel="icon" href="../public/brand/favicon-32.png">
+
+<style id="sp-tokens">
+/* @tokens:start */
+/* 由 scripts/gen-prototype-tokens.mjs 从 src/theme/tokens.js 生成 —— 不要手改，改 tokens.js 后重跑脚本 */
+/* 共 108 个变量 */
+:root{--sp-ui-body:#F5F6F8;--sp-ui-card:#FFFFFF;--sp-ui-card-strong:#FFFFFF;--sp-ui-elevated:#FFFFFF;--sp-ui-border:#E3E6EB;--sp-ui-divider:#E8EAEF;--sp-ui-text-1:#111827;--sp-ui-text-2:#4B5563;--sp-ui-text-3:#6B7280;--sp-ui-primary:#047857;--sp-ui-primary-hover:#065F46;--sp-ui-primary-pressed:#044434;--sp-ui-primary-soft:rgba(4, 120, 87, 0.10);--sp-ui-primary-soft-2:rgba(4, 120, 87, 0.16);--sp-ui-on-primary:#FFFFFF;--sp-ui-info:#4F46E5;--sp-ui-success:#047857;--sp-ui-warning:#B45309;--sp-ui-error:#DC2626;--sp-ui-hover:rgba(15, 23, 42, 0.05);--sp-font-ui:"Inter", "PingFang SC", "Noto Sans SC", "Noto Sans CJK SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;--sp-font-mono:"SF Mono", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;--sp-fs-display:32px;--sp-fs-h1:28px;--sp-fs-h2:22px;--sp-fs-h3:16px;--sp-fs-body:14px;--sp-fs-strong:14px;--sp-fs-small:13px;--sp-fs-caption:12px;--sp-fs-micro:11px;--sp-fs-display-mobile:28px;--sp-fs-h1-mobile:24px;--sp-fs-h2-mobile:18px;--sp-fw-regular:400;--sp-fw-medium:500;--sp-fw-semibold:600;--sp-fw-bold:700;--sp-fw-extrabold:800;--sp-icon-sm:16px;--sp-icon-md:20px;--sp-icon-lg:24px;--sp-icon-xl:32px;--sp-icon-2xl:40px;--sp-radius-xs:6px;--sp-radius-sm:8px;--sp-radius-md:10px;--sp-radius-lg:12px;--sp-radius-xl:16px;--sp-radius-2xl:20px;--sp-radius-pill:999px;--sp-radius-circle:50%;--sp-space-section:16px;--sp-space-card-pad:14px;--sp-space-card-gap:12px;--sp-layout-page-pad-y:16px;--sp-layout-page-pad-x:20px;--sp-layout-page-pad-y-mobile:12px;--sp-layout-page-pad-x-mobile:12px;--sp-layout-content-max:1280px;--sp-sider-w:220px;--sp-sider-rail-w:68px;--sp-sider-pad:8px;--sp-sider-item-h:36px;--sp-sider-sub-item-h:32px;--sp-sider-group-label-h:28px;--sp-shadow-xs:0 1px 2px rgba(15, 23, 42, .06);--sp-shadow-sm:0 4px 10px rgba(15, 23, 42, .06);--sp-shadow-md:0 10px 24px rgba(21, 32, 53, .05);--sp-shadow-lg:0 14px 34px rgba(21, 32, 53, .06);--sp-shadow-xl:0 20px 48px rgba(21, 32, 53, .10);--sp-shadow-2xl:0 24px 60px rgba(15, 23, 42, .18);--sp-dur-fast:120ms;--sp-dur-base:200ms;--sp-dur-slow:240ms;--sp-dur-morph:320ms;--sp-dur-glide:380ms;--sp-dur-stagger:45ms;--sp-dur-stagger-out:25ms;--sp-dur-label-delay:80ms;--sp-ease-enter:cubic-bezier(.22, 1, .36, 1);--sp-ease-exit:cubic-bezier(.4, 0, 1, 1);--sp-ease-glide:cubic-bezier(.32, .72, 0, 1);--sp-sub-blur:3px;--sp-brand-grad:linear-gradient(135deg, #64F0AC 0%, #22D3EE 38%, #556FE1 72%, #7A40DC 100%);--sp-space-1:4px;--sp-space-2:8px;--sp-space-3:12px;--sp-space-4:16px;--sp-space-5:20px;--sp-space-6:24px;--sp-space-8:32px;--sp-space-10:40px;--sp-space-12:48px;--sp-accent-teal:#0F766E;--sp-accent-teal-soft:color-mix(in srgb, #0F766E 12%, transparent);--sp-accent-blue:#1D4ED8;--sp-accent-blue-soft:color-mix(in srgb, #1D4ED8 12%, transparent);--sp-accent-rose:#BE123C;--sp-accent-rose-soft:color-mix(in srgb, #BE123C 12%, transparent);--sp-accent-amber:#B45309;--sp-accent-amber-soft:color-mix(in srgb, #B45309 12%, transparent);--sp-accent-sky:#0369A1;--sp-accent-sky-soft:color-mix(in srgb, #0369A1 12%, transparent);--sp-accent-green:#15803D;--sp-accent-green-soft:color-mix(in srgb, #15803D 12%, transparent);--sp-accent-slate:#475569;--sp-accent-slate-soft:color-mix(in srgb, #475569 12%, transparent)}
+html[data-theme="dark"]{--sp-ui-body:#0B0C10;--sp-ui-card:#14161C;--sp-ui-card-strong:#181B22;--sp-ui-elevated:#181B22;--sp-ui-border:#23262F;--sp-ui-divider:#23262F;--sp-ui-text-1:#ECEEF2;--sp-ui-text-2:#B6BECB;--sp-ui-text-3:#8B95A5;--sp-ui-primary:#10B981;--sp-ui-primary-hover:#34D399;--sp-ui-primary-pressed:#059669;--sp-ui-primary-soft:rgba(16, 185, 129, 0.14);--sp-ui-primary-soft-2:rgba(16, 185, 129, 0.22);--sp-ui-on-primary:#04120C;--sp-ui-info:#6366F1;--sp-ui-success:#10B981;--sp-ui-warning:#F59E0B;--sp-ui-error:#EF4444;--sp-ui-hover:rgba(255, 255, 255, 0.06);--sp-font-ui:"Inter", "PingFang SC", "Noto Sans SC", "Noto Sans CJK SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;--sp-font-mono:"SF Mono", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;--sp-fs-display:32px;--sp-fs-h1:28px;--sp-fs-h2:22px;--sp-fs-h3:16px;--sp-fs-body:14px;--sp-fs-strong:14px;--sp-fs-small:13px;--sp-fs-caption:12px;--sp-fs-micro:11px;--sp-fs-display-mobile:28px;--sp-fs-h1-mobile:24px;--sp-fs-h2-mobile:18px;--sp-fw-regular:400;--sp-fw-medium:500;--sp-fw-semibold:600;--sp-fw-bold:700;--sp-fw-extrabold:800;--sp-icon-sm:16px;--sp-icon-md:20px;--sp-icon-lg:24px;--sp-icon-xl:32px;--sp-icon-2xl:40px;--sp-radius-xs:6px;--sp-radius-sm:8px;--sp-radius-md:10px;--sp-radius-lg:12px;--sp-radius-xl:16px;--sp-radius-2xl:20px;--sp-radius-pill:999px;--sp-radius-circle:50%;--sp-space-section:16px;--sp-space-card-pad:14px;--sp-space-card-gap:12px;--sp-layout-page-pad-y:16px;--sp-layout-page-pad-x:20px;--sp-layout-page-pad-y-mobile:12px;--sp-layout-page-pad-x-mobile:12px;--sp-layout-content-max:1280px;--sp-sider-w:220px;--sp-sider-rail-w:68px;--sp-sider-pad:8px;--sp-sider-item-h:36px;--sp-sider-sub-item-h:32px;--sp-sider-group-label-h:28px;--sp-shadow-xs:0 1px 2px rgba(0, 0, 0, .30);--sp-shadow-sm:0 4px 10px rgba(0, 0, 0, .28);--sp-shadow-md:0 10px 24px rgba(0, 0, 0, .34);--sp-shadow-lg:0 14px 34px rgba(0, 0, 0, .38);--sp-shadow-xl:0 20px 48px rgba(0, 0, 0, .44);--sp-shadow-2xl:0 24px 60px rgba(0, 0, 0, .50);--sp-dur-fast:120ms;--sp-dur-base:200ms;--sp-dur-slow:240ms;--sp-dur-morph:320ms;--sp-dur-glide:380ms;--sp-dur-stagger:45ms;--sp-dur-stagger-out:25ms;--sp-dur-label-delay:80ms;--sp-ease-enter:cubic-bezier(.22, 1, .36, 1);--sp-ease-exit:cubic-bezier(.4, 0, 1, 1);--sp-ease-glide:cubic-bezier(.32, .72, 0, 1);--sp-sub-blur:3px;--sp-brand-grad:linear-gradient(135deg, #64F0AC 0%, #22D3EE 38%, #556FE1 72%, #7A40DC 100%);--sp-space-1:4px;--sp-space-2:8px;--sp-space-3:12px;--sp-space-4:16px;--sp-space-5:20px;--sp-space-6:24px;--sp-space-8:32px;--sp-space-10:40px;--sp-space-12:48px;--sp-accent-teal:#2DD4BF;--sp-accent-teal-soft:color-mix(in srgb, #2DD4BF 16%, transparent);--sp-accent-blue:#60A5FA;--sp-accent-blue-soft:color-mix(in srgb, #60A5FA 16%, transparent);--sp-accent-rose:#FB7185;--sp-accent-rose-soft:color-mix(in srgb, #FB7185 16%, transparent);--sp-accent-amber:#FBBF24;--sp-accent-amber-soft:color-mix(in srgb, #FBBF24 16%, transparent);--sp-accent-sky:#38BDF8;--sp-accent-sky-soft:color-mix(in srgb, #38BDF8 16%, transparent);--sp-accent-green:#4ADE80;--sp-accent-green-soft:color-mix(in srgb, #4ADE80 16%, transparent);--sp-accent-slate:#94A3B8;--sp-accent-slate-soft:color-mix(in srgb, #94A3B8 16%, transparent)}
+/* @tokens:end */
+</style>
+
+<style>
+/* ══ 原型自身样式 ══════════════════════════════════════════════
+   几何与动效一律取 --sp-* token，只有「参数面板可调」的那几项
+   走 --proto-*（默认值回落到 token，见下方 var() 的第二参数）。
+   侧边栏本身已经落地为 src/components/nav/SpSidebar.vue；
+   本页现在的独特价值只剩右下角那块**实时参数面板**（滑移时长 / 缓动 / 浓度 / 错峰 / 宽度…），
+   用来在改动效前做 A/B 对照。因此：
+     · 动效与几何以 token 为准（此处为生成，不会漂移）
+     · **导航结构（分组 / 二级 / 顺序）是 SpSidebar + LayoutView.navGroups 的镜像，改一边必须改另一边**
+   ══════════════════════════════════════════════════════════════ */
+
+*, *::before, *::after { box-sizing: border-box }
+html, body { height: 100% }
+body {
+  margin: 0;
+  background: var(--sp-ui-body);
+  color: var(--sp-ui-text-1);
+  font: 400 var(--sp-fs-body)/1.6 var(--sp-font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit }
+
+.shell { display: flex; min-height: 100vh; align-items: flex-start }
+
+/* ── 侧边栏外壳：只负责宽度形变，不裁剪（好让边缘热区能探出去） ── */
+.sider {
+  position: sticky;
+  top: 0;
+  flex: 0 0 auto;
+  width: var(--proto-sider-w, var(--sp-sider-w));
+  height: 100vh;
+  transition: width var(--proto-dur-morph, var(--sp-dur-morph)) var(--proto-ease-glide, var(--sp-ease-glide));
+}
+.sider[data-collapsed="true"] { width: var(--proto-rail-w, var(--sp-sider-rail-w)) }
+
+.sider-clip {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;           /* 形变期间裁剪内容 —— 没有它，文字会溢到内容区上 */
+  background: var(--sp-ui-card);
+  border-right: 1px solid var(--sp-ui-border);
+}
+
+/* ── 品牌头 ── */
+.sider-head { display: flex; align-items: center; gap: 10px; padding: 16px 14px 10px }
+.logo-mark {
+  flex: 0 0 auto; width: 28px; height: 28px; border-radius: var(--sp-radius-sm);
+  background: var(--sp-brand-grad); display: grid; place-items: center; color: #04120C;
+}
+.logo-mark svg { width: 16px; height: 16px; display: block }
+.logo-text { font-size: var(--sp-fs-h3); font-weight: var(--sp-fw-bold); letter-spacing: -.01em }
+
+/* ── 文字层的统一淡出/淡入 ──
+   进（展开）: durBase + 80ms 延迟 —— 先让位子长出来，文字再出现
+   出（折叠）: durFast 无延迟 —— 立刻让位，不拖住宽度形变 */
+.fade {
+  white-space: nowrap;
+  opacity: 1;
+  transform: translateX(0);
+  transition:
+    opacity var(--sp-dur-base) var(--sp-ease-enter) var(--proto-label-delay, var(--sp-dur-label-delay)),
+    transform var(--sp-dur-base) var(--sp-ease-enter) var(--proto-label-delay, var(--sp-dur-label-delay));
+}
+.sider[data-collapsed="true"] .fade {
+  opacity: 0;
+  transform: translateX(-4px);
+  pointer-events: none;
+  transition: opacity var(--sp-dur-fast) var(--sp-ease-exit) 0ms, transform var(--sp-dur-fast) var(--sp-ease-exit) 0ms;
+}
+
+/* ── 导航（胶囊的包含块 = 滚动容器，胶囊随内容一起滚） ── */
+.nav {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding: 2px var(--sp-sider-pad) 8px;
+}
+.pill-layer { position: absolute; inset: 0; z-index: 0; pointer-events: none }
+.pill {
+  position: absolute;
+  top: 0;
+  /* 横向不交给 JS：left/right 跟随侧边栏宽度自动伸缩，折叠时天然同步 */
+  left: var(--sp-sider-pad);
+  right: var(--sp-sider-pad);
+  height: 0;
+  border-radius: var(--sp-radius-md);
+  will-change: transform;
+}
+.pill-active { background: var(--sp-ui-primary); opacity: var(--proto-active-a, .12) }
+.pill-hover {
+  background: var(--sp-ui-text-1);
+  opacity: 0;
+  transition: opacity var(--sp-dur-fast) var(--sp-ease-enter);
+}
+.pill-hover[data-on="true"] { opacity: var(--proto-hover-a, .06) }
+
+.group { display: flex; flex-direction: column }
+.group-label {
+  display: flex;
+  align-items: center;
+  height: var(--sp-sider-group-label-h);
+  padding: 0 10px;
+  font-size: var(--sp-fs-micro);
+  font-weight: var(--sp-fw-medium);
+  letter-spacing: .06em;
+  color: var(--sp-ui-text-3);
+}
+.menu { list-style: none; display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0 }
+.item { position: relative }
+
+/* 一级项：图标固定贴 padding-left，于是「折叠时 paddingLeft = (轨道宽 − 图标宽)/2」
+   就等于图标居中 —— 不依赖后面还有几个元素、各自多宽 */
+.item-btn {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: var(--sp-sider-item-h);
+  padding: 0 10px;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--sp-radius-md);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: var(--sp-ui-text-2);
+  font-size: var(--sp-fs-body);
+  font-weight: var(--sp-fw-medium);
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color var(--sp-dur-fast) var(--sp-ease-enter),
+    transform var(--sp-dur-fast) var(--sp-ease-enter),
+    padding var(--proto-dur-morph, var(--sp-dur-morph)) var(--proto-ease-glide, var(--sp-ease-glide));
+}
+.sider[data-collapsed="true"] .item-btn { padding-left: 16px; padding-right: 0 }
+.item-btn:hover, .item-btn:focus-visible { color: var(--sp-ui-text-1) }
+.item-btn:active { transform: scale(.98) }
+.item-btn[aria-current="page"] { color: var(--sp-ui-primary) }
+.item-btn::-moz-focus-inner { border: 0 }
+
+.ico { flex: 0 0 auto; width: var(--sp-icon-md); height: var(--sp-icon-md); display: grid; place-items: center }
+.ico svg { width: 100%; height: 100%; display: block }
+.item-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis }
+.item-chev {
+  flex: 0 0 16px; width: 16px; height: 16px;
+  display: grid; place-items: center;
+  margin-left: auto;
+  color: var(--sp-ui-text-3);
+  transition: transform var(--sp-dur-base) var(--sp-ease-glide);
+}
+.item-chev svg { width: 14px; height: 14px; display: block }
+.item[data-open="true"] > .item-btn > .item-chev { transform: rotate(90deg) }
+
+/* ── 二级菜单：高度形变 + 逐项错峰 ──
+   不用 clip-path：height 0→自然高 + overflow:hidden 本身就是「自上而下的擦除」，
+   和 clip-path(inset 0 0 100% 0) 的观感一致，但少一层合成开销。 */
+.sub {
+  list-style: none;
+  margin: 0 0 0 20px;
+  padding: 0 0 0 12px;
+  height: 0;
+  overflow: hidden;
+  border-left: 1px solid var(--sp-ui-border);
+  transition: height var(--sp-dur-base) var(--sp-ease-glide);
+}
+.sub-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: var(--sp-sider-sub-item-h);
+  padding: 0 10px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: var(--sp-ui-text-3);
+  font-size: var(--sp-fs-small);
+  font-weight: var(--sp-fw-regular);
+  opacity: 0;
+  transform: translateY(-6px);
+  filter: blur(var(--proto-sub-blur, var(--sp-sub-blur)));
+  -webkit-tap-highlight-color: transparent;
+  /* 错峰延迟只挂在「入场三件套」上，颜色单独走 0 延迟 ——
+     否则鼠标一划过去，hover 变色也要等 i×45ms，手感发黏 */
+  transition:
+    opacity var(--sp-dur-base) var(--sp-ease-enter) var(--d, 0ms),
+    transform var(--sp-dur-base) var(--sp-ease-enter) var(--d, 0ms),
+    filter var(--sp-dur-base) var(--sp-ease-enter) var(--d, 0ms),
+    color var(--sp-dur-fast) var(--sp-ease-enter) 0ms;
+}
+.sub[data-open="true"] .sub-btn { opacity: 1; transform: none; filter: blur(0) }
+.sub-btn:hover, .sub-btn:focus-visible { color: var(--sp-ui-text-1) }
+.sub-btn[aria-current="page"] { color: var(--sp-ui-primary); font-weight: var(--sp-fw-semibold) }
+.sub-dot { flex: 0 0 auto; width: 4px; height: 4px; border-radius: var(--sp-radius-circle); background: currentColor }
+
+/* ── 左下功能区 ──
+   折叠态必须重排成竖列（68px 塞不下 4 个 32px 按钮），
+   用容器查询按「实际宽度」触发，于是它是随形变连续发生的，而不是突然翻个方向 */
+.sider-foot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 10px calc(10px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--sp-ui-border);
+}
+.foot-btn {
+  flex: 0 0 auto;
+  display: grid; place-items: center;
+  width: 32px; height: 32px;
+  border: 0; border-radius: var(--sp-radius-md);
+  background: none; color: var(--sp-ui-text-2); cursor: pointer;
+  transition: color var(--sp-dur-fast) var(--sp-ease-enter), background var(--sp-dur-fast) var(--sp-ease-enter), transform var(--sp-dur-fast) var(--sp-ease-enter);
+}
+.foot-btn:hover { color: var(--sp-ui-text-1); background: var(--sp-ui-hover) }
+.foot-btn:active { transform: scale(.94) }
+.foot-btn svg { width: 18px; height: 18px; display: block }
+[data-collapsed="true"] .sider-foot { flex-direction: column; gap: 4px; padding-inline: 0 }
+/* 曾试过用 @container (max-width:150px) 让底栏随宽度形变「连续」翻成竖列（观感更顺），
+   已否决：@container 的条件里不能写 var()，阈值只能落一个写死的 150，
+   与「组件里禁止写死数值」冲突。改用 [data-collapsed] 驱动 —— 与正式组件同一套语义。 */
+
+/* ── 边缘热区：点接缝即可收起/展开（beUI 的 rail） ── */
+.rail {
+  position: absolute; top: 0; bottom: 0; right: 0;
+  width: 10px; z-index: 20;
+  border: 0; background: none; padding: 0; cursor: pointer;
+}
+.rail::after {
+  content: ''; position: absolute; inset: 0 auto 0 50%;
+  width: 1px; background: transparent;
+  transition: background var(--sp-dur-fast) var(--sp-ease-enter);
+}
+.rail:hover::after, .rail:focus-visible::after { background: var(--sp-ui-border) }
+
+/* ══ 右侧内容区（只是让形变可判断，不是原型重点） ══ */
+.main { flex: 1 1 auto; min-width: 0 }
+.topbar {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; align-items: center; gap: 12px;
+  height: 56px; padding: 0 var(--sp-layout-page-pad-x);
+  background: color-mix(in srgb, var(--sp-ui-body) 82%, transparent);
+  backdrop-filter: blur(12px);
+}
+.topbar-title { font-size: var(--sp-fs-h3); font-weight: var(--sp-fw-bold) }
+.topbar-hint { margin-left: auto; color: var(--sp-ui-text-3); font-size: var(--sp-fs-caption) }
+.page { padding: var(--sp-layout-page-pad-y) var(--sp-layout-page-pad-x) 48px; max-width: calc(var(--sp-layout-content-max) + 2 * var(--sp-layout-page-pad-x)) }
+.hero { margin: 0 0 4px; font-size: var(--sp-fs-h1); font-weight: var(--sp-fw-bold); letter-spacing: -.01em }
+.hero-sub { margin: 0 0 20px; color: var(--sp-ui-text-2) }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: var(--sp-space-card-gap); margin-bottom: 20px }
+.card { padding: var(--sp-space-card-pad); border: 1px solid var(--sp-ui-border); border-radius: var(--sp-radius-lg); background: var(--sp-ui-card) }
+.card-label { font-size: var(--sp-fs-caption); color: var(--sp-ui-text-3); margin-bottom: 6px }
+.card-value { font-size: var(--sp-fs-h2); font-weight: var(--sp-fw-bold); font-variant-numeric: tabular-nums }
+.bar { height: 6px; margin-top: 12px; border-radius: var(--sp-radius-pill); background: var(--sp-ui-primary-soft) }
+.bar > i { display: block; height: 100%; border-radius: inherit; background: var(--sp-ui-primary) }
+.legend { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; color: var(--sp-ui-text-2); font-size: var(--sp-fs-small) }
+.legend b { color: var(--sp-ui-text-1); font-weight: var(--sp-fw-semibold) }
+
+/* ══ 参数面板 ══ */
+.panel {
+  position: fixed; bottom: 16px; right: 16px; z-index: 100;
+  width: 272px;
+  border: 1px solid var(--sp-ui-border);
+  border-radius: var(--sp-radius-lg);
+  background: var(--sp-ui-card);
+  box-shadow: var(--sp-shadow-lg);
+  font-size: var(--sp-fs-caption);
+}
+.panel-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--sp-ui-border) }
+.panel-head strong { font-size: var(--sp-fs-small); font-weight: var(--sp-fw-semibold) }
+.panel-head button { margin-left: auto; width: 22px; height: 22px; border: 0; border-radius: var(--sp-radius-xs); background: var(--sp-ui-hover); cursor: pointer; line-height: 1 }
+.panel-body { display: grid; gap: 9px; padding: 12px }
+.panel[data-min="true"] .panel-body { display: none }
+.row { display: grid; grid-template-columns: 62px 1fr 34px; align-items: center; gap: 8px }
+.row > span:first-child { color: var(--sp-ui-text-2) }
+.row output { text-align: right; color: var(--sp-ui-text-3); font-variant-numeric: tabular-nums }
+.row input[type="range"] { width: 100%; accent-color: var(--sp-ui-primary) }
+.seg { display: flex; gap: 2px; grid-column: 2 / -1 }
+.seg button {
+  flex: 1; padding: 3px 0; border: 1px solid var(--sp-ui-border); background: none;
+  border-radius: var(--sp-radius-xs); cursor: pointer; color: var(--sp-ui-text-2);
+  font-size: var(--sp-fs-micro);
+}
+.seg button.on { border-color: var(--sp-ui-primary); background: var(--sp-ui-primary-soft); color: var(--sp-ui-primary) }
+.panel-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 3px }
+.panel-actions button {
+  padding: 6px 0; border: 1px solid var(--sp-ui-border); border-radius: var(--sp-radius-sm);
+  background: none; cursor: pointer; color: var(--sp-ui-text-2); font-size: var(--sp-fs-micro);
+}
+.panel-actions button:hover { color: var(--sp-ui-text-1); background: var(--sp-ui-hover) }
+
+.toast {
+  position: fixed; left: 50%; bottom: 32px; transform: translate(-50%, 12px);
+  padding: 8px 14px; border-radius: var(--sp-radius-md);
+  background: var(--sp-ui-text-1); color: var(--sp-ui-card);
+  font-size: var(--sp-fs-small); opacity: 0; pointer-events: none;
+  transition: opacity var(--sp-dur-base) var(--sp-ease-enter), transform var(--sp-dur-base) var(--sp-ease-enter);
+}
+.toast[data-on="true"] { opacity: 1; transform: translate(-50%, 0) }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 1ms !important; animation-duration: 1ms !important }
+}
+</style>
+</head>
+
+<body>
+<div class="shell">
+  <!-- ═══ 侧边栏 ═══ -->
+  <aside class="sider" id="sider" data-collapsed="false" aria-label="主导航栏">
+    <div class="sider-clip">
+      <div class="sider-head">
+        <span class="logo-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="7" r="4.2"/><rect x="10.4" y="7" width="3.2" height="11" rx="1.6"/><path d="M13.6 14.4c1.7 0 3.1 1.4 3.1 3.1s-1.4 3.1-3.1 3.1-3.1-1.4-3.1-3.1" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+        </span>
+        <span class="logo-text fade">拾音 Sonpick</span>
+      </div>
+
+      <nav class="nav" id="nav">
+        <div class="pill-layer" aria-hidden="true">
+          <div class="pill pill-active" id="pillActive"></div>
+          <div class="pill pill-hover" id="pillHover" data-on="false"></div>
+        </div>
+
+        <div class="group">
+          <div class="group-label fade">音乐</div>
+          <ul class="menu">
+            <li class="item">
+              <a class="item-btn" href="#/" data-key="/">
+                <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 10.6 12 3.5l8.5 7.1V19a1.5 1.5 0 0 1-1.5 1.5h-4v-5.5h-6v5.5H5A1.5 1.5 0 0 1 3.5 19z"/></svg></span>
+                <span class="item-label fade">概览</span>
+              </a>
+            </li>
+            <li class="item">
+              <a class="item-btn" href="#/download" data-key="/download">
+                <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v11"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M4 16.5v2A2 2 0 0 0 6 20.5h12a2 2 0 0 0 2-2v-2"/></svg></span>
+                <span class="item-label fade">下载</span>
+              </a>
+            </li>
+          </ul>
+        </div>
+
+        <!-- 「音乐」组的后半段单独放一个容器只为便于增删二级项；组名不重复出现，
+             两个容器之间没有 group-label，视觉上就是一个分组 -->
+        <div class="group">
+          <ul class="menu">
+            <li class="item" data-open="false">
+              <button class="item-btn" type="button" data-parent aria-expanded="false">
+                <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.2 4.9 13a4.3 4.3 0 0 1 6.1-6l1 1 1-1a4.3 4.3 0 0 1 6.1 6z"/></svg></span>
+                <span class="item-label fade">收藏</span>
+                <span class="item-chev fade"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9.5 5.5 6.5 6.5-6.5 6.5"/></svg></span>
+              </button>
+              <ul class="sub" data-open="false" inert>
+                <li><a class="sub-btn" href="#/player/favorites" data-key="/player/favorites"><span class="sub-dot"></span><span class="item-label">喜欢</span></a></li>
+                <li><a class="sub-btn" href="#/player/playlists" data-key="/player/playlists"><span class="sub-dot"></span><span class="item-label">歌单</span></a></li>
+                <li><a class="sub-btn" href="#/player/songs" data-key="/player/songs"><span class="sub-dot"></span><span class="item-label">歌曲</span></a></li>
+              </ul>
+            </li>
+            <li class="item" data-open="false">
+              <button class="item-btn" type="button" data-parent aria-expanded="false">
+                <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="m15.4 8.6-2.2 4.6-4.6 2.2 2.2-4.6z"/></svg></span>
+                <span class="item-label fade">发现</span>
+                <span class="item-chev fade"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9.5 5.5 6.5 6.5-6.5 6.5"/></svg></span>
+              </button>
+              <ul class="sub" data-open="false" inert>
+                <li><a class="sub-btn" href="#/player/artists" data-key="/player/artists"><span class="sub-dot"></span><span class="item-label">歌手</span></a></li>
+                <li><a class="sub-btn" href="#/player/albums" data-key="/player/albums"><span class="sub-dot"></span><span class="item-label">专辑</span></a></li>
+                <li><a class="sub-btn" href="#/player/history" data-key="/player/history"><span class="sub-dot"></span><span class="item-label">最近</span></a></li>
+              </ul>
+            </li>
+          </ul>
+        </div>
+
+        <div class="group">
+          <div class="group-label fade">系统</div>
+          <ul class="menu">
+            <li class="item">
+              <a class="item-btn" href="#/library" data-key="/library">
+                <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 4.5h6v15h-6z"/><path d="M13.5 4.5h6v15h-6z"/></svg></span>
+                <span class="item-label fade">曲库</span>
+              </a>
+            </li>
+            <li class="item">
+              <a class="item-btn" href="#/logs" data-key="/logs">
+                <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3.5H7A1.5 1.5 0 0 0 5.5 5v14A1.5 1.5 0 0 0 7 20.5h10a1.5 1.5 0 0 0 1.5-1.5V8z"/><path d="M14 3.5V8h4.5"/><path d="M8.5 12.5h7M8.5 16h4.5"/></svg></span>
+                <span class="item-label fade">操作日志</span>
+              </a>
+            </li>
+            <li class="item">
+              <a class="item-btn" href="#/settings" data-key="/settings">
+                <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M21.2 12h-2.4M5.2 12H2.8M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7M18.5 18.5l-1.7-1.7M7.2 7.2 5.5 5.5"/></svg></span>
+                <span class="item-label fade">设置</span>
+              </a>
+            </li>
+          </ul>
+        </div>
+      </nav>
+
+      <div class="sider-foot">
+        <button class="foot-btn" type="button" title="任务中心" aria-label="任务中心">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6.5h11M8 12h11M8 17.5h11"/><path d="m3.5 6.2 1.2 1.2 2-2.4"/><path d="m3.5 11.7 1.2 1.2 2-2.4"/><path d="m3.5 17.2 1.2 1.2 2-2.4"/></svg>
+        </button>
+        <button class="foot-btn" type="button" id="themeBtn" title="切换主题" aria-label="切换主题">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M21 12h-2M5 12H3M18.4 5.6 17 7M7 17l-1.4 1.4M18.4 18.4 17 17M7 7 5.6 5.6"/></svg>
+        </button>
+        <button class="foot-btn" type="button" title="修改密码" aria-label="修改密码">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.5" cy="12" r="3.5"/><path d="M12 12h8.5"/><path d="M17.5 12v3M20.5 12v2"/></svg>
+        </button>
+        <button class="foot-btn" type="button" id="collapseBtn" title="收起侧边栏" aria-label="收起侧边栏">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" id="collapseIcon"><path d="M13 6.5 8 12l5 5.5"/><path d="M18 6.5 13 12l5 5.5"/></svg>
+        </button>
+      </div>
+    </div>
+    <button class="rail" type="button" id="rail" aria-label="收起侧边栏" title="收起 / 展开"></button>
+  </aside>
+
+  <!-- ═══ 内容区（只用来判断形变与位移） ═══ -->
+  <main class="main">
+    <div class="topbar">
+      <span class="topbar-title" id="pageTitle">概览</span>
+      <span class="topbar-hint">悬停 / Tab 走一遍菜单看胶囊；<b id="hotkeyHint">⌘B</b> 折叠</span>
+    </div>
+    <div class="page">
+      <h1 class="hero" id="heroTitle">概览</h1>
+      <p class="hero-sub">这一页只是陪衬 —— 侧边栏收起时它会被拉伸，用来看宽度形变是否跟内容打架。</p>
+
+      <div class="cards">
+        <div class="card"><div class="card-label">歌曲</div><div class="card-value">1 284</div><div class="bar"><i style="width:72%"></i></div></div>
+        <div class="card"><div class="card-label">本地占用</div><div class="card-value">18.4 GB</div><div class="bar"><i style="width:54%"></i></div></div>
+        <div class="card"><div class="card-label">待整理</div><div class="card-value">37</div><div class="bar"><i style="width:12%"></i></div></div>
+      </div>
+
+      <ul class="legend">
+        <li><b>① 悬停胶囊</b> —— 鼠标在菜单项之间划动，灰底块应该「游」过去，不是逐项闪。</li>
+        <li><b>② 折叠成图标轨</b> —— 宽度收窄到 68px 且不过冲；文字先让位、再淡入。</li>
+        <li><b>③ 激活胶囊</b> —— 点任意菜单项，绿底块从旧项滑到新项。</li>
+        <li><b>④ 子菜单下展</b> —— 「收藏 / 发现」展开时逐项错峰落下（带轻微模糊）。</li>
+        <li><b>⑤ 按压反馈</b> —— 按住任意菜单项，整行缩到 0.98 再弹回。</li>
+      </ul>
+    </div>
+  </main>
+</div>
+
+<!-- ═══ 参数面板 ═══ -->
+<aside class="panel" id="panel">
+  <div class="panel-head">
+    <strong>动效参数</strong>
+    <button type="button" id="panelToggle" aria-label="折叠参数面板">−</button>
+  </div>
+  <div class="panel-body">
+    <div class="row"><span>主题</span>
+      <div class="seg" id="segTheme"><button type="button" data-v="light" class="on">亮</button><button type="button" data-v="dark">暗</button></div>
+    </div>
+    <div class="row"><span>缓动</span>
+      <div class="seg" id="segEase">
+        <button type="button" data-v="cubic-bezier(.32,.72,0,1)" class="on" title="临界阻尼：永不过冲">阻尼</button>
+        <button type="button" data-v="cubic-bezier(.22,1,.36,1)" title="强化 ease-out">强化</button>
+        <button type="button" data-v="cubic-bezier(.34,1.42,.64,1)" title="对照组：会过冲">过冲</button>
+      </div>
+    </div>
+    <label class="row"><span>滑移时长</span><input type="range" id="cGlide" min="120" max="700" step="10"><output id="oGlide"></output></label>
+    <label class="row"><span>折叠时长</span><input type="range" id="cMorph" min="120" max="700" step="10"><output id="oMorph"></output></label>
+    <label class="row"><span>悬停浓度</span><input type="range" id="cHover" min="0" max="20" step="1"><output id="oHover"></output></label>
+    <label class="row"><span>激活浓度</span><input type="range" id="cActive" min="0" max="30" step="1"><output id="oActive"></output></label>
+    <label class="row"><span>错峰步长</span><input type="range" id="cStagger" min="0" max="120" step="5"><output id="oStagger"></output></label>
+    <label class="row"><span>子项模糊</span><input type="range" id="cBlur" min="0" max="8" step="1"><output id="oBlur"></output></label>
+    <label class="row"><span>展开宽度</span><input type="range" id="cWide" min="180" max="300" step="4"><output id="oWide"></output></label>
+    <label class="row"><span>轨道宽度</span><input type="range" id="cRail" min="52" max="96" step="2"><output id="oRail"></output></label>
+    <div class="panel-actions">
+      <button type="button" id="resetBtn">恢复 Token 默认</button>
+      <button type="button" id="copyBtn">复制当前参数</button>
+    </div>
+  </div>
+</aside>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict'
+
+  const ROOT = document.documentElement
+  const readVar = (name, fallback) => (getComputedStyle(ROOT).getPropertyValue(name) || '').trim() || fallback
+  const readNum = (name, fallback) => {
+    const n = parseFloat(readVar(name, ''))
+    return Number.isFinite(n) ? n : fallback
+  }
+  const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches
+  const setVar = (name, value) => ROOT.style.setProperty(name, String(value))
+
+  /* ══════════════════════════════════════════════════════════════════
+     A · 跟随胶囊 —— 零依赖 FLIP，本段是唯一需要搬进 Vue 的逻辑
+     ──────────────────────────────────────────────────────────────────
+     不测量网格、不预算索引偏移，只看两个矩形：
+       起点 = 胶囊「此刻的视觉矩形」（动画进行中也准）
+       终点 = 目标菜单项的矩形
+     所以动画途中改目标，不会从旧目标跳过去 —— 这是手写 FLIP 最容易错的点。
+     横向刻意不做：left/right 由 CSS 决定，侧边栏变宽变窄时胶囊自动同步。
+     ══════════════════════════════════════════════════════════════════ */
+  function createPill(el, container, timing) {
+    let running = null
+
+    function offsetY(node) {
+      const c = container.getBoundingClientRect()
+      const r = node.getBoundingClientRect()
+      return { y: r.top - c.top - container.clientTop, h: r.height }
+    }
+
+    function place(target, animate) {
+      if (!target || !target.isConnected) return
+
+      // 先取视觉真值，再动样式 —— 顺序反了就永远从上一个目标起跳
+      const from = offsetY(el)
+      const to = offsetY(target)
+
+      if (running) running.cancel()      // 取消后立刻被下面的 inline style 接管，不会闪
+      running = null
+
+      el.style.height = to.h + 'px'
+      el.style.transform = `translate3d(0, ${to.y}px, 0)`
+
+      if (!animate || reduceMotion() || from.h === 0) return
+
+      const anim = el.animate(
+        [
+          { transform: `translate3d(0, ${from.y}px, 0)`, height: from.h + 'px' },
+          { transform: `translate3d(0, ${to.y}px, 0)`, height: to.h + 'px' },
+        ],
+        { duration: timing.duration(), easing: timing.easing() },
+      )
+      running = anim
+      // cancel 时 finished 会 reject，必须接住，否则控制台留一堆 unhandled rejection
+      anim.finished.then(() => { if (running === anim) running = null }).catch(() => {})
+    }
+
+    return { place, busy: () => running !== null }
+  }
+
+  const timing = {
+    duration: () => readNum('--proto-dur-glide', 380),
+    easing: () => readVar('--proto-ease-glide', 'cubic-bezier(.32,.72,0,1)'),
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     B · 侧边栏装配
+     ══════════════════════════════════════════════════════════════════ */
+  const sider = document.getElementById('sider')
+  const nav = document.getElementById('nav')
+  const pillActive = document.getElementById('pillActive')
+  const pillHover = document.getElementById('pillHover')
+  const collapseBtn = document.getElementById('collapseBtn')
+  const collapseIcon = document.getElementById('collapseIcon')
+  const rail = document.getElementById('rail')
+
+  const activeMover = createPill(pillActive, nav, timing)
+  const hoverMover = createPill(pillHover, nav, timing)
+
+  const findBtn = (key) => nav.querySelector(`[data-key="${key}"]`)
+  const isCollapsed = () => sider.dataset.collapsed === 'true'
+
+  let activeKey = '/'
+  let hoverOn = false
+
+  /* ── ①③ 胶囊 ── */
+  function syncActive(animate) {
+    const btn = findBtn(activeKey)
+    if (btn) activeMover.place(btn, animate)
+  }
+
+  function showHover(btn, animate) {
+    // 悬停的就是当前项时不给第二层底：两层叠在一起只会显得脏
+    if (btn.dataset.key === activeKey) return hideHover()
+    if (!hoverOn) {
+      hoverOn = true
+      pillHover.dataset.on = 'true'
+      hoverMover.place(btn, false)   // 现身那一帧不滑，避免从上一个位置「飞」过来
+      return
+    }
+    hoverMover.place(btn, animate)
+  }
+
+  function hideHover() {
+    if (!hoverOn) return
+    hoverOn = false
+    pillHover.dataset.on = 'false'
+  }
+
+  nav.addEventListener('mouseover', (e) => {
+    const btn = e.target.closest('.item-btn, .sub-btn')
+    if (btn) showHover(btn, true)
+  })
+  nav.addEventListener('mouseleave', hideHover)
+  // 键盘走位也必须驱动胶囊，否则鼠标和键盘是两套观感
+  nav.addEventListener('focusin', (e) => {
+    const btn = e.target.closest('.item-btn, .sub-btn')
+    if (btn) showHover(btn, true)
+  })
+  nav.addEventListener('focusout', (e) => {
+    if (!nav.contains(e.relatedTarget)) hideHover()
+  })
+
+  /* ── ④ 子菜单：高度形变 + 逐项错峰 ── */
+  function setSubOpen(item, open) {
+    const sub = item.querySelector('.sub')
+    if (!sub) return
+    const btns = Array.from(sub.querySelectorAll('.sub-btn'))
+    const step = readNum('--proto-stagger', 45)
+    const stepOut = Math.round(step * 0.55)   // 退场比入场快，避免拖尾
+
+    btns.forEach((btn, i) => {
+      const delay = open ? i * step : (btns.length - 1 - i) * stepOut
+      btn.style.setProperty('--d', `${delay}ms`)
+    })
+
+    if (open) {
+      sub.removeAttribute('inert')
+      sub.dataset.open = 'true'
+      item.dataset.open = 'true'
+      item.querySelector('.item-btn').setAttribute('aria-expanded', 'true')
+      // 先量再改：此刻 height 还是 0，正好读出内容自然高度
+      sub.style.height = `${sub.scrollHeight}px`
+    } else {
+      sub.dataset.open = 'false'
+      item.dataset.open = 'false'
+      item.querySelector('.item-btn').setAttribute('aria-expanded', 'false')
+      sub.style.height = '0px'
+      sub.setAttribute('inert', '')   // 收起后不该还能 Tab 进去
+    }
+    trackFor(280)   // 下方位移是 height 形的，只能跟一段
+  }
+
+  function closeAllSubs() {
+    nav.querySelectorAll('.item[data-open="true"]').forEach((item) => setSubOpen(item, false))
+  }
+
+  /* ── ② 折叠 / 展开 ── */
+  function setCollapsed(next) {
+    sider.dataset.collapsed = String(next)
+    collapseBtn.title = next ? '展开侧边栏' : '收起侧边栏'
+    collapseBtn.setAttribute('aria-label', collapseBtn.title)
+    rail.setAttribute('aria-label', collapseBtn.title)
+    collapseIcon.parentElement.style.transform = next ? 'rotate(180deg)' : 'none'
+    // 折叠态子菜单无处可放，一律收起
+    if (next) closeAllSubs()
+
+    // 折叠态只剩图标，文字必须从别处补回来。
+    // ⚠️ 正式组件（SpSidebar.vue）用的是 Naive tooltip（气泡 + 箭头，180ms 延迟）；
+    //    原型为免引依赖用原生 title，两者观感不同 —— 以真实应用为准，这里只看「有没有」。
+    nav.querySelectorAll('.item-btn, .sub-btn').forEach((btn) => {
+      if (next) btn.setAttribute('title', btn.textContent.trim())
+      else btn.removeAttribute('title')
+    })
+    nav.querySelectorAll('.group-label').forEach((el) => {
+      if (next) el.setAttribute('aria-hidden', 'true')
+      else el.removeAttribute('aria-hidden')
+    })
+    trackFor(readNum('--proto-dur-morph', 320) + 60)
+  }
+
+  collapseBtn.addEventListener('click', () => setCollapsed(!isCollapsed()))
+  rail.addEventListener('click', () => setCollapsed(!isCollapsed()))
+
+  // ⌘B / Ctrl+B：beUI 那个快捷键，先开着试手感（落地时可做成组件 prop 开关）
+  const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
+  document.getElementById('hotkeyHint').textContent = isMac ? '⌘B' : 'Ctrl+B'
+  window.addEventListener('keydown', (e) => {
+    if (e.key.toLowerCase() === 'b' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault()
+      setCollapsed(!isCollapsed())
+    }
+  })
+
+  /* ── 点选 ── */
+  nav.addEventListener('click', (e) => {
+    const parentBtn = e.target.closest('.item-btn[data-parent]')
+    if (parentBtn) {
+      e.preventDefault()
+      const item = parentBtn.closest('.item')
+      const willOpen = item.dataset.open !== 'true'
+      // 图标轨里放不下子菜单：点父项 = 顺手把侧边栏展开（beUI 同款处理）
+      if (willOpen && isCollapsed()) setCollapsed(false)
+      nav.querySelectorAll('.item[data-open="true"]').forEach((other) => {
+        if (other !== item) setSubOpen(other, false)
+      })
+      setSubOpen(item, willOpen)
+      return
+    }
+
+    const btn = e.target.closest('.item-btn[data-key], .sub-btn[data-key]')
+    if (!btn) return
+    e.preventDefault()
+    setActive(btn.dataset.key)
+  })
+
+  function setActive(key) {
+    activeKey = key
+    nav.querySelectorAll('[data-key]').forEach((btn) => {
+      if (btn.dataset.key === key) btn.setAttribute('aria-current', 'page')
+      else btn.removeAttribute('aria-current')
+    })
+    syncActive(true)
+    hideHover()
+    const label = findBtn(key).textContent.trim()
+    document.getElementById('heroTitle').textContent = label
+    document.getElementById('pageTitle').textContent = label
+    location.hash = key
+  }
+
+  /* ── 位置追踪 ──
+     胶囊的 y 依赖「目标项此刻在哪」，下列情况必须重新对位：
+       1) 侧边栏宽度形变 → 容器尺寸在变，ResizeObserver 会逐帧触发
+       2) 子菜单开合 → 容器尺寸没变，但下方的项在整体位移，RO 不会触发，
+          只能盯一段 rAF 到形变结束
+       3) 窗口缩放 / 字体加载完成（行高微调）
+     注意：正在滑移的胶囊要跳过，否则追踪会把滑移动画「钉」在中途。 */
+  function refresh() {
+    if (!activeMover.busy()) syncActive(false)
+    if (!hoverOn || hoverMover.busy()) return
+    const hovered = nav.querySelector('.item-btn:hover, .sub-btn:hover')
+    if (hovered) hoverMover.place(hovered, false)
+  }
+
+  let trackUntil = 0
+  let trackRaf = 0
+  function trackFor(ms) {
+    trackUntil = Math.max(trackUntil, performance.now() + ms)
+    if (trackRaf) return
+    const tick = () => {
+      refresh()
+      if (performance.now() < trackUntil) trackRaf = requestAnimationFrame(tick)
+      else trackRaf = 0
+    }
+    trackRaf = requestAnimationFrame(tick)
+  }
+
+  new ResizeObserver(() => { if (!trackRaf) refresh() }).observe(nav)
+  addEventListener('resize', () => trackFor(320))
+
+  /* ══════════════════════════════════════════════════════════════════
+     C · 参数面板（只在原型里存在，落地时删掉）
+     ══════════════════════════════════════════════════════════════════ */
+  const CONTROLS = [
+    { id: 'cGlide', out: 'oGlide', var: '--proto-dur-glide', token: '--sp-dur-glide', unit: 'ms', suffix: '' },
+    { id: 'cMorph', out: 'oMorph', var: '--proto-dur-morph', token: '--sp-dur-morph', unit: 'ms', suffix: '' },
+    // 注意 fallback 用的是「比例」而不是百分数 —— 与 scale 配套，
+    // 否则 initControls 会二次换算被 range 的 max 夹住，静默用成上限值
+    { id: 'cHover', out: 'oHover', var: '--proto-hover-a', token: null, fallback: 0.06, scale: 0.01, suffix: '%' },
+    { id: 'cActive', out: 'oActive', var: '--proto-active-a', token: null, fallback: 0.12, scale: 0.01, suffix: '%' },
+    { id: 'cStagger', out: 'oStagger', var: '--proto-stagger', token: '--sp-dur-stagger', unit: 'ms', suffix: '' },
+    { id: 'cBlur', out: 'oBlur', var: '--proto-sub-blur', token: '--sp-sub-blur', unit: 'px', suffix: '' },
+    { id: 'cWide', out: 'oWide', var: '--proto-sider-w', token: '--sp-sider-w', unit: 'px', suffix: '' },
+    { id: 'cRail', out: 'oRail', var: '--proto-rail-w', token: '--sp-sider-rail-w', unit: 'px', suffix: '' },
+  ]
+
+  function applyControl(c, raw) {
+    const value = Number(raw)
+    setVar(c.var, c.scale ? value * c.scale : value + (c.unit || ''))
+    document.getElementById(c.out).textContent = value + c.suffix
+    return value
+  }
+
+  function initControls() {
+    CONTROLS.forEach((c) => {
+      const input = document.getElementById(c.id)
+      const tokenValue = c.token ? readNum(c.token, c.fallback) : c.fallback
+      const wanted = c.scale ? Math.round(tokenValue / c.scale) : Math.round(tokenValue)
+      input.value = String(wanted)
+      // 静默失败哨兵：range 会把越界初值夹到 min/max，于是「默认值」悄悄变成上限
+      if (Number(input.value) !== wanted) {
+        console.warn(`[proto] ${c.id} 初值 ${wanted} 被 range 夹成 ${input.value} —— fallback 与 scale 不配套`)
+      }
+      applyControl(c, input.value)
+      input.addEventListener('input', () => applyControl(c, input.value))
+    })
+  }
+
+  const segEase = document.getElementById('segEase')
+  document.getElementById('segTheme').addEventListener('click', (e) => {
+    const btn = e.target.closest('button')
+    if (!btn) return
+    ROOT.dataset.theme = btn.dataset.v
+    btn.parentElement.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === btn))
+  })
+  segEase.addEventListener('click', (e) => {
+    const btn = e.target.closest('button')
+    if (!btn) return
+    setVar('--proto-ease-glide', btn.dataset.v)
+    btn.parentElement.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === btn))
+  })
+
+  document.getElementById('themeBtn').addEventListener('click', () => {
+    const next = ROOT.dataset.theme === 'dark' ? 'light' : 'dark'
+    ROOT.dataset.theme = next
+    document.querySelectorAll('#segTheme button').forEach((b) => b.classList.toggle('on', b.dataset.v === next))
+  })
+
+  document.getElementById('panelToggle').addEventListener('click', (e) => {
+    const panel = document.getElementById('panel')
+    const min = panel.dataset.min === 'true'
+    panel.dataset.min = String(!min)
+    e.currentTarget.textContent = min ? '−' : '+'
+  })
+
+  document.getElementById('resetBtn').addEventListener('click', () => {
+    CONTROLS.forEach((c) => setVar(c.var, ''))
+    initControls()
+    const on = segEase.querySelector('[data-v^="cubic-bezier(.32"]')
+    if (on) on.click()
+    toast('已恢复 Token 默认值')
+  })
+
+  document.getElementById('copyBtn').addEventListener('click', () => {
+    const params = {
+      theme: ROOT.dataset.theme,
+      easeGlide: readVar('--proto-ease-glide', ''),
+      durGlide: readNum('--proto-dur-glide', 0),
+      durMorph: readNum('--proto-dur-morph', 0),
+      hoverAlpha: Number((readNum('--proto-hover-a', 0)).toFixed(3)),
+      activeAlpha: Number((readNum('--proto-active-a', 0)).toFixed(3)),
+      stagger: readNum('--proto-stagger', 0),
+      subBlur: readNum('--proto-sub-blur', 0),
+      siderWidth: readNum('--proto-sider-w', 0),
+      railWidth: readNum('--proto-rail-w', 0),
+    }
+    const text = JSON.stringify(params, null, 2)
+    const done = () => toast('参数已复制，直接粘给我即可')
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(done, () => fallback())
+    else fallback()
+    function fallback() {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      document.body.appendChild(ta)
+      ta.select()
+      try { document.execCommand('copy'); done() } catch { toast(text) }
+      ta.remove()
+    }
+  })
+
+  let toastTimer = null
+  function toast(message) {
+    const el = document.getElementById('toast')
+    el.textContent = message
+    el.dataset.on = 'true'
+    clearTimeout(toastTimer)
+    toastTimer = setTimeout(() => { el.dataset.on = 'false' }, 1800)
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     D · 启动
+     ══════════════════════════════════════════════════════════════════ */
+  initControls()
+  setCollapsed(false)
+  setActive(location.hash.replace(/^#/, '') || '/')
+  // 字体加载完再对位一次，避免字重变化让行高微调、胶囊错位
+  if (document.fonts?.ready) document.fonts.ready.then(() => syncActive(false))
+})()
+</script>
+</body>
+</html>

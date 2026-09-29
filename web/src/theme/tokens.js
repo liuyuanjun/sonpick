@@ -116,8 +116,12 @@ export const SPACE = {
  *   - pagePadX / pagePadY / pagePadYMobile / pagePadXMobile → 已接入（LayoutView 的 .content / .header）
  *   - contentMaxWidth                                  → 已接入（LayoutView .content 限宽居中）
  *   - sectionGap / cardPad / cardGap                   → 已在「值匹配处」消费（--sp-space-section / -card-pad / -card-gap）
+ *   - sider*（侧边栏几何，7 项）                       → 供 SpSidebar 消费（--sp-sider-*）
  *   - iconButtonSize                                   → 已删除（无现实锚点：全站无「圆形按钮 40px」硬编码）
  */
+/** 触控目标下限。侧边栏一级项高度直接复用它，避免出现 36 / 34 两套并存 */
+const TOUCH_MIN = 36
+
 export const LAYOUT = {
   pagePadX: 20, // 页面左右边距（桌面）
   pagePadY: 16,
@@ -127,7 +131,15 @@ export const LAYOUT = {
   cardPad: 14, // 卡片内边距
   cardGap: 12, // 卡片之间
   contentMaxWidth: 1280, // 内容最大宽度（居中）
-  touchTargetMin: 36, // 触控目标最小尺寸
+  touchTargetMin: TOUCH_MIN, // 触控目标最小尺寸
+  // ── 侧边栏（SpSidebar）几何 ──
+  siderWidth: 220, // 展开态宽度
+  siderRailWidth: 68, // 折叠态图标轨宽度（图标必须落在正中）
+  siderPad: 8, // 菜单项相对侧边栏的内缩；跟随胶囊与菜单项同框，共用此值
+  siderItemHeight: TOUCH_MIN, // 一级菜单项高度
+  siderSubItemHeight: 32, // 二级菜单项高度（次级层级，不承载触控目标下限）
+  siderGroupLabelHeight: 28, // 分组标题占位高度：折叠态保留，用于分隔图标簇
+  pillTabHeight: TOUCH_MIN, // 胶囊 tab 高度（页内导航），与触控目标同尺度
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -155,14 +167,41 @@ export const SHADOW = {
 // ══════════════════════════════════════════════════════════════════════════
 // 6 · 动效
 // ══════════════════════════════════════════════════════════════════════════
-/** 只动 transform / opacity。所有持续或大面积动效必须能用 prefers-reduced-motion 关闭。 */
+/**
+ * 只动 transform / opacity。所有持续或大面积动效必须能用 prefers-reduced-motion 关闭。
+ *
+ * ⚠️ 已知例外（侧边栏）：折叠是「宽度形变」、子菜单是「高度形变」，
+ * 二者无法用 transform 表达——用 scale 表现宽度会让图标与文字一起变形，不可接受。
+ * 因此这两处允许动 width / height，但必须满足：只作用于单个小元素、
+ * 超出的内容由 overflow 裁剪（不产生内部重排）、且不遮挡正在播的其它动效。
+ */
 export const MOTION = {
   durFast: 120, // 微交互：hover、按压
   durBase: 200, // 常规：展开、切换
   durSlow: 240, // 浮层进出
+  /**
+   * 侧边栏折叠时长（宽度形变）。刻意比 durSlow 长：
+   * 形变跨度 152px，太快会显得「弹一下」而不是「长出来」。
+   */
+  durMorph: 320,
+  /**
+   * 跟随胶囊的滑移时长。比 durMorph 更长是有意的——
+   * 胶囊要在菜单项之间「游」过去，走完才算一次位移，不是一次反馈。
+   */
+  durGlide: 380,
+  durStagger: 45, // 子菜单逐项入场步长
+  durStaggerOut: 25, // 逐项退场步长（退比进快，避免拖尾）
+  durLabelDelay: 80, // 文字淡入相对宽度形变的延迟：先让位子长出来，文字再出现
   easeEnter: 'cubic-bezier(.22, 1, .36, 1)', // 进入（ease-out 强化）
   easeExit: 'cubic-bezier(.4, 0, 1, 1)', // 退出（ease-in）
   easeStandard: 'cubic-bezier(.4, 0, .2, 1)',
+  /**
+   * 临界阻尼曲线：起步快、尾巴长、**永不过冲**。
+   * 宽度折叠的终点是零宽边界，任何过冲都会「撞到底再弹回来」，肉眼极明显；
+   * 胶囊滑移同理，过冲会让高亮块越过目标行。两侧位移统一用它。
+   */
+  easeGlide: 'cubic-bezier(.32, .72, 0, 1)',
+  subBlur: 3, // 子菜单逐项入场的模糊量（px），0 = 关闭
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -399,6 +438,14 @@ export function buildCssVars(isDark) {
     '--sp-layout-page-pad-y-mobile': px(LAYOUT.pagePadYMobile),
     '--sp-layout-page-pad-x-mobile': px(LAYOUT.pagePadXMobile),
     '--sp-layout-content-max': px(LAYOUT.contentMaxWidth),
+    // ── 侧边栏几何
+    '--sp-sider-w': px(LAYOUT.siderWidth),
+    '--sp-sider-rail-w': px(LAYOUT.siderRailWidth),
+    '--sp-sider-pad': px(LAYOUT.siderPad),
+    '--sp-sider-item-h': px(LAYOUT.siderItemHeight),
+    '--sp-sider-sub-item-h': px(LAYOUT.siderSubItemHeight),
+    '--sp-sider-group-label-h': px(LAYOUT.siderGroupLabelHeight),
+    '--sp-pill-tab-h': px(LAYOUT.pillTabHeight),
     // ── 阴影
     '--sp-shadow-xs': SHADOW[key].xs,
     '--sp-shadow-sm': SHADOW[key].sm,
@@ -410,8 +457,15 @@ export function buildCssVars(isDark) {
     '--sp-dur-fast': `${MOTION.durFast}ms`,
     '--sp-dur-base': `${MOTION.durBase}ms`,
     '--sp-dur-slow': `${MOTION.durSlow}ms`,
+    '--sp-dur-morph': `${MOTION.durMorph}ms`,
+    '--sp-dur-glide': `${MOTION.durGlide}ms`,
+    '--sp-dur-stagger': `${MOTION.durStagger}ms`,
+    '--sp-dur-stagger-out': `${MOTION.durStaggerOut}ms`,
+    '--sp-dur-label-delay': `${MOTION.durLabelDelay}ms`,
     '--sp-ease-enter': MOTION.easeEnter,
     '--sp-ease-exit': MOTION.easeExit,
+    '--sp-ease-glide': MOTION.easeGlide,
+    '--sp-sub-blur': `${MOTION.subBlur}px`,
     // ── 品牌
     '--sp-brand-grad': BRAND_GRADIENT,
   }

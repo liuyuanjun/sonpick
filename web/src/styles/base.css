@@ -116,6 +116,25 @@ button:disabled {
   border: 0;
 }
 
+/**
+ * 侧边栏折叠时「文字让位」的统一动效。
+ *
+ * 为什么必须是全局工具类：`SpSidebar` 的头部/底部是**插槽内容**，
+ * 编译在父组件（LayoutView）作用域，子组件的 scoped 选择器够不到它。
+ * 于是把「折叠长什么样」收敛成一组自定义属性由 SpSidebar 提供，
+ * 插槽内容只需挂上这个类，不必各自复制一份时长/延迟/位移。
+ *
+ * 进（展开）：先让位子长出来，文字延迟 80ms 再出现；出（折叠）：立刻让位，不拖住宽度形变。
+ * 变量未定义时（sider 之外）本类退化为无副作用。
+ */
+.sp-collapse-fade {
+  opacity: var(--sp-fade-opacity, 1);
+  transform: translateX(var(--sp-fade-shift, 0px));
+  transition:
+    opacity var(--sp-fade-dur, var(--sp-dur-base)) var(--sp-ease-enter) var(--sp-fade-delay, 0ms),
+    transform var(--sp-fade-dur, var(--sp-dur-base)) var(--sp-ease-enter) var(--sp-fade-delay, 0ms);
+}
+
 /* ══════════════════════════════════════════════════════════════════════
    4 · 可访问性
    ══════════════════════════════════════════════════════════════════════ */

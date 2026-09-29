@@ -1,86 +1,68 @@
 <template>
   <n-layout has-sider position="absolute" style="min-height: 100vh">
-    <n-layout-sider
+    <sp-sidebar
       v-if="!isMobile"
-      bordered
-      collapse-mode="width"
-      :collapsed-width="64"
-      :width="220"
-      :collapsed="collapsed"
-      @collapse="collapsed = true"
-      @expand="collapsed = false"
+      v-model:collapsed="collapsed"
+      :groups="navGroups"
+      :active-key="activeKey"
+      hotkey
+      @navigate="onMenu"
     >
-      <div class="logo" :class="{ collapsed }">
-        <img src="/brand/logo-mark-sm.png" alt="拾音" class="logo-mark" />
-        <span v-if="!collapsed" class="logo-text">拾音 Sonpick</span>
-      </div>
-      <n-menu
-        :collapsed="collapsed"
-        :collapsed-width="64"
-        :collapsed-icon-size="22"
-        :options="menuOptions"
-        :value="activeKey"
-        @update:value="onMenu"
-      />
-      <!-- 左下功能区：任务中心（高频常驻）+ 主题切换 + 设置入口 + 用户入口 + 折叠开关。
-           设置（曲库/日志/设置）与用户（改密码/退出）分两个图标：语义两类，各自一步直达 -->
-      <div class="sider-footer" :class="{ collapsed }">
-        <task-center />
-        <n-dropdown trigger="click" :options="themeOptions" :value="themeStore.mode" @select="themeStore.setMode($event)">
-          <n-button quaternary circle aria-label="主题模式">
-            <template #icon>
-              <n-icon>
-                <moon v-if="themeStore.isDark" />
-                <sunny v-else />
-              </n-icon>
-            </template>
-          </n-button>
-        </n-dropdown>
-        <n-dropdown
-          trigger="click"
-          placement="top-start"
-          :options="settingsOptions"
-          @select="onMenu"
-        >
-          <n-button quaternary circle aria-label="系统管理">
-            <template #icon>
-              <n-icon><settings-outline /></n-icon>
-            </template>
-          </n-button>
-        </n-dropdown>
-        <n-dropdown
-          trigger="click"
-          placement="top-start"
-          :options="userOptions"
-          @select="onUserSelect"
-        >
-          <n-button quaternary circle aria-label="用户">
-            <template #icon>
-              <n-icon><person-circle-outline /></n-icon>
-            </template>
-          </n-button>
-        </n-dropdown>
-        <!-- 折叠开关收进左下功能区（替代 Naive 默认底边 trigger，避免与功能条争抢底缘） -->
-        <n-tooltip>
-          <template #trigger>
-            <n-button
-              quaternary
-              circle
-              :aria-label="collapsed ? '展开侧边栏' : '收起侧边栏'"
-              @click="collapsed = !collapsed"
-            >
+      <template #header="{ collapsed: folded }">
+        <div class="logo" :class="{ collapsed: folded }">
+          <img src="/brand/logo-mark-sm.png" alt="拾音" class="logo-mark" />
+          <span class="logo-text sp-collapse-fade">拾音 Sonpick</span>
+        </div>
+      </template>
+
+      <!-- 左下功能区：任务中心（高频常驻）+ 主题切换 + 用户入口 + 折叠开关。
+           曲库 / 日志 / 设置已上移为导航「系统」组，这里不再保留系统管理下拉 -->
+      <template #footer="{ collapsed: folded }">
+        <div class="sider-footer" :class="{ collapsed: folded }">
+          <task-center />
+          <n-dropdown trigger="click" :options="themeOptions" :value="themeStore.mode" @select="themeStore.setMode($event)">
+            <n-button quaternary circle aria-label="主题模式">
               <template #icon>
                 <n-icon>
-                  <chevron-forward v-if="collapsed" />
-                  <chevron-back v-else />
+                  <moon v-if="themeStore.isDark" />
+                  <sunny v-else />
                 </n-icon>
               </template>
             </n-button>
-          </template>
-          {{ collapsed ? '展开侧边栏' : '收起侧边栏' }}
-        </n-tooltip>
-      </div>
-    </n-layout-sider>
+          </n-dropdown>
+          <n-dropdown
+            trigger="click"
+            placement="top-start"
+            :options="userOptions"
+            @select="onUserSelect"
+          >
+            <n-button quaternary circle aria-label="用户">
+              <template #icon>
+                <n-icon><person-circle-outline /></n-icon>
+              </template>
+            </n-button>
+          </n-dropdown>
+          <n-tooltip>
+            <template #trigger>
+              <n-button
+                quaternary
+                circle
+                :aria-label="collapsed ? '展开侧边栏' : '收起侧边栏'"
+                @click="collapsed = !collapsed"
+              >
+                <template #icon>
+                  <n-icon>
+                    <chevron-forward v-if="collapsed" />
+                    <chevron-back v-else />
+                  </n-icon>
+                </template>
+              </n-button>
+            </template>
+            {{ collapseHint }}
+          </n-tooltip>
+        </div>
+      </template>
+    </sp-sidebar>
 
     <n-layout>
       <!-- 移动端极简顶栏：仅保留页面标题与任务中心（下载进度需在任意页面可见） -->
@@ -123,7 +105,6 @@ import { computed, h, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NIcon, useMessage, useThemeVars } from 'naive-ui'
 import {
-  MusicalNotes,
   HomeOutline,
   CloudDownloadOutline,
   LibraryOutline,
@@ -142,7 +123,9 @@ import {
   PersonOutline,
   PersonCircleOutline,
   DiscOutline,
+  MusicalNotes,
   TimeOutline,
+  CompassOutline,
 } from '@vicons/ionicons5'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
@@ -152,6 +135,7 @@ import GlobalPlayer from '@/components/GlobalPlayer.vue'
 import TaskCenter from '@/components/TaskCenter.vue'
 import GlobalPlayerDrawer from '@/components/player/GlobalPlayerDrawer.vue'
 import ChangePasswordModal from '@/components/ChangePasswordModal.vue'
+import SpSidebar from '@/components/nav/SpSidebar.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -217,33 +201,62 @@ const routeTitle = computed(() => {
   return titles[route.name] || '拾音'
 })
 
-function icon(comp) {
-  return () => h(NIcon, null, { default: () => h(comp) })
-}
-
-// 扁平菜单：概览置顶作为首页，随后是我的音乐与下载；
-// 曲库 / 日志 / 设置等低频系统入口收进左下账户抽屉，不再分区
-const menuOptions = [
-  { label: '概览', key: '/', icon: icon(HomeOutline) },
-  { label: '喜欢', key: '/player/favorites', icon: icon(HeartOutline) },
-  { label: '歌单', key: '/player/playlists', icon: icon(ListOutline) },
-  { label: '歌手', key: '/player/artists', icon: icon(PersonOutline) },
-  { label: '专辑', key: '/player/albums', icon: icon(DiscOutline) },
-  { label: '歌曲', key: '/player/songs', icon: icon(MusicalNotes) },
-  { label: '最近', key: '/player/history', icon: icon(TimeOutline) },
-  { label: '下载', key: '/download', icon: icon(CloudDownloadOutline) },
-]
-
-const settingsOptions = [
-  { label: '曲库', key: '/library', icon: icon(LibraryOutline) },
-  { label: '操作日志', key: '/logs', icon: icon(DocumentTextOutline) },
-  { label: '设置', key: '/settings', icon: icon(SettingsOutline) },
+/**
+ * 导航树：分组 + 二级。
+ * 把「我的音乐」六项收成 收藏 / 发现 两个二级组，是为了给侧边栏腾出容纳新入口的余量
+ * （曲库 / 日志 / 设置已经上收进「系统」组），同时把两类不同的心智分开。
+ * 父项的 key 只是分组标识，不参与路由 —— 点父项只展开，不跳转（叶子项才导航）。
+ * icon 传组件本身，尺寸由 SpSidebar 按 token 控制，不再各处套一层 NIcon。
+ */
+const navGroups = [
+  {
+    key: 'music',
+    label: '音乐',
+    items: [
+      { label: '概览', key: '/', icon: HomeOutline },
+      { label: '下载', key: '/download', icon: CloudDownloadOutline },
+      {
+        label: '收藏',
+        key: 'collection',
+        icon: HeartOutline,
+        children: [
+          { label: '喜欢', key: '/player/favorites', icon: ListOutline },
+          { label: '歌单', key: '/player/playlists', icon: ListOutline },
+          { label: '歌曲', key: '/player/songs', icon: MusicalNotes },
+        ],
+      },
+      {
+        label: '发现',
+        key: 'discover',
+        icon: CompassOutline,
+        children: [
+          { label: '歌手', key: '/player/artists', icon: PersonOutline },
+          { label: '专辑', key: '/player/albums', icon: DiscOutline },
+          { label: '最近', key: '/player/history', icon: TimeOutline },
+        ],
+      },
+    ],
+  },
+  {
+    key: 'system',
+    label: '系统',
+    items: [
+      { label: '曲库', key: '/library', icon: LibraryOutline },
+      { label: '操作日志', key: '/logs', icon: DocumentTextOutline },
+      { label: '设置', key: '/settings', icon: SettingsOutline },
+    ],
+  },
 ]
 
 const userOptions = [
-  { label: '修改密码', key: 'change-password', icon: icon(KeyOutline) },
-  { label: '退出登录', key: 'logout', icon: icon(LogOutOutline) },
+  { label: '修改密码', key: 'change-password', icon: () => h(NIcon, null, { default: () => h(KeyOutline) }) },
+  { label: '退出登录', key: 'logout', icon: () => h(NIcon, null, { default: () => h(LogOutOutline) }) },
 ]
+
+const collapseHint = computed(() => {
+  const isMac = /Mac|iPhone|iPad/.test(navigator.userAgent)
+  return `${collapsed.value ? '展开' : '收起'}侧边栏（${isMac ? '⌘B' : 'Ctrl+B'}）`
+})
 
 const activeKey = computed(() => {
   const p = route.path
@@ -295,27 +308,25 @@ function onUserSelect(key) {
   padding: 18px 0 12px;
 }
 .logo-mark {
+  flex: 0 0 auto;
   width: 28px;
   height: 28px;
   border-radius: var(--sp-radius-sm);
   display: block;
 }
 .logo-text {
-  font-weight: 700;
+  font-weight: var(--sp-fw-bold);
   font-size: var(--sp-fs-h3);
+  white-space: nowrap;
 }
-/* 左下功能区：贴底常驻，展开态横向一排（折叠开关靠右），折叠态纵向堆叠居中 */
+/* 左下功能区：展开态横向一排（折叠开关靠右），折叠态竖向堆叠居中。
+   由 SpSidebar 的 flex 列容器托底，不再绝对定位贴底，也就不再需要给菜单留 padding 规避遮挡 */
 .sider-footer {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
   display: flex;
   align-items: center;
   gap: 2px;
   padding: 8px 14px calc(10px + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid v-bind('themeVars.borderColor');
-  background: v-bind('themeVars.cardColor');
 }
 .sider-footer > :last-child {
   margin-left: auto;
@@ -328,13 +339,6 @@ function onUserSelect(key) {
 .sider-footer.collapsed > :last-child {
   margin-left: 0;
   margin-top: 4px;
-}
-/* 功能条绝对定位贴底，给菜单底部留出对应空间避免遮挡末项 */
-:deep(.n-menu) {
-  padding-bottom: 54px;
-}
-:deep(.n-menu.n-menu--collapsed) {
-  padding-bottom: 196px;
 }
 .header {
   height: 56px;

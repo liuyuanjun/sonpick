@@ -1,29 +1,24 @@
 <template>
-  <n-grid class="settings-layout" cols="1 m:6" responsive="screen" :x-gap="18" :y-gap="18">
-    <n-gi span="1 m:1">
-      <n-card class="settings-nav" size="small" :bordered="false">
-        <n-menu
-          v-if="!isMobile"
-          v-model:value="activeSection"
-          :options="menuOptions"
-        />
-        <n-tabs
-          v-else
-          v-model:value="activeSection"
-          class="settings-mobile-tabs"
-          type="segment"
-          size="small"
-          justify-content="space-around"
-        >
-          <n-tab-pane name="general" tab="系统设置" />
-          <n-tab-pane name="scrape" tab="刮削源" />
-          <n-tab-pane name="lyrics" tab="歌词源" />
-          <n-tab-pane name="account" tab="账户" />
-        </n-tabs>
-      </n-card>
-    </n-gi>
-    <n-gi span="1 m:5">
-      <n-space vertical size="large" style="width: 100%">
+  <div class="settings-layout">
+    <!-- 页内导航：胶囊 tab（桌面 / 移动同一套）。外层负责吸顶与不透明底，
+         胶囊本身留在组件里 —— 组件不该替使用方决定「贴不贴顶」。 -->
+    <div class="settings-tabbar">
+      <sp-pill-tabs
+        v-model="activeSection"
+        :items="tabItems"
+        id-prefix="settings"
+        panel-id="settings-panel"
+        aria-label="设置分区"
+      />
+    </div>
+
+    <div
+      id="settings-panel"
+      role="tabpanel"
+      :aria-labelledby="`settings-tab-${activeSection}`"
+    >
+      <transition name="settings-panel" mode="out-in">
+        <n-space :key="activeSection" vertical size="large" style="width: 100%">
         <template v-if="activeSection === 'general'">
           <n-card title="系统设置">
             <n-form
@@ -267,9 +262,10 @@
             </n-space>
           </n-card>
         </template>
-      </n-space>
-    </n-gi>
-  </n-grid>
+        </n-space>
+      </transition>
+    </div>
+  </div>
 
   <change-password-modal v-model:show="showPasswordModal" />
 </template>
@@ -277,7 +273,7 @@
 <script setup>
 import { computed, h, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { NButton, NIcon, NInput, NSelect, NSwitch, useMessage } from 'naive-ui'
+import { NButton, NInput, NSelect, NSwitch, useMessage } from 'naive-ui'
 import {
   AlbumsOutline,
   DocumentTextOutline,
@@ -289,6 +285,7 @@ import { useIsMobile } from '@/composables/useIsMobile'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import ChangePasswordModal from '@/components/ChangePasswordModal.vue'
+import SpPillTabs from '@/components/SpPillTabs.vue'
 
 const message = useMessage()
 const isMobile = useIsMobile()
@@ -310,19 +307,14 @@ const acoustidMessage = ref('未检测')
 const scrapeSources = ref([])
 const lyricsSources = ref([])
 /**
- * 二级导航与主侧栏共用同一套导航语言：**线性图标 + 文案**。
- * 历史问题：这里曾是纯文字列表（无图标、激活态无圆角），
- * 与主侧栏（带图标 + 软底激活态）并列时像是两个产品。
+ * 页内导航的四个分区。图标传组件本身 —— 胶囊 tab 组件自己按 token 控制尺寸，
+ * 不再套 NIcon（尺寸由 `--sp-icon-sm` 决定，避免在数据里写死）。
  */
-function navIcon(comp) {
-  return () => h(NIcon, null, { default: () => h(comp) })
-}
-
-const menuOptions = [
-  { label: '系统设置', key: 'general', icon: navIcon(SettingsOutline) },
-  { label: '刮削源', key: 'scrape', icon: navIcon(AlbumsOutline) },
-  { label: '歌词源', key: 'lyrics', icon: navIcon(DocumentTextOutline) },
-  { label: '账户', key: 'account', icon: navIcon(PersonCircleOutline) },
+const tabItems = [
+  { label: '系统设置', key: 'general', icon: SettingsOutline },
+  { label: '刮削源', key: 'scrape', icon: AlbumsOutline },
+  { label: '歌词源', key: 'lyrics', icon: DocumentTextOutline },
+  { label: '账户', key: 'account', icon: PersonCircleOutline },
 ]
 const regionOptions = [
   { label: '中国大陆', value: 'cn' },
@@ -536,11 +528,25 @@ onMounted(load)
 </script>
 
 <style scoped>
-.settings-nav {
+/* 吸顶 tab 条：底色取页面底色，滚动内容从下方穿过时不会透出来。
+   胶囊自己带卡片底色与描边，所以这一层只负责「粘住」+ 提供不透明背板。 */
+.settings-tabbar {
   position: sticky;
-  top: 16px;
-  background: color-mix(in srgb, var(--sp-ui-card) 92%, var(--sp-ui-primary) 8%);
+  top: 0;
+  z-index: 2;
+  padding: 2px 0 var(--sp-space-3);
+  background: var(--sp-ui-body);
 }
+
+/* 面板进出：位移只给 4px —— 够读出「换了一页」，又不会让长表单整体晃 */
+.settings-panel-enter-active {
+  transition: opacity var(--sp-dur-base) var(--sp-ease-enter), transform var(--sp-dur-base) var(--sp-ease-enter);
+}
+.settings-panel-leave-active {
+  transition: opacity var(--sp-dur-fast) var(--sp-ease-exit);
+}
+.settings-panel-enter-from { opacity: 0; transform: translateY(4px) }
+.settings-panel-leave-to { opacity: 0 }
 .source-tier {
   margin-top: 3px;
   color: var(--sp-ui-text-3);
@@ -603,21 +609,6 @@ onMounted(load)
   word-break: break-word;
 }
 @media (max-width: 768px) {
-  .settings-nav {
-    position: static;
-    padding: 0;
-    background: transparent;
-  }
-  .settings-mobile-tabs :deep(.n-tabs-nav) {
-    padding: 3px;
-    border: 1px solid var(--sp-ui-border);
-    border-radius: var(--sp-radius-md);
-    background: color-mix(in srgb, var(--sp-ui-body) 78%, var(--sp-ui-primary) 5%);
-  }
-  .settings-mobile-tabs :deep(.n-tabs-tab) {
-    flex: 1;
-    justify-content: center;
-  }
   .settings-form :deep(.n-form-item-label) {
     padding-bottom: 4px;
   }
