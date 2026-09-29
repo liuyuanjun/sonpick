@@ -232,7 +232,6 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--sp-space-2);
   height: var(--sp-pill-tab-h);
   padding: 0 14px;
   border: 0;
@@ -252,7 +251,9 @@ onBeforeUnmount(() => {
 .sp-pill-tab-label {
   display: inline-flex;
   align-items: center;
-  gap: inherit;
+  /* 图标与文字的间距写在这里（而不是 button 的 gap）：
+     反色副本也带这个 class，两边的间距必须逐像素一致，擦除边界才不会错位 */
+  gap: var(--sp-space-2);
 }
 
 .sp-pill-tab-label-inverse {
@@ -267,11 +268,18 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
+/* @vicons 的 SVG 只带 viewBox、**没有 width/height 属性**，尺寸得由容器给定：
+   容器没有显式宽高时，grid 轨道会塌成 0px —— 图标不可见，而 gap 仍然生效，
+   于是把文字推偏（实测偏 8px）。这里与侧边栏 .sp-ico 保持同一写法。 */
 .sp-pill-tab-ico {
+  flex: 0 0 auto;
   display: grid;
   place-items: center;
+  width: var(--sp-icon-sm);
+  height: var(--sp-icon-sm);
   font-size: var(--sp-icon-sm);
 }
+.sp-pill-tab-ico :deep(svg) { display: block }
 
 @media (max-width: 768px) {
   .sp-pill-tabs,

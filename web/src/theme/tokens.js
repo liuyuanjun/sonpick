@@ -70,7 +70,12 @@ export const TYPE = {
  * 图标是独立尺度，不属排版。历史上封面占位字形用 `font-size: 40px` 表达，
  * 混进 Type Scale 就成了「尺度外的字号」，实为口径问题而非真违规。
  * 图标尺寸分两种表达，按场景择一：
- *   - 矢量图标组件（@vicons）：用 `<n-icon :size="24">`
+ *   - 矢量图标组件（@vicons）：用 `<n-icon :size="24">`；**或在自有布局里给容器显式宽高**
+ *     （如 `components/nav/SpSidebar.vue` 的 `.sp-ico`、`components/SpPillTabs.vue` 的
+ *     `.sp-pill-tab-ico`）。
+ *     ⚠️ 不能只写 `font-size`：@vicons 的 SVG 只带 `viewBox`、**没有 width/height 属性**，
+ *     容器没有显式宽高时 grid/flex 轨道会塌成 **0px** —— 图标看不见，**而相邻的 gap 照样生效**，
+ *     于是把同一行的文字推偏（v0.15.2-rc9 设置页胶囊 tab 上就是这样偏了 8px）。
  *   - 字形图标（emoji / 符号字形）：用 `font-size: var(--sp-icon-*)`
  */
 export const ICON = { sm: 16, md: 20, lg: 24, xl: 32, '2xl': 40 }
