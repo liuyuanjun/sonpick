@@ -18,6 +18,8 @@ logs/
 web/dist/
 web/node_modules/
 web/package-lock.json
+# vite 读 ESM 配置时写的临时 shim（每次起 dev server 生成，别进仓库）
+web/vite.config.js.timestamp-*
 
 # python
 venv/
