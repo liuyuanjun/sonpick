@@ -466,7 +466,16 @@
 import BatchLyricsModal from '@/components/BatchLyricsModal.vue'
 import { computed, h, onMounted, reactive, ref, watch } from 'vue'
 import { NButton, NDropdown, NIcon, NSpace, NTag, NTooltip, useMessage } from 'naive-ui'
-import { ChevronDownOutline, FolderOpenOutline, MusicalNotesOutline, PlayOutline, RefreshOutline, TrashOutline, CloudUploadOutline, SwapHorizontalOutline } from '@vicons/ionicons5'
+import {
+  ChevronDown as ChevronDownOutline,
+  Folder as FolderOpenOutline,
+  Music as MusicalNotesOutline,
+  PlayerPlay as PlayOutline,
+  Refresh as RefreshOutline,
+  Trash as TrashOutline,
+  CloudUpload as CloudUploadOutline,
+  ArrowsLeftRight as SwapHorizontalOutline,
+} from '@vicons/tabler'
 import {
   applyReorganize,
   browseLocalSource,

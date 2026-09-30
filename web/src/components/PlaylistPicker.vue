@@ -61,7 +61,11 @@
 <script setup>
 import { computed, nextTick, ref } from 'vue'
 import { NIcon, useMessage } from 'naive-ui'
-import { AddOutline, Checkmark, SearchOutline } from '@vicons/ionicons5'
+import {
+  Plus as AddOutline,
+  Check as Checkmark,
+  Search as SearchOutline,
+} from '@vicons/tabler'
 import {
   addSongsToPlaylist,
   createPlaylist,

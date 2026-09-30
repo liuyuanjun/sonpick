@@ -41,7 +41,9 @@
 </template>
 
 <script setup>
-import { Close } from '@vicons/ionicons5'
+import {
+  X as Close,
+} from '@vicons/tabler'
 import { usePlayerStore } from '@/stores/player'
 
 const player = usePlayerStore()

@@ -74,10 +74,12 @@ export function buildNaiveOverrides(isDark) {
 
     // ── 逐组件圆角收口（只列真实存在 borderRadius 的组件；不存在者无需设置）
     Button: {
-      borderRadiusTiny: px(RADIUS.sm),
-      borderRadiusSmall: px(RADIUS.sm),
-      borderRadiusMedium: px(RADIUS.md),
-      borderRadiusLarge: px(RADIUS.md),
+      // 按钮统一胶囊形（v0.15.2-rc14）：与胶囊播放条 / 胶囊 tab / 批量坞同一语言。
+      // 圆形图标按钮不受影响（circle 由 height=radius 表达）；输入框保持 md 不变。
+      borderRadiusTiny: px(RADIUS.pill),
+      borderRadiusSmall: px(RADIUS.pill),
+      borderRadiusMedium: px(RADIUS.pill),
+      borderRadiusLarge: px(RADIUS.pill),
       fontWeight: String(TYPE.strong.weight),
       fontWeightStrong: String(TYPE.strong.weight),
       heightMedium: px(LAYOUT.touchTargetMin),

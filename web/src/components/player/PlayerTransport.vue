@@ -27,7 +27,12 @@
 
 <script setup>
 import { NButton, NIcon, NTooltip } from 'naive-ui'
-import { Pause, Play, PlaySkipBack, PlaySkipForward } from '@vicons/ionicons5'
+import {
+  PlayerPause as Pause,
+  PlayerPlay as Play,
+  PlayerSkipBack as PlaySkipBack,
+  PlayerSkipForward as PlaySkipForward,
+} from '@vicons/tabler'
 import { usePlayerStore } from '@/stores/player'
 
 // 核心传输键（上一曲 / 播放 / 下一曲），卡片与沉浸式控制带共用。

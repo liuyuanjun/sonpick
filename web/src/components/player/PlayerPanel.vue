@@ -360,17 +360,17 @@
 import { computed, h, onMounted, ref, watch } from 'vue'
 import { NIcon, NTag, useDialog, useMessage } from 'naive-ui'
 import {
-  AlbumsOutline,
+  Stack2 as AlbumsOutline,
   ChevronDown,
-  ColorWandOutline,
-  DiscOutline,
-  DocumentTextOutline,
-  EllipsisHorizontal,
-  ImageOutline,
-  MusicalNotes,
-  PricetagOutline,
-  ReaderOutline,
-} from '@vicons/ionicons5'
+  Wand as ColorWandOutline,
+  Disc as DiscOutline,
+  FileText as DocumentTextOutline,
+  Dots as EllipsisHorizontal,
+  Photo as ImageOutline,
+  Music as MusicalNotes,
+  Tag as PricetagOutline,
+  Book as ReaderOutline,
+} from '@vicons/tabler'
 import {
   applyLyricsCandidate,
   clearLyrics,

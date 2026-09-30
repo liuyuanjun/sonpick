@@ -267,23 +267,23 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import {
-  AlbumsOutline,
-  CloudDownloadOutline,
-  CloudUploadOutline,
-  DocumentTextOutline,
-  HeartOutline,
-  LibraryOutline,
-  ListOutline,
-  MusicalNotesOutline,
-  PauseOutline,
-  PeopleOutline,
-  PlayCircleOutline,
-  PlayOutline,
-  RefreshOutline,
-  SettingsOutline,
-  SwapHorizontalOutline,
-  TrashOutline,
-} from '@vicons/ionicons5'
+  Disc as AlbumsOutline,
+  CloudDownload as CloudDownloadOutline,
+  CloudUpload as CloudUploadOutline,
+  FileText as DocumentTextOutline,
+  Heart as HeartOutline,
+  Books as LibraryOutline,
+  List as ListOutline,
+  Music as MusicalNotesOutline,
+  PlayerPause as PauseOutline,
+  Users as PeopleOutline,
+  PlayerPlay as PlayCircleOutline,
+  PlayerPlay as PlayOutline,
+  Refresh as RefreshOutline,
+  Settings as SettingsOutline,
+  ArrowsLeftRight as SwapHorizontalOutline,
+  Trash as TrashOutline,
+} from '@vicons/tabler'
 import api from '@/api/client'
 import { coverUrl, fetchHistory, fetchLibraryStats, listTasks } from '@/api/music'
 import { useIsMobile } from '@/composables/useIsMobile'

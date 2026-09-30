@@ -70,8 +70,15 @@
 import { computed } from 'vue'
 import { NButton, NIcon, NSlider, NTooltip } from 'naive-ui'
 import {
-  DiamondOutline, FlashOutline, ListOutline, Reload, Repeat, Shuffle, VolumeHigh, VolumeMute,
-} from '@vicons/ionicons5'
+  Diamond as DiamondOutline,
+  Bolt as FlashOutline,
+  List as ListOutline,
+  Refresh as Reload,
+  Repeat,
+  ArrowsShuffle as Shuffle,
+  Volume as VolumeHigh,
+} from '@vicons/tabler'
+import VolumeMute from '@/components/icons/VolumeOffIcon.vue'
 import { usePlayerStore } from '@/stores/player'
 
 // 播放器的修饰/工具控制簇（音质 / 模式 / 音量 / 队列），卡片与沉浸式控制带共用。

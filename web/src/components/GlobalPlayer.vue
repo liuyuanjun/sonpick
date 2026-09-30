@@ -189,10 +189,25 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
-  Play, Pause, Close, MusicalNotes, PlaySkipBack, PlaySkipForward,
-  Shuffle, Repeat, Reload, List, ListOutline, VolumeHigh, VolumeLow, VolumeMedium, VolumeMute,
-  Expand, DiamondOutline, FlashOutline,
-} from '@vicons/ionicons5'
+  PlayerPlay as Play,
+  PlayerPause as Pause,
+  X as Close,
+  Music as MusicalNotes,
+  PlayerSkipBack as PlaySkipBack,
+  PlayerSkipForward as PlaySkipForward,
+  ArrowsShuffle as Shuffle,
+  Repeat,
+  Refresh as Reload,
+  List,
+  List as ListOutline,
+  Volume as VolumeHigh,
+  Volume3 as VolumeLow,
+  Volume2 as VolumeMedium,
+  ArrowsMaximize as Expand,
+  Diamond as DiamondOutline,
+  Bolt as FlashOutline,
+} from '@vicons/tabler'
+import VolumeMute from '@/components/icons/VolumeOffIcon.vue'
 import { NPopover, NSlider, useMessage } from 'naive-ui'
 import { usePlayerStore } from '@/stores/player'
 import { useThemeStore } from '@/stores/theme'

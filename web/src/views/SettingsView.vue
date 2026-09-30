@@ -292,11 +292,11 @@ import { computed, h, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { NButton, NInput, NSelect, NSwitch, useMessage } from 'naive-ui'
 import {
-  AlbumsOutline,
-  DocumentTextOutline,
-  PersonCircleOutline,
-  SettingsOutline,
-} from '@vicons/ionicons5'
+  Tags as AlbumsOutline,
+  FileText as DocumentTextOutline,
+  UserCircle as PersonCircleOutline,
+  Settings as SettingsOutline,
+} from '@vicons/tabler'
 import api from '@/api/client'
 import { useIsMobile } from '@/composables/useIsMobile'
 import { useAuthStore } from '@/stores/auth'

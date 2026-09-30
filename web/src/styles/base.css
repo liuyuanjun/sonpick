@@ -146,6 +146,16 @@ button:disabled {
 }
 
 /**
+ * Tabler 图标线宽微调（v0.15.2-rc14）：默认 stroke-width="2"（24 网格，≈1.5/16），
+ * 小尺寸（16–20px）下偏单薄。全局提到 2.25 —— 「稍微粗一点点」，圆头圆角不变。
+ * 选择器命中 tabler 根 <svg> 的默认属性；自绘图标（VolumeOffIcon）同样声明了
+ * stroke-width="2"，一并生效。改图标库时此规则需一并复核。
+ */
+svg[stroke="currentColor"][stroke-width="2"] {
+  stroke-width: 2.25;
+}
+
+/**
  * 全站默认尊重「减弱动态效果」。
  * 之前只有 4 个播放器文件各自声明了 reduced-motion，其余页面缺失；
  * 这里收口为全局默认，个别需要「在减弱动效下仍保留语义反馈」的组件再单独声明例外。

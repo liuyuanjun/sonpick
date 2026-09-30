@@ -247,20 +247,20 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import {
-  Play,
+  PlayerPlay as Play,
   Heart,
-  HeartOutline,
-  Add,
-  Checkmark,
-  CheckboxOutline,
-  Close,
-  ListOutline,
-  MusicalNotes,
-  ChevronBack,
-  ChevronForward,
-  ShuffleOutline,
-  InformationCircleOutline,
-} from '@vicons/ionicons5'
+  Heart as HeartOutline,
+  Plus as Add,
+  Check as Checkmark,
+  SquareCheck as CheckboxOutline,
+  X as Close,
+  List as ListOutline,
+  Music as MusicalNotes,
+  ChevronLeft as ChevronBack,
+  ChevronRight as ChevronForward,
+  ArrowsShuffle as ShuffleOutline,
+  InfoCircle as InformationCircleOutline,
+} from '@vicons/tabler'
 import { usePlayerStore } from '@/stores/player'
 import { usePlaylistsStore } from '@/stores/playlists'
 import { addFavorite, removeFavorite, coverUrl } from '@/api/music'

@@ -88,7 +88,9 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { NIcon } from 'naive-ui'
-import { MusicalNotes } from '@vicons/ionicons5'
+import {
+  Music as MusicalNotes,
+} from '@vicons/tabler'
 import { coverUrl, fetchSources } from '@/api/music'
 import { useAuthStore } from '@/stores/auth'
 import { formatFileSize, formatTrackDuration } from '@/utils/format'

@@ -29,7 +29,9 @@
 <script setup>
 import { ref, watch } from 'vue'
 import { NIcon } from 'naive-ui'
-import { MusicalNotes } from '@vicons/ionicons5'
+import {
+  Music as MusicalNotes,
+} from '@vicons/tabler'
 
 // 封面主体。两种形态：
 //   record=true （叠层卡 / 封面皮肤）：方形封面 + 后方一张**清晰可读的沟槽唱片**

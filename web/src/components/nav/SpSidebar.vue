@@ -135,7 +135,9 @@
  * props/emits 完全无 store 依赖，便于单独挂到原型页或测试台下实测。
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ChevronForward } from '@vicons/ionicons5'
+import {
+  ChevronRight as ChevronForward,
+} from '@vicons/tabler'
 import { createFlowingPill } from '@/utils/flowingPill'
 
 const props = defineProps({
@@ -478,6 +480,16 @@ const subSizeSig = computed(() =>
   props.groups.flatMap((group) => group.items).map((item) => item.children?.length ?? 0).join(','),
 )
 watch(subSizeSig, () => trackFor(300), { flush: 'post' })
+
+/* 父项集合本身也是动态的：歌单从 0 → 1+ 时「歌单」才从普通链接变成父组，
+   而它出现晚于组件初始化（parentKeys() 里没有它）。后出现的父组按「默认展开」
+   补开；签名不变时不触发，用户手动收起的状态不受影响。 */
+const parentKeySig = computed(() => parentKeys().join(','))
+watch(parentKeySig, () => {
+  if (props.collapsed) return
+  const missing = parentKeys().filter((key) => !openKeys.value.includes(key))
+  if (missing.length) openKeys.value = [...openKeys.value, ...missing]
+}, { flush: 'post' })
 
 function readMorphMs() {
   const raw = getComputedStyle(document.documentElement).getPropertyValue('--sp-dur-morph')

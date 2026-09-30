@@ -56,7 +56,12 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { NButton, NIcon, NPopover, NTooltip, useMessage } from 'naive-ui'
-import { AddCircleOutline, Heart, HeartOutline, MusicalNotes } from '@vicons/ionicons5'
+import {
+  CirclePlus as AddCircleOutline,
+  Heart,
+  Heart as HeartOutline,
+  Music as MusicalNotes,
+} from '@vicons/tabler'
 import { addFavorite, removeFavorite } from '@/api/music'
 import { usePlayerStore } from '@/stores/player'
 import PlaylistPicker from '@/components/PlaylistPicker.vue'

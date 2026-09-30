@@ -99,12 +99,12 @@ CSS 变量：`--sp-fs-display|h1|h2|h3|body|strong|small|caption|micro`、`--sp-
 
 图标是**独立尺度**，不属排版。两种表达按场景择一：
 
-- 矢量图标组件（`@vicons/ionicons5`）：用 `<n-icon :size="20">`
+- 矢量图标组件（`@vicons/tabler`）：用 `<n-icon :size="20">`
 - 字形图标（符号字形 / 封面占位字形）：用 `font-size: var(--sp-icon-*)`
 
 **实测教训**：封面占位字形曾用 `font-size: 40px` 表达，混进 Type Scale 后被误判为「尺度外字号」——其实是口径问题，用 `--sp-icon-2xl` 即可。
 
-**图标语言必须单一**：全站统一使用 `@vicons/ionicons5` 的**线性**风格。禁止在同一屏内混用线性与彩色面性图标（实测反面教材：侧栏线性图标与概览页 KPI 的彩色双色图标并列，风格断裂）。
+**图标语言必须单一**：全站统一使用 `@vicons/tabler`（v0.15.2-rc14 起；纯 stroke、round cap/join，天生单一线性语言——此前 ionicons5 的 outline/filled 变体混用，一屏内线性/面性并存）。**线宽由 `styles/base.css` 全局提到 2.25**（tabler 默认 2，选择器 `svg[stroke="currentColor"][stroke-width="2"]`），换图标库时该规则需一并复核。禁止在同一屏内混用线性与彩色面性图标（实测反面教材：侧栏线性图标与概览页 KPI 的彩色双色图标并列，风格断裂）。tabler 0.13 无 volume-off，静音用自绘 `components/icons/VolumeOffIcon.vue`（同风格几何）。
 
 ### 2.4 圆角 · `RADIUS`
 
@@ -112,11 +112,11 @@ CSS 变量：`--sp-fs-display|h1|h2|h3|body|strong|small|caption|micro`、`--sp-
 |------|-----|------|
 | `--sp-radius-xs` | 6px | 进度条、骨架、小徽标 |
 | `--sp-radius-sm` | 8px | 次级容器、下拉面板项、表格内标签 |
-| `--sp-radius-md` | 10px | **按钮、输入框、下拉触发器（最高频）** |
+| `--sp-radius-md` | 10px | **输入框、下拉触发器（最高频）** |
 | `--sp-radius-lg` | 12px | 卡片、面板 |
 | `--sp-radius-xl` | 16px | 弹窗、抽屉 |
 | `--sp-radius-2xl` | 20px | 大容器（移动端底部抽屉、页面级卡片） |
-| `--sp-radius-pill` | 999px | 胶囊 |
+| `--sp-radius-pill` | 999px | 胶囊；**按钮统一用此档**（v0.15.2-rc14 起，经 naive.js `Button.borderRadius*` 收口——与胶囊播放条 / 胶囊 tab / 批量坞同一语言；输入框不跟，保持 md 以维持表单沉稳感） |
 | `--sp-radius-circle` | 50% | 正圆 |
 
 **不得新造圆角数值。** 实测教训：业务 CSS 曾声明过 13 种圆角（4/5/6/7/8/9/10/12/14/16/18/20/24/999/50%），现已全部收敛到上表（105 处字号 + 77 处圆角已 token 化）。

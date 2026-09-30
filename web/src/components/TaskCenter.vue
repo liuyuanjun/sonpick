@@ -121,7 +121,11 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
-import { CloseOutline, ListOutline, SyncOutline } from '@vicons/ionicons5'
+import {
+  X as CloseOutline,
+  List as ListOutline,
+  Refresh as SyncOutline,
+} from '@vicons/tabler'
 import { cancelTask, listTasks } from '@/api/music'
 import { useWebSocket } from '@/composables/useWebSocket'
 import TaskDetail from '@/components/TaskDetail.vue'
