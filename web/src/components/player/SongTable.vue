@@ -1,5 +1,9 @@
 <template>
-  <div ref="rootEl" class="song-table" :class="{ 'above-player': miniPlayerVisible }">
+  <div
+    ref="rootEl"
+    class="song-table"
+    :class="{ 'above-player': miniPlayerVisible, 'has-selection': hasSelection, 'sel-mode': selMode }"
+  >
     <div class="toolbar">
       <n-space>
         <n-button type="primary" :disabled="!songs.length" @click="playPage">
@@ -14,6 +18,11 @@
           <template #icon><n-icon><add /></n-icon></template>
           加入队列
         </n-button>
+        <!-- 触屏没有 hover，桌面靠悬停浮现勾选框，移动端用显式「多选」进入选择模式 -->
+        <n-button v-if="isMobile" quaternary @click="toggleSelMode">
+          <template #icon><n-icon><checkbox-outline /></n-icon></template>
+          {{ selMode ? '取消多选' : '多选' }}
+        </n-button>
       </n-space>
       <n-input
         v-if="showSearch"
@@ -26,7 +35,19 @@
 
     <div v-if="visibleSongs.length" class="song-list" role="list">
       <div class="song-list-head">
-        <span class="col-idx">#</span>
+        <span class="col-idx">
+          <span class="idx-hash">#</span>
+          <button
+            type="button"
+            class="row-check head-check"
+            :class="{ on: allVisibleSelected, half: someVisibleSelected && !allVisibleSelected }"
+            :aria-label="allVisibleSelected ? '取消选择本页' : '选择本页全部'"
+            @click.stop="toggleSelectAllVisible"
+          >
+            <n-icon v-if="allVisibleSelected" :size="11"><checkmark /></n-icon>
+            <span v-else-if="someVisibleSelected" class="half-dash"></span>
+          </button>
+        </span>
         <span class="col-main">歌曲 / 专辑</span>
         <span class="col-format">格式</span>
         <span class="col-size">大小</span>
@@ -37,17 +58,28 @@
         v-for="(row, i) in visibleSongs"
         :key="row.id"
         class="song-row"
-        :class="{ 'is-playing': isCurrent(row) }"
+        :class="{ 'is-playing': isCurrent(row), 'is-selected': isSelected(row) }"
         role="listitem"
         @click="onRowTap(row)"
         @dblclick="playAt(row)"
       >
         <span class="col-idx">
           <!-- 当前播放行：序号换成频谱动效，播放中跳动 / 暂停时定格 -->
-          <span v-if="isCurrent(row)" class="eq" :class="{ paused: !player.playing }" aria-hidden="true">
+          <span v-if="isCurrent(row) && !selectionActive" class="eq" :class="{ paused: !player.playing }" aria-hidden="true">
             <i></i><i></i><i></i>
           </span>
-          <template v-else>{{ i + 1 }}</template>
+          <template v-else>
+            <span class="idx-num">{{ i + 1 }}</span>
+            <button
+              type="button"
+              class="row-check"
+              :class="{ on: isSelected(row) }"
+              :aria-label="isSelected(row) ? '取消选择' : '选择这首'"
+              @click.stop="toggleSelect(row)"
+            >
+              <n-icon v-if="isSelected(row)" :size="11"><checkmark /></n-icon>
+            </button>
+          </template>
         </span>
         <div class="col-main song-cell">
           <div class="mini-cover-wrap">
@@ -140,8 +172,40 @@
       </div>
     </div>
     <n-empty v-else description="暂无歌曲" class="song-table-empty" />
+    <!-- 批量操作坞：选中非空时取代底部分页栏（同一吸附位），避免两条浮条叠放；
+         服务器分页的列表把精简翻页收进坞内，跨页选择不中断 -->
+    <div v-if="hasSelection" class="selection-dock" role="toolbar" aria-label="批量操作">
+      <span class="sel-count">已选 {{ selectedCount }} 首</span>
+      <div class="sel-actions">
+        <n-button size="small" secondary type="primary" @click="enqueueSelected">
+          <template #icon><n-icon :size="15"><add /></n-icon></template>
+          加入队列
+        </n-button>
+        <n-button size="small" type="primary" @click="batchPlaylistVisible = true">
+          <template #icon><n-icon :size="15"><list-outline /></n-icon></template>
+          加入歌单
+        </n-button>
+      </div>
+      <div v-if="serverPaginated && totalPages > 1 && paginationTier !== 'simple'" class="sel-pager">
+        <n-button quaternary circle size="tiny" :disabled="page <= 1" aria-label="上一页" @click="changePage(page - 1)">
+          <n-icon :size="15"><chevron-back /></n-icon>
+        </n-button>
+        <span class="page-indicator">{{ page }} / {{ totalPages }}</span>
+        <n-button quaternary circle size="tiny" :disabled="page >= totalPages" aria-label="下一页" @click="changePage(page + 1)">
+          <n-icon :size="15"><chevron-forward /></n-icon>
+        </n-button>
+      </div>
+      <n-tooltip>
+        <template #trigger>
+          <n-button quaternary circle size="small" aria-label="清除选择" @click="clearSelection">
+            <n-icon :size="15"><close /></n-icon>
+          </n-button>
+        </template>
+        清除选择
+      </n-tooltip>
+    </div>
     <!-- 只有一页时不浮条：一行静态总数即可，避免空的分页控件占视觉 -->
-    <div v-if="serverPaginated && totalPages <= 1" class="total-line">
+    <div v-else-if="serverPaginated && totalPages <= 1" class="total-line">
       <n-text depth="3">共 {{ total }} 首</n-text>
     </div>
     <div v-else-if="serverPaginated" class="pagination-bar" :class="[`tier-${paginationTier}`, { 'with-total': showTotalText }]">
@@ -166,17 +230,31 @@
     </div>
 
     <song-info-modal v-model:show="infoVisible" :song="infoSong" />
+
+    <!-- 批量加入歌单：复用 PlaylistPicker 的多选模式（songIds > 1 时只批量加入、不显示单曲勾选态） -->
+    <n-modal v-model:show="batchPlaylistVisible" preset="card" :bordered="false" :closable="false" style="width: auto" content-style="padding: 0">
+      <playlist-picker
+        v-if="hasSelection"
+        :song-ids="selectedIdList"
+        @changed="onBatchPlaylistChanged"
+        @done="onBatchPlaylistDone"
+      />
+    </n-modal>
   </div>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import {
   Play,
   Heart,
   HeartOutline,
   Add,
+  Checkmark,
+  CheckboxOutline,
+  Close,
+  ListOutline,
   MusicalNotes,
   ChevronBack,
   ChevronForward,
@@ -184,12 +262,14 @@ import {
   InformationCircleOutline,
 } from '@vicons/ionicons5'
 import { usePlayerStore } from '@/stores/player'
+import { usePlaylistsStore } from '@/stores/playlists'
 import { addFavorite, removeFavorite, coverUrl } from '@/api/music'
 import { useAuthStore } from '@/stores/auth'
 import { useIsMobile } from '@/composables/useIsMobile'
 import { formatFileSize, formatTrackDuration } from '@/utils/format'
 import { formatLabel, versionLocationLabel } from '@/utils/media'
 import SongInfoModal from '@/components/player/SongInfoModal.vue'
+import PlaylistPicker from '@/components/PlaylistPicker.vue'
 
 const props = defineProps({
   songs: { type: Array, default: () => [] },
@@ -201,6 +281,9 @@ const props = defineProps({
   pageSize: { type: Number, default: 100 },
   searchValue: { type: String, default: '' },
   playingAll: { type: Boolean, default: false },
+  // 列表上下文标识（如 artist:xxx / playlist:3）：变化时清空选择，
+  // 避免「在歌手 A 选的歌」残留到歌手 B 的列表里
+  listKey: { type: [String, Number], default: '' },
 })
 
 const emit = defineEmits(['changed', 'add-to-playlist', 'remove-from-playlist', 'search', 'page-change', 'play-all-results'])
@@ -208,8 +291,80 @@ const emit = defineEmits(['changed', 'add-to-playlist', 'remove-from-playlist', 
 const player = usePlayerStore()
 const auth = useAuthStore()
 const message = useMessage()
+const playlistsStore = usePlaylistsStore()
 const keyword = ref('')
 const isMobile = useIsMobile()
+
+// ---- 批量选择 ----
+// 用 id→song 的 Map 存选择：服务器分页（全部歌曲）跨页翻页后，
+// 已选歌曲的对象仍在，批量动作不依赖「当前页可见」
+const selectedMap = ref(new Map())
+// 移动端显式选择模式（桌面靠 hover 浮现勾选框，不需要模式开关）
+const selMode = ref(false)
+const batchPlaylistVisible = ref(false)
+
+const hasSelection = computed(() => selectedMap.value.size > 0)
+const selectionActive = computed(() => selMode.value || hasSelection.value)
+const selectedCount = computed(() => selectedMap.value.size)
+const selectedIdList = computed(() => [...selectedMap.value.keys()])
+
+const isSelected = (row) => selectedMap.value.has(row.id)
+
+function toggleSelect(row) {
+  if (!row?.id) return
+  if (selectedMap.value.has(row.id)) selectedMap.value.delete(row.id)
+  else selectedMap.value.set(row.id, row)
+}
+
+function clearSelection() {
+  selectedMap.value.clear()
+}
+
+function toggleSelMode() {
+  selMode.value = !selMode.value
+  if (!selMode.value) clearSelection()
+}
+
+// 表头全选框（三态）：作用于当前可见行——服务器分页时即「本页」
+const visibleSelectedCount = computed(
+  () => visibleSongs.value.reduce((n, s) => n + (selectedMap.value.has(s.id) ? 1 : 0), 0),
+)
+const someVisibleSelected = computed(() => visibleSelectedCount.value > 0)
+const allVisibleSelected = computed(
+  () => visibleSongs.value.length > 0 && visibleSelectedCount.value === visibleSongs.value.length,
+)
+
+function toggleSelectAllVisible() {
+  if (allVisibleSelected.value) {
+    visibleSongs.value.forEach((s) => selectedMap.value.delete(s.id))
+  } else {
+    visibleSongs.value.forEach((s) => s?.id && selectedMap.value.set(s.id, s))
+  }
+}
+
+function enqueueSelected() {
+  const added = player.enqueue([...selectedMap.value.values()])
+  message.success(added ? `已将 ${added} 首加入播放队列` : '所选歌曲都已在队列中')
+  clearSelection()
+}
+
+function onBatchPlaylistChanged() {
+  // 歌单歌曲数变了：刷新共享缓存，侧边栏歌单子菜单与歌单区同步
+  playlistsStore.refresh().catch(() => {})
+}
+
+function onBatchPlaylistDone() {
+  batchPlaylistVisible.value = false
+  clearSelection()
+}
+
+watch(
+  () => props.listKey,
+  () => {
+    clearSelection()
+    selMode.value = false
+  },
+)
 
 const searchKeyword = computed({
   get: () => props.serverPaginated ? props.searchValue : keyword.value,
@@ -263,8 +418,12 @@ function changePage(page) {
   rootEl.value?.scrollIntoView({ block: 'start' })
 }
 
-// 移动端没有双击概念，单击行即播放
+// 移动端没有双击概念，单击行即播放；选择态下（任意平台）单击 = 勾选/取消
 function onRowTap(row) {
+  if (selectionActive.value) {
+    toggleSelect(row)
+    return
+  }
   if (isMobile.value) playAt(row)
 }
 
@@ -307,8 +466,8 @@ function playPage() {
 }
 
 function enqueueAll() {
-  player.enqueue(visibleSongs.value)
-  message.success('已加入播放队列')
+  const added = player.enqueue(visibleSongs.value)
+  message.success(added ? `已将 ${added} 首加入播放队列` : '这些歌曲都已在队列中')
 }
 
 async function toggleFav(row) {
@@ -546,12 +705,111 @@ function onCoverError(e) {
 }
 
 .col-idx {
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-variant-numeric: tabular-nums;
   font-size: var(--sp-fs-caption);
   color: var(--sp-ui-text-3);
   white-space: nowrap;
   line-height: 1;
+}
+
+/* ---- 批量选择：序号位原位复用为勾选框（无布局位移） ---- */
+/* 圆形勾选框与 PlaylistPicker 的 plp-tick 同一视觉语言 */
+.row-check {
+  display: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1.5px solid var(--sp-ui-border);
+  border-radius: var(--sp-radius-circle);
+  background: transparent;
+  color: var(--sp-ui-on-primary);
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.row-check.on {
+  display: grid;
+  background: var(--sp-ui-primary);
+  border-color: var(--sp-ui-primary);
+}
+.row-check.half {
+  border-color: var(--sp-ui-primary);
+}
+.half-dash {
+  width: 8px;
+  height: 1.5px;
+  border-radius: 1px;
+  background: var(--sp-ui-primary);
+}
+/* 勾选框浮现时机：行悬停 / 键盘聚焦 / 整表已有选择（Google 相册式：
+   一旦进入选择态，所有勾选框常显，方便连续点选） */
+.song-row:hover .row-check,
+.song-row:focus-within .row-check,
+.song-table.has-selection .row-check,
+.song-list-head:hover .head-check,
+.song-table.has-selection .head-check {
+  display: grid;
+}
+/* 勾选框与序号互斥：浮现时让位 */
+.song-row:hover .idx-num,
+.song-table.has-selection .idx-num,
+.song-list-head:hover .idx-hash,
+.song-table.has-selection .idx-hash {
+  display: none;
+}
+/* 已选行：主色浅底（与播放行同族但更弱一档），连续扫视时一眼可辨 */
+.song-row.is-selected {
+  background: color-mix(in srgb, var(--sp-ui-primary) 6%, transparent);
+}
+.song-row.is-selected:hover {
+  background: color-mix(in srgb, var(--sp-ui-primary) 10%, transparent);
+}
+
+/* ---- 批量操作坞：与吸附分页栏同一视觉语言，恒为居中胶囊 ---- */
+.selection-dock {
+  position: sticky;
+  bottom: 12px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 16px auto 0;
+  padding: 6px 8px 6px 14px;
+  border: 1px solid rgba(127, 127, 127, 0.16);
+  border-radius: var(--sp-radius-pill);
+  background: color-mix(in srgb, var(--sp-ui-card) 92%, transparent);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.06),
+    0 8px 24px rgba(0, 0, 0, 0.10);
+  backdrop-filter: blur(14px);
+  font-size: var(--sp-fs-caption);
+}
+.song-table.above-player .selection-dock {
+  bottom: calc(var(--gp-reserve) + 4px);
+  transition: bottom 0.2s ease;
+}
+.sel-count {
+  color: var(--sp-ui-text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.sel-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sel-pager {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(127, 127, 127, 0.16);
 }
 .col-time {
   text-align: right;
@@ -735,6 +993,28 @@ function onCoverError(e) {
   }
   .col-idx {
     display: none;
+  }
+  /* 多选模式：勾选框列常显（触屏无 hover 的替代入口），行布局让出前导列 */
+  .song-table.sel-mode .song-row {
+    grid-template-columns: 34px minmax(0, 1fr) 44px auto;
+  }
+  .song-table.sel-mode .col-idx {
+    display: flex;
+  }
+  .song-table.sel-mode .row-check {
+    display: grid;
+  }
+  .song-table.sel-mode .idx-num {
+    display: none;
+  }
+  .selection-dock {
+    bottom: calc(52px + env(safe-area-inset-bottom, 0px) + 8px);
+    padding: 6px 8px 6px 12px;
+    gap: 8px;
+  }
+  .song-table.above-player .selection-dock {
+    /* --gp-reserve 已内含 Tab 栏与安全区高度 */
+    bottom: calc(var(--gp-reserve) + 4px);
   }
   /* 移动端隐藏格式/大小列：网格只有 3 列，多出的单元格会换行；
      明细改由「信息」按钮的弹窗承载 */

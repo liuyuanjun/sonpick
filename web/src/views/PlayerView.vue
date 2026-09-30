@@ -89,6 +89,7 @@
         <song-table
           v-if="section === 'favorites'"
           :songs="favorites"
+          list-key="favorites"
           @changed="loadFavorites"
           @add-to-playlist="openAddToPlaylist"
         />
@@ -102,6 +103,7 @@
           :page-size="songsPageSize"
           :search-value="songsQuery"
           :playing-all="playingAllSongs"
+          list-key="songs"
           @changed="loadSongs"
           @search="searchSongs"
           @page-change="changeSongsPage"
@@ -113,6 +115,7 @@
           v-else-if="section === 'history'"
           :songs="history"
           :show-search="false"
+          list-key="history"
           @changed="loadHistory"
           @add-to-playlist="openAddToPlaylist"
         />
@@ -141,6 +144,7 @@
             </n-space>
             <song-table
               :songs="artistSongs"
+              :list-key="`artist:${selectedArtist}`"
               @changed="openArtist({ name: selectedArtist })"
               @add-to-playlist="openAddToPlaylist"
             />
@@ -172,6 +176,7 @@
             </n-space>
             <song-table
               :songs="albumSongs"
+              :list-key="`album:${selectedAlbum.name}::${selectedAlbum.artist}`"
               @changed="openAlbum(selectedAlbum)"
               @add-to-playlist="openAddToPlaylist"
             />
@@ -207,6 +212,7 @@
             <song-table
               :songs="playlistSongs"
               :playlist-id="selectedPlaylist.id"
+              :list-key="`playlist:${selectedPlaylist.id}`"
               @changed="openPlaylist(selectedPlaylist)"
               @remove-from-playlist="onRemoveFromPlaylist"
               @add-to-playlist="openAddToPlaylist"

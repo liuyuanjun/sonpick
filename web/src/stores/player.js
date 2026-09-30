@@ -269,9 +269,18 @@ export const usePlayerStore = defineStore('player', () => {
     playList(shuffleSongs(list), 0)
   }
 
-  function enqueue(song) {
-    if (!song?.id) return
-    if (!queue.value.some((s) => s.id === song.id)) queue.value.push(song)
+  // 单曲或数组均可（SongTable 的「加入队列 / 批量加入队列」都走这里）；
+  // 按 id 去重，返回实际新加入的数量
+  function enqueue(songs) {
+    const list = Array.isArray(songs) ? songs : [songs]
+    let added = 0
+    for (const song of list) {
+      if (!song?.id) continue
+      if (queue.value.some((s) => s.id === song.id)) continue
+      queue.value.push(song)
+      added += 1
+    }
+    return added
   }
 
   function removeFromQueue(index) {

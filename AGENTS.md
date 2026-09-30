@@ -31,7 +31,7 @@
 
 **非目标**：多用户、公网商用、版权绕过。仅供个人学习与备份。
 
-当前版本（以代码为准）：`0.15.2-rc6`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
+当前版本（以代码为准）：`0.15.2-rc10`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
 
 - **品牌视觉**：设计系统规范见 `DESIGN.md`（唯一权威）；品牌**资产**（LOGO / 20 图标 / 吉祥物 PNG）见 `web/public/brand/` 与 `docs/brand-guidelines.md`，设计稿在 Ardot 文件《Sonpick 拾音 · 品牌视觉系统》。
 
@@ -258,6 +258,7 @@ music/
 - 下载源选择：统一用 `components/download/SourcePicker.vue`（单排 chips：实色已选在前、按顺序优先，可拖拽或点 ‹ › 排序、× 移除；虚线待选在后、点击追加到已选末尾），源清单与持久化在 `utils/downloadSources.js`（与后端 `SOURCE_LABELS` 对应，改一边必须改另一边）；**禁止**再用裸 `n-select` 各写一份。展示名一律用**平台简称**（QQ / 网易云 / 咪咕 / 酷狗 / 酷我 / 千千，不加「音乐」后缀），展示处取 `sourceLabel(key)`，**不要**直接渲染 `QQMusicClient` 这类内部 key
 - 新 Naive 组件要在 `web/src/main.js` **import 并注册**（未全量 unplugin 自动引入时尤其注意）
 - 全局播放器：Pinia `player` store；音频 URL 常带 `token` query
+- 歌曲列表批量选择（v0.15.2-rc10 起）：**选择能力内建在 `SongTable`**，六个列表共用，禁止在页面层各写一套。交互约定：桌面端行悬停时序号原位变勾选框、表头 `#` 位是全选框（三态，作用于可见页），有勾选后单击行 = 勾选/取消（双击仍播放）；移动端无 hover，用工具栏「多选」进入选择模式。选中非空时底部浮出**批量操作坞**（加入队列 / 加入歌单 / 精简翻页 / 清除），它**取代**选择期间的吸附分页栏（同一吸附位，两条浮条不得叠放）。选择存 **id→song 的 Map**（服务器分页跨页不丢）；`list-key` 标识列表上下文，变化即清空选择（侧边栏切换歌单是同组件实例复用，靠它防残留）。`player.enqueue` 单曲/数组均可、按 id 去重、返回实际新增数。
 - 系统媒体键/线控：`web/src/composables/useMediaSession.js`（Media Session API，挂载于 `GlobalPlayer.vue`）——单击播放/暂停、双击下一曲、三击上一曲由 OS 翻译成媒体命令，网页只收 action，无法感知按键次数
 - 主题：`theme` store；`App.vue` 使用 `n-config-provider` + dialog/message provider。颜色规则见 **§5.4 主题与配色**
 - 前端文案：当前仓库以中文硬编码为主；**若新增 React 代码**，全局规则要求走 i18n、禁止硬编码用户可见字符串。现有 Vue 页面保持项目既有风格，不强制一次性 i18n 化
@@ -277,7 +278,7 @@ Naive UI 的弹层（modal / drawer / popover / dropdown / tooltip）共用从 *
 
 | 范围 | 用途 | 现有实例 |
 |------|------|----------|
-| `1–999` | 页面内部局部叠放（sticky 头、浮出操作条） | `PlayerPanel` 歌词操作栏 `z-index:3`、封面占位 `z-index:2` |
+| `1–999` | 页面内部局部叠放（sticky 头、浮出操作条） | `PlayerPanel` 歌词操作栏 `z-index:3`、封面占位 `z-index:2`、`SongTable` 吸附分页栏/批量操作坞 `z-index:4` |
 | `1000` | 全局底部播放器 | `GlobalPlayer .global-player` |
 | `1100` | 移动端固定底栏 | `LayoutView .mobile-tabs` |
 | `1400` | 全屏播放器覆盖层（**低于 Naive 弹层 2000**，弹层须能盖在它上面） | `GlobalPlayerDrawer .gp-drawer`（桌面/移动端均为视口全覆盖，同一层带） |
