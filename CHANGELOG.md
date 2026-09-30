@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.2-rc15
+
+### 修复：「曲源」与「曲库」导航图标重复
+
+- 两项自 rc9 导航分组起就共用同一个图标（ionicons 时代同为 `LibraryOutline`，迁 tabler 后同为 `Books`，重复更明显）。「曲源」（媒体来源管理：本地目录 / WebDAV）改用 `Database`，「曲库」保持 `Books`；移动端底部 Tab 的「曲源」同步。
+
 ## 0.15.2-rc14
 
 ### 按钮统一胶囊形 + 图标库整体更换为 Tabler

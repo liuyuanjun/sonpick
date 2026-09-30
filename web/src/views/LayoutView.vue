@@ -108,6 +108,7 @@ import {
   Home as HomeOutline,
   CloudDownload as CloudDownloadOutline,
   Books as LibraryOutline,
+  Database,
   PlayerPlay as PlayCircleOutline,
   FileText as DocumentTextOutline,
   Settings as SettingsOutline,
@@ -180,7 +181,7 @@ const tabs = [
   { label: '概览', key: '/', icon: HomeOutline },
   { label: '播放器', key: '/player', icon: PlayCircleOutline },
   { label: '下载', key: '/download', icon: CloudDownloadOutline },
-  { label: '曲源', key: '/library', icon: LibraryOutline },
+  { label: '曲源', key: '/library', icon: Database },
   { label: '设置', key: '/settings', icon: SettingsOutline },
 ]
 
@@ -258,9 +259,9 @@ const navGroups = computed(() => [
     key: 'system',
     label: '系统',
     items: [
-      // 「曲源」= 现在的曲库页（那里管媒体源），只是导航换了叫法；
+      // 「曲源」= 现在的曲库页（那里管媒体源），只是导航换了叫法；图标用 Database 与「曲库」的 Books 区分
       // 「曲库」这个名字让给了音乐组里按 歌曲/歌手/专辑 浏览的入口
-      { label: '曲源', key: '/library', icon: LibraryOutline },
+      { label: '曲源', key: '/library', icon: Database },
       { label: '日志', key: '/logs', icon: DocumentTextOutline },
       { label: '设置', key: '/settings', icon: SettingsOutline },
     ],
