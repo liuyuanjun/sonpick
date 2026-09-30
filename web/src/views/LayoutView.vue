@@ -105,24 +105,24 @@ import { computed, h, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NIcon, useMessage, useThemeVars } from 'naive-ui'
 import {
-  HomeOutline,
-  CloudDownloadOutline,
-  LibraryOutline,
-  PlayCircleOutline,
-  DocumentTextOutline,
-  SettingsOutline,
+  Home as HomeOutline,
+  CloudDownload as CloudDownloadOutline,
+  Books as LibraryOutline,
+  PlayerPlay as PlayCircleOutline,
+  FileText as DocumentTextOutline,
+  Settings as SettingsOutline,
   Moon,
-  Sunny,
-  LogOutOutline,
-  KeyOutline,
-  CheckmarkOutline,
-  ChevronBack,
-  ChevronForward,
-  HeartOutline,
-  ListOutline,
-  PersonCircleOutline,
-  TimeOutline,
-} from '@vicons/ionicons5'
+  Sun as Sunny,
+  Logout as LogOutOutline,
+  Key as KeyOutline,
+  Check as CheckmarkOutline,
+  ChevronLeft as ChevronBack,
+  ChevronRight as ChevronForward,
+  Heart as HeartOutline,
+  List as ListOutline,
+  UserCircle as PersonCircleOutline,
+  Clock as TimeOutline,
+} from '@vicons/tabler'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { usePlaylistsStore } from '@/stores/playlists'
@@ -216,8 +216,11 @@ const routeTitle = computed(() => {
  * 高亮能通过 `findTargetEl` 的父项回退落在它身上（见 SpSidebar）。
  * 子项不配 icon：二级项在 UI 上统一渲染成小圆点，配了也用不上。
  *
- * 「歌单」的子菜单是**动态数据**：取手动排序后的前 5 个，第 6 项固定是「管理歌单」。
+ * 「歌单」的子菜单是**纯动态数据**：手动排序后的前 5 个歌单，没有静态命令项
+ * （「管理歌单」入口在歌单区页面头部，v0.15.2-rc13 起 —— 数据与命令不混在一列，
+ * 且移动端没有侧边栏，命令入口必须在页面里才可达）。
  * 顺序由「管理歌单」页的拖拽决定，所以这里读的是 playlists store 的缓存。
+ * 一个歌单都没有时不挂 children：父项退化成普通链接，点它直接进歌单区。
  */
 const navGroups = computed(() => [
   {
@@ -231,13 +234,12 @@ const navGroups = computed(() => [
         label: '歌单',
         key: '/player/playlists',
         icon: ListOutline,
-        children: [
-          ...playlistsStore.forSidebar.map((pl) => ({
-            label: pl.name,
-            key: `/player/playlists?pl=${pl.id}`,
-          })),
-          { label: '管理歌单', key: '/playlists/manage' },
-        ],
+        children: playlistsStore.forSidebar.length
+          ? playlistsStore.forSidebar.map((pl) => ({
+              label: pl.name,
+              key: `/player/playlists?pl=${pl.id}`,
+            }))
+          : undefined,
       },
       {
         label: '曲库',
@@ -277,7 +279,8 @@ const collapseHint = computed(() => {
 
 const activeKey = computed(() => {
   const p = route.path
-  // 「管理歌单」是独立页面，导航项 key 就是它自己的路径
+  // 「管理歌单」是歌单区的子页面（入口在歌单区页头），高亮落在「歌单」父项上
+  if (p.startsWith('/playlists/manage')) return '/player/playlists'
   if (p.startsWith('/playlists')) return p
   if (p.startsWith('/download') || p.startsWith('/search') || p.startsWith('/import')) return '/download'
   if (p.startsWith('/library') || p.startsWith('/sources') || p.startsWith('/webdav')) return '/library'

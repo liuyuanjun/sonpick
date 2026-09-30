@@ -33,6 +33,9 @@
           </n-dropdown>
         </n-space>
         <n-space v-else class="content-actions" :size="6">
+          <n-button v-if="section === 'playlists'" secondary @click="router.push('/playlists/manage')">
+            管理歌单
+          </n-button>
           <n-button v-if="section === 'playlists'" type="primary" @click="showCreatePlaylist = true">
             新建歌单
           </n-button>
@@ -287,18 +290,18 @@ import { useMessage, useDialog } from 'naive-ui'
 import { useRoute, useRouter } from 'vue-router'
 import {
   Heart,
-  HeartOutline,
-  MusicalNotes,
-  People,
+  Heart as HeartOutline,
+  Music as MusicalNotes,
+  Users as People,
   Disc,
   List,
-  TimeOutline,
-  EllipsisHorizontal,
-  ScanOutline,
-  ColorWandOutline,
-  DocumentTextOutline,
-  RefreshOutline,
-} from '@vicons/ionicons5'
+  Clock as TimeOutline,
+  Dots as EllipsisHorizontal,
+  Scan as ScanOutline,
+  Wand as ColorWandOutline,
+  FileText as DocumentTextOutline,
+  Refresh as RefreshOutline,
+} from '@vicons/tabler'
 import { useAuthStore } from '@/stores/auth'
 import { usePlayerStore, normalizePlayerSection } from '@/stores/player'
 import { usePlaylistsStore } from '@/stores/playlists'
@@ -398,6 +401,7 @@ const visibleSongIds = computed(() => {
 const mobileActions = computed(() => {
   const opts = []
   if (section.value === 'playlists') opts.push({ label: '新建歌单', key: 'create-playlist' })
+  if (section.value === 'playlists') opts.push({ label: '管理歌单', key: 'manage-playlists' })
   opts.push({ label: '刮削信息', key: 'scrape', disabled: !visibleSongIds.value.length })
   opts.push({ label: '获取歌词', key: 'lyrics', disabled: !visibleSongIds.value.length })
   opts.push({ label: '刷新', key: 'refresh' })
@@ -411,6 +415,7 @@ function openBatchLyrics() {
 
 function onMobileAction(key) {
   if (key === 'create-playlist') showCreatePlaylist.value = true
+  else if (key === 'manage-playlists') router.push('/playlists/manage')
   else if (key === 'scrape') scrapeVisibleSongs()
   else if (key === 'lyrics') openBatchLyrics()
   else if (key === 'refresh') refresh()

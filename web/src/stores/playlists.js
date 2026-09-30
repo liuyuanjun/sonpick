@@ -11,7 +11,7 @@ import { fetchPlaylists } from '@/api/music'
  *   · 管理歌单页（拖拽排序后把新顺序写回这里）
  */
 
-/** 侧边栏「歌单」子菜单最多列几个（第 N+1 个位置留给「管理歌单」） */
+/** 侧边栏「歌单」子菜单最多列几个（子菜单只放歌单；「管理歌单」入口在歌单区页头） */
 export const SIDEBAR_PLAYLIST_COUNT = 5
 
 export const usePlaylistsStore = defineStore('playlists', () => {

@@ -3,7 +3,11 @@
     <n-card size="small" class="pm-card">
       <template #header>
         <div class="pm-head">
-          <div>
+          <n-button quaternary class="pm-back" aria-label="返回歌单" @click="router.push('/player/playlists')">
+            <template #icon><n-icon><arrow-back-outline /></n-icon></template>
+            歌单
+          </n-button>
+          <div class="pm-head-text">
             <div class="pm-title">管理歌单</div>
             <div class="pm-hint">
               拖动行首手柄调整顺序（也可聚焦手柄后按 <kbd>Alt</kbd>+<kbd>↑</kbd> / <kbd>Alt</kbd>+<kbd>↓</kbd>）。
@@ -95,7 +99,14 @@
  */
 import { computed, nextTick, ref } from 'vue'
 import { useMessage } from 'naive-ui'
-import { CreateOutline, PencilOutline, ReorderTwoOutline, TrashOutline } from '@vicons/ionicons5'
+import { useRouter } from 'vue-router'
+import {
+  ArrowLeft as ArrowBackOutline,
+  Edit as CreateOutline,
+  Pencil as PencilOutline,
+  GripVertical as ReorderTwoOutline,
+  Trash as TrashOutline,
+} from '@vicons/tabler'
 import {
   createPlaylist,
   deletePlaylist,
@@ -103,6 +114,8 @@ import {
   updatePlaylist,
 } from '@/api/music'
 import { usePlaylistsStore } from '@/stores/playlists'
+
+const router = useRouter()
 
 const message = useMessage()
 const store = usePlaylistsStore()
@@ -305,6 +318,14 @@ async function onHandleKeydown(event, index) {
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--sp-space-4);
+}
+.pm-back {
+  flex: 0 0 auto;
+  margin: -4px 0 0 -8px;
+}
+.pm-head-text {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .pm-title {
   font-size: var(--sp-fs-h3);
