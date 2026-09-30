@@ -90,7 +90,6 @@
                     :style="{ '--i': ci, '--rev': item.children.length - 1 - ci }"
                     @click="onItemClick($event, child)"
                   >
-                    <span class="sp-sub-dot" aria-hidden="true" />
                     <span class="sp-item-label">{{ child.label }}</span>
                   </a>
                 </li>
@@ -155,8 +154,14 @@ const navEl = ref(null)
 const pillActiveEl = ref(null)
 const pillHoverEl = ref(null)
 const hoverOn = ref(false)
-/** 展开的父项 key；手风琴式（同时只开一组），组数少且避免侧边栏被撑太长 */
-const openKeys = ref([])
+/** 全部父项 key（有 children 的项） */
+function parentKeys() {
+  return props.groups.flatMap((group) => group.items).filter((item) => item.children).map((item) => item.key)
+}
+
+/** 展开的父项 key。默认全部展开（v0.15.2-rc11 起）；各组独立开合，
+    不做手风琴 —— 默认全开的场景下「开一组就关掉另一组」是不可预期的 */
+const openKeys = ref(parentKeys())
 
 let activePill = null
 let hoverPill = null
@@ -260,7 +265,12 @@ function trackFor(ms) {
 /* ── 子菜单 ───────────────────────────────────────────────── */
 
 async function setOpen(item, open) {
-  openKeys.value = open ? [item.key] : []
+  // 各组独立开合：只在数组里增删自己的 key，不动别的组
+  if (open) {
+    if (!openKeys.value.includes(item.key)) openKeys.value = [...openKeys.value, item.key]
+  } else {
+    openKeys.value = openKeys.value.filter((key) => key !== item.key)
+  }
   await nextTick()
   trackFor(280)
 }
@@ -410,7 +420,8 @@ watch(() => props.activeKey, (key) => {
   const parent = parentOf(key)
   let opened = false
   if (parent && !props.collapsed && !isOpen(parent)) {
-    openKeys.value = [parent.key]
+    // 只补开「激活项所在的父组」，不动其他组的当前开合状态
+    openKeys.value = [...openKeys.value, parent.key]
     opened = true
   }
   nextTick(() => {
@@ -423,6 +434,8 @@ watch(() => props.activeKey, (key) => {
 watch(() => props.collapsed, (value) => {
   // 图标轨里放不下子菜单，折叠时一律收起
   if (value) openKeys.value = []
+  // 从图标轨展开回来：恢复「默认全开」，与初始挂载口径一致
+  else openKeys.value = parentKeys()
   nextTick(() => trackFor(readMorphMs() + 60))
 })
 
@@ -647,14 +660,6 @@ function readMorphMs() {
 .sp-sub-btn[aria-current='page'] {
   color: var(--sp-ui-primary);
   font-weight: var(--sp-fw-semibold);
-}
-
-.sp-sub-dot {
-  flex: 0 0 auto;
-  width: 4px;
-  height: 4px;
-  border-radius: var(--sp-radius-circle);
-  background: currentColor;
 }
 
 /* ══ 接缝热区 ══ */

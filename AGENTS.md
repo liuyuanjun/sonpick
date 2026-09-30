@@ -31,7 +31,7 @@
 
 **非目标**：多用户、公网商用、版权绕过。仅供个人学习与备份。
 
-当前版本（以代码为准）：`0.15.2-rc10`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
+当前版本（以代码为准）：`0.15.2-rc11`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
 
 - **品牌视觉**：设计系统规范见 `DESIGN.md`（唯一权威）；品牌**资产**（LOGO / 20 图标 / 吉祥物 PNG）见 `web/public/brand/` 与 `docs/brand-guidelines.md`，设计稿在 Ardot 文件《Sonpick 拾音 · 品牌视觉系统》。
 
@@ -407,6 +407,7 @@ Naive 的 modal / drawer / popover 会被 teleport 到 `body`，脱离 `.app-lay
 | 数据 | `groups: [{ key?, label, items: [{ key, label, icon, children? }] }]`；`icon` 传组件本身，尺寸由组件按 token 控制（**不要**外层再套 `NIcon`） |
 | 事件 | `navigate(key)` / `update:collapsed`；组件**不引 store**，路由与折叠状态归 `LayoutView` |
 | 父项语义 | 有 `children` 的项渲染成 `<button>`，点击**只展开不导航**；叶子渲染成 `<a href>`（保住右键新标签），跳转仍走 `router.push` |
+| 开合状态 | **默认全部展开**（v0.15.2-rc11 起），各组**独立开合**，不做手风琴（默认全开下「开一组关另一组」不可预期）；路由变化只补开「激活项所在的父组」，不动其他组；折叠成图标轨时全收、展开回来恢复全开。子项**无圆点装饰**，层级靠左侧竖线 + 缩进表达 |
 | 高度形变 | 子菜单用 `height: 0 ↔ scrollHeight` + `overflow:hidden`（= 自上而下的擦除），**不用 `clip-path`**（同观感、少一层合成）；错峰延迟由 `--i` / `--rev` 在 CSS 里算，JS 不写 delay |
 | 收起可聚焦性 | 收起态的 `.sp-sub` 必须 `inert`。`inert` 是「存在即生效」的布尔属性，**`:inert="false"` 会渲染成 `inert="false"` 反而打开它** —— 关闭态传 `true`、展开态传 `undefined` |
 | 胶囊坐标 | 位移投影模块 `utils/flowingPill.js`（零依赖，框架无关）。容器**必须是 `.sp-nav`**（胶囊的包含块）；传外层 `.sp-sider` 会把头部高度算进 y，整块高亮下移。横向不做 JS 动画：`left/right` 跟随宽度自动伸缩 |
