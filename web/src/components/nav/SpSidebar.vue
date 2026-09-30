@@ -77,6 +77,7 @@
               <ul
                 v-if="item.children"
                 class="sp-sub"
+                :data-key="item.key"
                 :data-open="isOpen(item) ? 'true' : 'false'"
                 :inert="isOpen(item) ? undefined : true"
               >
@@ -279,9 +280,19 @@ function syncSubHeights() {
   if (!navEl.value) return
   navEl.value.querySelectorAll('.sp-sub').forEach((ul) => {
     const open = ul.dataset.open === 'true'
-    // 读 scrollHeight 时 inline height 还是上一态的 0，正好拿到内容自然高度
-    ul.style.height = open ? `${ul.scrollHeight}px` : '0px'
+    // 挂载初始化用：展开的钉到内容自然高（动画结束由 transitionend 换成 auto），
+    // 收起的一开始就是 CSS 的 height:0，不用碰
+    if (open) ul.style.height = `${ul.scrollHeight}px`
   })
+}
+
+/* 展开动画一结束就把高度换成 auto：歌单子菜单是动态数据（异步加载/增删），
+   钉死像素高会把后到的子项裁掉（rc11 回归：默认展开后「管理歌单」被裁没）。
+   收起时 openKeys watcher 会重新钉回像素值做过渡，不需要在这里管。 */
+function onSubTransitionEnd(event) {
+  const ul = event.target
+  if (event.propertyName !== 'height' || !ul.classList?.contains('sp-sub')) return
+  if (ul.dataset.open === 'true') ul.style.height = 'auto'
 }
 
 function onItemClick(event, item) {
@@ -397,6 +408,7 @@ onMounted(() => {
 
   resizeObserver = new ResizeObserver(() => { if (!trackRaf) refresh() })
   resizeObserver.observe(navEl.value)
+  navEl.value.addEventListener('transitionend', onSubTransitionEnd)
   window.addEventListener('resize', onWindowResize)
   if (props.hotkey) window.addEventListener('keydown', onHotkey)
   // 字体加载完再对一次位：字重变化会让行高微调，胶囊会错半像素
@@ -409,6 +421,7 @@ function onWindowResize() {
 
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
+  navEl.value?.removeEventListener('transitionend', onSubTransitionEnd)
   window.removeEventListener('resize', onWindowResize)
   window.removeEventListener('keydown', onHotkey)
   if (trackRaf) cancelAnimationFrame(trackRaf)
@@ -439,8 +452,32 @@ watch(() => props.collapsed, (value) => {
   nextTick(() => trackFor(readMorphMs() + 60))
 })
 
-/* flush:'post' —— 等 DOM 反映新的 data-open 之后再量高度，否则量到的是上一态 */
-watch(openKeys, syncSubHeights, { deep: true, flush: 'post' })
+/* flush:'post' —— 等 DOM 反映新的 data-open 之后再量高度，否则量到的是上一态。
+   只动「开合状态发生变化」的组：展开稳态是 height:auto（见 onSubTransitionEnd），
+   没变的组若被钉回像素值，之后内容增长又会被裁。 */
+watch(openKeys, (now, prev) => {
+  if (!navEl.value) return
+  const opened = new Set(now)
+  const before = new Set(prev)
+  navEl.value.querySelectorAll('.sp-sub').forEach((ul) => {
+    const isOpen = opened.has(ul.dataset.key)
+    if (isOpen === before.has(ul.dataset.key)) return
+    // 两个方向都先钉到内容自然高：展开从 0 长过去、收起从 auto 定格（auto → 0 不过渡，
+    // 必须先钉像素值再强制 reflow），随后展开侧由 transitionend 换 auto、收起侧落 0
+    ul.style.height = `${ul.scrollHeight}px`
+    if (!isOpen) {
+      void ul.offsetHeight
+      ul.style.height = '0px'
+    }
+  })
+}, { deep: true, flush: 'post' })
+
+/* 歌单子项是动态数据（异步加载/增删）：数量变化会推移下方所有项，
+   高度由 auto 自适应，但胶囊位置要重新对 */
+const subSizeSig = computed(() =>
+  props.groups.flatMap((group) => group.items).map((item) => item.children?.length ?? 0).join(','),
+)
+watch(subSizeSig, () => trackFor(300), { flush: 'post' })
 
 function readMorphMs() {
   const raw = getComputedStyle(document.documentElement).getPropertyValue('--sp-dur-morph')
