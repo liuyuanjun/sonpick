@@ -43,8 +43,7 @@
           @click="player.toggleMute()"
         >
           <n-icon class="pu-ico">
-            <volume-mute v-if="player.muted || player.volume === 0" />
-            <volume-high v-else />
+            <volume-icon :state="volumeState" />
           </n-icon>
         </n-button>
         <n-slider
@@ -83,13 +82,12 @@ import { NButton, NIcon, NSlider, NTooltip } from 'naive-ui'
 import {
   Diamond as DiamondOutline,
   Bolt as FlashOutline,
-  List as ListOutline,
+  Playlist as ListOutline,
   Refresh as Reload,
   Repeat,
   ArrowsShuffle as Shuffle,
-  Volume as VolumeHigh,
 } from '@vicons/tabler'
-import VolumeMute from '@/components/icons/VolumeOffIcon.vue'
+import VolumeIcon from '@/components/icons/VolumeIcon.vue'
 import { usePlayerStore } from '@/stores/player'
 
 // 播放器的修饰/工具控制簇（音质 / 模式 / 音量 / 队列），卡片与沉浸式控制带共用。
@@ -101,6 +99,11 @@ const props = defineProps({
 })
 const player = usePlayerStore()
 const queueLabel = computed(() => `队列 ${player.queue?.length || 0}`)
+// 与悬浮胶囊同一个三态口径（静音 / 低 / 高），共用自绘图标，尺寸天然一致
+const volumeState = computed(() => {
+  if (player.muted || player.volume === 0) return 'muted'
+  return player.volume < 0.55 ? 'low' : 'high'
+})
 </script>
 
 <style scoped>

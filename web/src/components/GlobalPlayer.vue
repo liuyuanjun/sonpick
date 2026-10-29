@@ -125,7 +125,7 @@
                   @click="player.toggleMute()"
                   @focus="openVolumePanel"
                 >
-                  <n-icon class="gp-ico"><component :is="volumeIcon" /></n-icon>
+                  <n-icon class="gp-ico"><volume-icon :state="volumeState" /></n-icon>
                 </n-button>
               </span>
             </template>
@@ -160,8 +160,7 @@
                 @click="player.toggleMute()"
               >
                 <n-icon class="gp-ico gp-ico--quiet">
-                  <volume-mute v-if="volumeMuted" />
-                  <volume-medium v-else />
+                  <volume-icon :state="volumeMuted ? 'muted' : 'high'" />
                 </n-icon>
               </n-button>
             </div>
@@ -211,16 +210,13 @@ import {
   ArrowsShuffle as Shuffle,
   Repeat,
   Refresh as Reload,
-  List,
   List as ListOutline,
-  Volume as VolumeHigh,
-  Volume3 as VolumeLow,
-  Volume2 as VolumeMedium,
+  Playlist as List,
   ArrowsMaximize as Expand,
   Diamond as DiamondOutline,
   Bolt as FlashOutline,
 } from '@vicons/tabler'
-import VolumeMute from '@/components/icons/VolumeOffIcon.vue'
+import VolumeIcon from '@/components/icons/VolumeIcon.vue'
 import { NPopover, NSlider, useMessage } from 'naive-ui'
 import { usePlayerStore } from '@/stores/player'
 import { useThemeStore } from '@/stores/theme'
@@ -395,11 +391,13 @@ let volumeCloseTimer = null
 const volumePercent = computed(() => Math.round(player.volume * 100))
 const volumeMuted = computed(() => player.muted || player.volume === 0)
 const volumeText = computed(() => (player.muted ? '静音' : `${volumePercent.value}%`))
-const volumeIcon = computed(() => {
-  if (volumeMuted.value) return VolumeMute
-  if (player.volume < 0.34) return VolumeLow
-  if (player.volume < 0.77) return VolumeMedium
-  return VolumeHigh
+// 三态（静音 / 低 / 高）：三档共用同一个自绘轮廓，切换只增减波形，图标不会忽大忽小。
+// 历史上这里映射的是 tabler 的 Volume / Volume2 / Volume3 —— 三者的墨框分别是
+// 18×15.9、14×15.9（中心还偏左 2 单位）、17×15.9，而 Volume3 右侧其实是一个小叉，
+// 于是「音量调到 20%」看起来像「被静音了」，且整枚图标比邻居小一圈。
+const volumeState = computed(() => {
+  if (volumeMuted.value) return 'muted'
+  return player.volume < 0.55 ? 'low' : 'high'
 })
 const volumeAriaLabel = computed(() =>
   player.muted ? '已静音，点击取消静音' : `音量 ${volumePercent.value}%，点击静音`)
