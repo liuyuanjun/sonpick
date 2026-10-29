@@ -25,7 +25,7 @@
           @error="coverBroken = true"
         />
         <div v-else class="cover placeholder">
-          <n-icon size="22"><musical-notes /></n-icon>
+          <n-icon class="gp-ico"><musical-notes /></n-icon>
         </div>
         <div class="meta">
           <div class="title">{{ player.current?.title || '未知歌曲' }}</div>
@@ -40,13 +40,12 @@
               <n-button
                 quaternary
                 circle
-                size="small"
-                class="format-toggle"
+                class="gp-btn format-toggle"
                 :class="{ active: player.losslessPreferred }"
                 @click="player.toggleLosslessPreferred()"
               >
                 <template #icon>
-                  <n-icon :size="15">
+                  <n-icon class="gp-ico gp-ico--optical">
                     <diamond-outline v-if="player.losslessPreferred" />
                     <flash-outline v-else />
                   </n-icon>
@@ -57,8 +56,8 @@
           </n-tooltip>
           <n-tooltip>
             <template #trigger>
-              <n-button quaternary circle size="small" @click="player.toggleMode()">
-                <n-icon size="18">
+              <n-button quaternary circle class="gp-btn" @click="player.toggleMode()">
+                <n-icon class="gp-ico">
                   <shuffle v-if="player.mode === 'shuffle'" />
                   <repeat v-else-if="player.mode === 'loop'" />
                   <reload v-else-if="player.mode === 'single'" />
@@ -68,21 +67,33 @@
             </template>
             {{ player.modeLabel }}
           </n-tooltip>
-          <n-button quaternary circle @click="player.prev()">
-            <n-icon size="20"><play-skip-back /></n-icon>
+          <n-button quaternary circle class="gp-btn" aria-label="上一曲" @click="player.prev()">
+            <n-icon class="gp-ico gp-ico--nav"><play-skip-back /></n-icon>
           </n-button>
-          <n-button type="primary" circle class="gp-play" @click="togglePlay">
-            <n-icon size="23" :class="{ 'is-play': !player.playing }">
+          <n-button type="primary" circle class="gp-btn gp-play" aria-label="播放/暂停" @click="togglePlay">
+            <n-icon class="gp-ico gp-ico--play" :class="{ 'is-play': !player.playing }">
               <pause v-if="player.playing" />
               <play v-else />
             </n-icon>
           </n-button>
-          <n-button quaternary circle @click="player.next()">
-            <n-icon size="20"><play-skip-forward /></n-icon>
+          <n-button quaternary circle class="gp-btn" aria-label="下一曲" @click="player.next()">
+            <n-icon class="gp-ico gp-ico--nav"><play-skip-forward /></n-icon>
           </n-button>
-          <n-button quaternary circle @click="toggleQueue">
-            <n-icon size="18"><list /></n-icon>
-          </n-button>
+          <n-tooltip>
+            <template #trigger>
+              <n-button
+                quaternary
+                circle
+                class="gp-btn"
+                :class="{ active: player.showQueue }"
+                aria-label="播放队列"
+                @click="toggleQueue"
+              >
+                <n-icon class="gp-ico"><list /></n-icon>
+              </n-button>
+            </template>
+            {{ player.showQueue ? '收起队列' : '播放队列' }}
+          </n-tooltip>
           <!-- 音量：只留一个图标，hover/focus 浮出竖向滑杆 + 静音按钮。
                放在播放键右侧第三位（左：音质/模式/上一曲，右：下一曲/队列/音量，3+3 对称） -->
           <n-popover
@@ -93,7 +104,7 @@
             :padding="0"
             :duration="0"
             :delay="0"
-            :style="[accentStyle, { borderRadius: '12px' }]"
+            :style="[accentStyle, { borderRadius: 'var(--sp-radius-lg)' }]"
           >
             <template #trigger>
               <span
@@ -106,13 +117,15 @@
                 <n-button
                   quaternary
                   circle
+                  class="gp-btn"
+                  :class="{ active: volumePanelOpen }"
                   :aria-label="volumeAriaLabel"
                   aria-haspopup="true"
                   :aria-expanded="volumePanelOpen"
                   @click="player.toggleMute()"
                   @focus="openVolumePanel"
                 >
-                  <n-icon size="18"><component :is="volumeIcon" /></n-icon>
+                  <n-icon class="gp-ico"><component :is="volumeIcon" /></n-icon>
                 </n-button>
               </span>
             </template>
@@ -142,11 +155,11 @@
               <n-button
                 quaternary
                 circle
-                size="small"
+                class="gp-btn gp-btn--sm"
                 :aria-label="player.muted ? '取消静音' : '静音'"
                 @click="player.toggleMute()"
               >
-                <n-icon size="18">
+                <n-icon class="gp-ico gp-ico--quiet">
                   <volume-mute v-if="volumeMuted" />
                   <volume-medium v-else />
                 </n-icon>
@@ -162,23 +175,23 @@
       </div>
 
       <div v-if="isMobile" class="gp-mobile-actions">
-        <n-button quaternary circle @click="togglePlay">
-          <n-icon size="24">
+        <n-button quaternary circle class="gp-btn gp-play" aria-label="播放/暂停" @click="togglePlay">
+          <n-icon class="gp-ico gp-ico--play">
             <pause v-if="player.playing" />
             <play v-else />
           </n-icon>
         </n-button>
-        <n-button quaternary circle @click="player.next()">
-          <n-icon size="22"><play-skip-forward /></n-icon>
+        <n-button quaternary circle class="gp-btn" aria-label="下一曲" @click="player.next()">
+          <n-icon class="gp-ico gp-ico--nav"><play-skip-forward /></n-icon>
         </n-button>
       </div>
 
       <div v-if="!isMobile" class="gp-right">
-        <n-button quaternary circle @click="goPlayer">
-          <n-icon size="18"><expand /></n-icon>
+        <n-button quaternary circle class="gp-btn" aria-label="打开播放器" @click="goPlayer">
+          <n-icon class="gp-ico gp-ico--quiet"><expand /></n-icon>
         </n-button>
-        <n-button quaternary circle @click="player.close()">
-          <n-icon size="18"><close /></n-icon>
+        <n-button quaternary circle class="gp-btn" aria-label="关闭播放器" @click="player.close()">
+          <n-icon class="gp-ico gp-ico--quiet"><close /></n-icon>
         </n-button>
       </div>
     </div>
@@ -442,24 +455,62 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.global-player {
-  /* 本组件经 Teleport 挂载到 body，不在 n-config-provider 子树内，
-     --n-* 主题变量不可达；颜色一律取 :root 上的 --sp-ui-* 令牌，不写死色值 */
-  /* 玻璃填充 = 「页面底色」60% 的遮罩，不写死色值，且随主题自动反向：
-     暗色下把背后的亮内容往页面底色（近黑）拉 = 压暗，浅色下往页面底色（近白）拉 = 提亮，
-     两个方向都是在护「本主题文字色」的对比度（暗色白字 / 浅色深字）。
-     勿改回 --sp-ui-elevated / --sp-ui-card-strong：这两个色与页面底色几乎同亮度（暗 #181B22 vs #0B0C10），
-     0%～100% 全程只有约 1.13:1 的差，怎么调都看不出变化，也提供不了任何文字保护。 */
-  --gp-bg: color-mix(in srgb, var(--sp-ui-body) 60%, transparent);
-  --gp-border: color-mix(in srgb, var(--sp-ui-border) 62%, transparent);
+/* ══════════════════════════════════════════════════════════════════════════
+   悬浮播放胶囊 · 视觉规格（v0.15.2-rc16 重做尺度）
+
+   本组件经 Teleport 挂载到 body，不在 n-config-provider 子树内，
+   --n-* 主题变量不可达；颜色一律取 :root 上的 --sp-ui-* 令牌，不写死色值。
+
+   尺度只有一套，全部以组件局部变量声明（下方 --gp-*），改动只改这一处：
+     几何  cover 48 / 次级按钮 36（= 触控目标）/ 播放键 40 / 圆角与描边走令牌
+     图标  次级 20（= ICON.md）/ 传输 24（= ICON.lg）/ 播放 = 播放键直径 × 0.55
+   ⚠️ 历史问题：图标曾用 15 / 18 / 20 / 23 四个各自为政的 px 值，15px 的「音质」
+   比 23px 的播放图标小 35%，同一行里视觉重量完全不成比例。现在收敛为两档，
+   且都取自 tokens.js 的 ICON 尺度 —— 新增图标只许选这两档，不要再写第三个数。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 共享尺度 / 前景色变量 ──
+   ⚠️ 音量浮层被 n-popover teleport 到 body，**不在 .global-player 的子树里**，
+   拿不到挂在 .global-player 上的 --gp-*（实测后果：竖向滑杆的 --n-rail-color 引用不存在的
+   变量 → invalid at computed-value time → 轨道变透明，音量条只剩一根红色填充悬空）。
+   所以这组变量必须同时声明在两个根上，且只能引用 :root 的 --sp-*。 */
+.global-player,
+.gp-volume-panel {
+  --gp-btn-size: var(--sp-touch-target); /* 36px：与全局触控目标同尺 */
+  --gp-btn-sm-size: 30px; /* 音量浮层内的小按钮（浮层本身只有 56px 宽） */
+  --gp-play-size: 40px;
+  --gp-ico: var(--sp-icon-md); /* 20px：模式 / 队列 / 音量 / 音质 */
+  --gp-ico-nav: var(--sp-icon-lg); /* 24px：上一曲 / 下一曲 */
+  --gp-ico-quiet: var(--sp-icon-md); /* 展开 / 关闭：同尺度，靠颜色退后 */
+  /* 播放/暂停图标 = 播放键直径 × 0.55（40 → 22）。不写死 22 是因为它必须随
+     --gp-play-size 联动；0.55 与 PlayerTransport 的 Math.round(size * 0.5) 是同一套比例。 */
+  --gp-ico-play: calc(var(--gp-play-size) * 0.55);
+
   --gp-text: var(--sp-ui-text-1);
+  --gp-text-2: var(--sp-ui-text-2);
   --gp-text-3: var(--sp-ui-text-3);
-  /* 玻璃感 = 外投影拉出悬浮 + 内高光勾出「厚度」 */
+  /* 滑轨：由文字色掺出来，明暗两套自动成立，不额外定义色值 */
+  --gp-track: color-mix(in srgb, var(--sp-ui-text-1) 13%, transparent);
+}
+
+.global-player {
+  /* ── 尺度 ── */
+  --gp-cover-size: 48px;
+
+  /* ── 颜色 ──
+     玻璃填充取「卡片面」再掺透明度（而不是页面底色）：
+     浅色卡片 #FFF 比页面底 #F5F6F8 更亮、暗色卡片 #14161C 也比页面底 #0B0C10 更亮，
+     两个方向都比「底色掺 60%」更能把文字从背后内容里托起来，观感也更像毛玻璃而非灰板。 */
+  --gp-bg: color-mix(in srgb, var(--sp-ui-card) 76%, transparent);
+  --gp-border: color-mix(in srgb, var(--sp-ui-border) 66%, transparent);
+
+  /* ── 阴影：三明治层次 = 贴地一像素 + 中景扩散 + 远景柔光 + 顶部内高光 ── */
   --gp-shadow:
-    0 18px 44px rgba(15, 23, 42, 0.16),
-    0 6px 16px rgba(15, 23, 42, 0.07),
-    inset 0 1px 0 rgba(255, 255, 255, 0.55);
-  /* 悬浮胶囊：几何由 :root 的 --gp-* 变量驱动，改高度不用同步改圆角 */
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 8px 20px -6px rgba(15, 23, 42, 0.1),
+    0 24px 56px -16px rgba(15, 23, 42, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+
   position: fixed;
   left: 24px;
   right: 24px;
@@ -471,8 +522,8 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: minmax(150px, 250px) minmax(0, 1fr) auto;
   align-items: center;
-  gap: 16px;
-  padding: 0 22px;
+  gap: 18px;
+  padding: 0 20px;
   box-sizing: border-box;
   overflow: hidden;
   border-radius: var(--sp-radius-pill);
@@ -487,18 +538,22 @@ onUnmounted(() => {
   box-shadow: var(--gp-shadow);
 }
 .global-player.dark {
+  --gp-bg: color-mix(in srgb, var(--sp-ui-card) 72%, transparent);
   --gp-shadow:
-    0 18px 44px rgba(0, 0, 0, 0.55),
-    0 6px 16px rgba(0, 0, 0, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.10);
+    0 1px 2px rgba(0, 0, 0, 0.24),
+    0 8px 20px -6px rgba(0, 0, 0, 0.46),
+    0 24px 56px -16px rgba(0, 0, 0, 0.54),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
 }
 /* 不支持 backdrop-filter 时退回高不透明度，避免文字压在封面花纹上不可读
    （放在 .dark 之后且同特异性，因此暗色下也能正常覆盖上一条） */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .global-player {
-    --gp-bg: color-mix(in srgb, var(--sp-ui-body) 94%, transparent);
+    --gp-bg: color-mix(in srgb, var(--sp-ui-card) 96%, transparent);
   }
 }
+
+/* ── 左：封面 + 曲目信息 ───────────────────────────────────────────── */
 .gp-left {
   display: flex;
   align-items: center;
@@ -507,12 +562,25 @@ onUnmounted(() => {
   cursor: pointer;
 }
 .cover {
-  width: 52px;
-  height: 52px;
-  border-radius: var(--sp-radius-md);
+  width: var(--gp-cover-size);
+  height: var(--gp-cover-size);
+  border-radius: var(--sp-radius-sm);
   object-fit: cover;
   flex-shrink: 0;
-  background: rgba(127, 127, 127, 0.12);
+  background: color-mix(in srgb, var(--sp-ui-text-1) 8%, transparent);
+  /* 一圈 1px 亮边把封面从玻璃面上「抬」起来；纯投影会让浅色封面上半部糊在底色里 */
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.06),
+    0 2px 6px rgba(15, 23, 42, 0.1);
+  transition: transform var(--sp-dur-fast) var(--sp-ease-enter);
+}
+.dark .cover {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 2px 8px rgba(0, 0, 0, 0.5);
+}
+.gp-left:hover .cover {
+  transform: scale(1.03);
 }
 .cover.placeholder {
   display: flex;
@@ -524,84 +592,121 @@ onUnmounted(() => {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
 }
 .title {
-  font-weight: 700;
-  font-size: var(--sp-fs-small);
-  line-height: 1.3;
+  font-size: var(--sp-fs-body);
+  font-weight: var(--sp-fw-semibold);
+  line-height: 1.35;
+  letter-spacing: -0.005em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: color var(--sp-dur-fast) var(--sp-ease-standard);
+}
+.gp-left:hover .title {
+  color: var(--sp-ui-primary);
 }
 .artist {
   font-size: var(--sp-fs-caption);
+  font-weight: var(--sp-fw-medium);
+  line-height: 1.35;
   color: var(--gp-text-3);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ── 中：控制区 + 进度 ─────────────────────────────────────────────── */
 .gp-center {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
 }
 .controls {
   display: flex;
   align-items: center;
-  gap: 6px;
-}
-.format-toggle {
-  padding: 0;
-}
-.progress-row {
-  width: min(520px, 100%);
-  display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) 40px;
-  gap: 8px;
-  align-items: center;
-}
-.progress-row span {
-  font-size: var(--sp-fs-micro);
-  color: var(--gp-text-3);
-  font-variant-numeric: tabular-nums;
-  text-align: center;
-}
-.gp-right {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  min-width: 0;
-}
-.gp-progress-line {
-  display: none;
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  overflow: hidden;
-  border-radius: var(--sp-radius-pill) var(--sp-radius-pill) 0 0;
-  background: var(--sp-ui-hover);
-  pointer-events: none;
-  z-index: 3;
-}
-.gp-progress-line .fill {
-  display: block;
-  height: 100%;
-  width: 0%;
-  background: var(--accent, var(--sp-ui-primary));
-  will-change: width;
+  gap: 4px;
 }
 
-/* 播放键 = 封面主题色（与全屏播放器一致）。
-   Naive 的 n-button 用内部两个 span 画描边（primary 类型下是品牌绿），不灭掉会留一圈绿边；
-   各交互态颜色也一并钉住，避免 hover/focus 闪回品牌绿。 */
+/* 圆形图标按钮的统一规格。
+   Naive 把 --n-width / --n-height / --n-icon-size / 颜色类变量全写在元素 inline style 上，
+   类选择器压不住，必须 !important（否则会出现「静息态对、hover 变回品牌绿」的割裂）。 */
+.gp-btn {
+  --n-width: var(--gp-btn-size) !important;
+  --n-height: var(--gp-btn-size) !important;
+  --n-icon-size: var(--gp-ico) !important;
+  --n-padding: 0 !important;
+  --n-text-color: var(--gp-text-2) !important;
+  --n-text-color-hover: var(--gp-text) !important;
+  --n-text-color-pressed: var(--gp-text) !important;
+  --n-text-color-focus: var(--gp-text) !important;
+}
+.gp-btn--sm {
+  --n-width: var(--gp-btn-sm-size) !important;
+  --n-height: var(--gp-btn-sm-size) !important;
+}
+/* 激活态（队列展开 / 音量浮层打开 / 无损优先）：用被封面的主色点一下，
+   只加软底不改尺寸，避免按钮在开合时跳动 */
+.gp-btn.active {
+  --n-text-color: var(--accent, var(--sp-ui-primary)) !important;
+  --n-text-color-hover: var(--accent, var(--sp-ui-primary)) !important;
+  --n-text-color-pressed: var(--accent, var(--sp-ui-primary)) !important;
+}
+.gp-btn.active::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--accent, var(--sp-ui-primary)) 12%, transparent);
+  pointer-events: none;
+}
+
+/* 图标：显式尺寸（@vicons 的 SVG 没有 width/height，只认容器的 1em），
+   并让容器宽高等于图标尺寸 —— 只写 font-size 会让 flex 轨道按旧值占位 */
+.gp-ico {
+  font-size: var(--gp-ico) !important;
+  transition: transform var(--sp-dur-fast) var(--sp-ease-enter);
+}
+.gp-ico--nav {
+  font-size: var(--gp-ico-nav) !important;
+}
+.gp-ico--play {
+  font-size: var(--gp-ico-play) !important;
+}
+.gp-ico--quiet {
+  font-size: var(--gp-ico-quiet) !important;
+  color: var(--gp-text-3);
+}
+/* 音质按钮用的是 n-button 的 #icon 插槽，槽宽由 --n-icon-size 决定；
+   图标做了 +1px 光学补偿，槽宽必须同步，否则 1px 溢出会让图标左右各偏半像素 */
+.format-toggle {
+  --n-icon-size: calc(var(--gp-ico) + 1px) !important;
+}
+/* 音质图标的光学补偿：闪电 / 钻石都是「细线 + 小墨量」图形，同样 20px 下比
+   repeat / list 这类满格图形显小一圈（用户实测感知就是这个）。放大 1px 让墨量对齐，
+   属于同一尺度档位内的光学修正，不是新增第 3 个图标尺寸。 */
+.gp-ico--optical {
+  font-size: calc(var(--gp-ico) + 1px) !important;
+}
+/* Naive 的按钮把 outline 抹成 none，全局 :focus-visible 压不住 → 键盘焦点环必须显式补。
+   环色 = 封面主色掺「本主题文字色」：只掺透明度时，亮黄/浅粉封面派生出的主色在浅底上
+   几乎不可见；掺向文字色等于自动朝「远离底色」的方向走，明暗两套都保得住可见性。 */
+.gp-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent, var(--sp-ui-primary)) 72%, var(--gp-text)) !important;
+  outline-offset: 2px !important;
+}
+.gp-btn:hover .gp-ico--quiet {
+  color: var(--gp-text-2);
+}
+
+/* ── 播放键：外观的唯一真相源（与 PlayerTransport 的 .tp-play 同策略） ── */
 .gp-play {
-  /* Naive 把按钮的颜色类变量也写在元素的 inline style 上 → 直接覆盖 background/color 更稳 */
+  --n-width: var(--gp-play-size) !important;
+  --n-height: var(--gp-play-size) !important;
+  --n-icon-size: var(--gp-ico-nav) !important;
   background: var(--play-bg) !important;
   color: var(--play-fg) !important;
   --n-color: var(--play-bg) !important;
@@ -618,34 +723,121 @@ onUnmounted(() => {
   --n-border-focus: 0 solid transparent;
   /* 点击波纹也吃 --n-ripple-color（同为 inline style），少了 !important 按下时会闪一圈品牌绿 */
   --n-ripple-color: transparent !important;
+  /* 投影取自身主色，让播放键「发光」而不是投一块灰 */
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.16),
+    0 6px 16px -4px color-mix(in srgb, var(--play-bg) 46%, transparent);
+  transition:
+    transform var(--sp-dur-fast) var(--sp-ease-enter),
+    box-shadow var(--sp-dur-fast) var(--sp-ease-standard);
+}
+.gp-play:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.18),
+    0 10px 22px -4px color-mix(in srgb, var(--play-bg) 52%, transparent);
+}
+.gp-play:active {
+  transform: translateY(0) scale(0.97);
+}
+.gp-play:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--play-bg) 72%, var(--gp-text));
+  outline-offset: 3px;
 }
 .gp-play :deep(.n-button__border),
 .gp-play :deep(.n-button__state-border) {
   display: none;
+}
+.gp-play :deep(.n-button__content) {
+  color: var(--play-fg);
 }
 /* 播放三角的光学重心偏左，往右轻推一点才是"看起来居中"（暂停的双竖条是对称的，不用推） */
 .gp-play :deep(.n-icon.is-play) {
   transform: translateX(1.5px);
 }
 
-/* 进度 / 音量滑杆填充 = 主题色。Naive 把滑杆的颜色变量写在元素的 inline style 上，
-   类选择器覆盖不掉，必须 !important（几何变量不是，所以那些不用）。 */
+/* ── 进度行 ───────────────────────────────────────────────────────────
+   时间列给 42px（可容纳 1:23:45），数字等宽避免秒跳时整行抖动 */
+.progress-row {
+  width: min(520px, 100%);
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 42px;
+  gap: 10px;
+  align-items: center;
+}
+.progress-row span {
+  font-size: var(--sp-fs-caption);
+  font-weight: var(--sp-fw-medium);
+  color: var(--gp-text-3);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  letter-spacing: 0.01em;
+}
+
+/* ── 滑杆：轨道 / 已播填充 / 手柄 ─────────────────────────────────────
+   Naive 把滑杆的颜色与几何变量同样写在 inline style 上，一律 !important。
+   手柄原来是纯白 + Naive 默认投影，浅色玻璃底上几乎看不见 ——
+   补一圈 1px 冷灰描边 + 下投阴影，让它在两种主题下都能被看见。 */
 .gp-progress,
 .gp-volume-rail {
+  --n-rail-height: 5px !important;
+  --n-rail-width-vertical: 5px !important;
+  --n-handle-size: 13px !important;
+  --n-handle-color: #fff !important;
+  --n-handle-box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.22) !important;
+  --n-handle-box-shadow-hover: 0 0 0 1px rgba(15, 23, 42, 0.14), 0 2px 8px rgba(15, 23, 42, 0.26) !important;
+  --n-handle-box-shadow-active: 0 0 0 1px rgba(15, 23, 42, 0.14), 0 2px 8px rgba(15, 23, 42, 0.26) !important;
+  --n-handle-box-shadow-focus: 0 0 0 2px color-mix(in srgb, var(--accent, var(--sp-ui-primary)) 45%, transparent) !important;
   --n-fill-color: var(--accent, var(--sp-ui-primary)) !important;
   --n-fill-color-hover: var(--accent, var(--sp-ui-primary)) !important;
-  --n-handle-color: #fff !important;
+  --n-rail-color: var(--gp-track) !important;
+  --n-rail-color-hover: var(--gp-track) !important;
 }
-/* 「音质优先」激活态也用主题色（原来走 primary 类型 = 品牌绿，与全屏播放器不一致） */
-.format-toggle.active {
-  color: var(--accent, var(--sp-ui-primary)) !important;
+.dark .gp-progress,
+.dark .gp-volume-rail {
+  --n-handle-box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), 0 2px 6px rgba(0, 0, 0, 0.55) !important;
+  --n-handle-box-shadow-hover: 0 0 0 1px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.6) !important;
+  --n-handle-box-shadow-active: 0 0 0 1px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.6) !important;
+}
+
+/* ── 右：展开 / 关闭 ───────────────────────────────────────────────── */
+.gp-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  min-width: 0;
 }
 .gp-mobile-actions {
   display: flex;
   align-items: center;
   gap: 2px;
 }
-/* 音量浮层：面板被 teleport 到 body，只能用 :root 上的 --sp-ui-* */
+
+/* 移动端顶部细进度线（桌面隐藏，进度由进度条表达） */
+.gp-progress-line {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  overflow: hidden;
+  border-radius: var(--sp-radius-pill) var(--sp-radius-pill) 0 0;
+  background: color-mix(in srgb, var(--sp-ui-text-1) 12%, transparent);
+  pointer-events: none;
+  z-index: 3;
+}
+.gp-progress-line .fill {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: var(--accent, var(--sp-ui-primary));
+  will-change: width;
+}
+
+/* ── 音量浮层 ───────────────────────────────────────────────────────
+   面板被 teleport 到 body，只能用 :root 上的 --sp-ui-*（--gp-* 挂在 .global-player 上取不到） */
 .gp-volume-anchor {
   display: inline-flex;
   align-items: center;
@@ -655,8 +847,8 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  padding: 12px 6px 10px;
-  width: 46px;
+  padding: 12px 8px 8px;
+  width: 56px;
 }
 /* 竖向滑块靠父容器定高：Naive 的 vertical slider 是 height:100% */
 .gp-volume-slider {
@@ -665,15 +857,25 @@ onUnmounted(() => {
   justify-content: center;
 }
 .gp-volume-value {
-  font-size: var(--sp-fs-micro);
+  font-size: var(--sp-fs-caption);
+  font-weight: var(--sp-fw-semibold);
   line-height: 1;
-  color: var(--sp-ui-text-3);
+  color: var(--sp-ui-text-2);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  letter-spacing: 0.01em;
 }
+.gp-volume-panel .gp-btn--sm {
+  --n-text-color: var(--sp-ui-text-3) !important;
+  --n-text-color-hover: var(--sp-ui-text-1) !important;
+}
+
+/* ── 进出场 ───────────────────────────────────────────────────────── */
 .slide-up-enter-active,
 .slide-up-leave-active {
-  transition: transform 0.24s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.24s ease;
+  transition:
+    transform var(--sp-dur-slow) var(--sp-ease-enter),
+    opacity var(--sp-dur-slow) var(--sp-ease-standard);
 }
 .slide-up-enter-from,
 .slide-up-leave-to {
@@ -681,7 +883,7 @@ onUnmounted(() => {
   opacity: 0;
 }
 
-/* 中等宽度：胶囊变窄时先收掉音量条，保住中间进度条的可用宽度 */
+/* 中等宽度：胶囊变窄时先收掉两侧余量，保住中间进度条的可用宽度 */
 @media (max-width: 1040px) {
   .global-player {
     grid-template-columns: minmax(130px, 1fr) minmax(0, 1.6fr) auto;
@@ -696,6 +898,11 @@ onUnmounted(() => {
     grid-template-columns: minmax(0, 1fr) auto;
     padding: 0 14px;
     gap: 8px;
+    --gp-cover-size: 40px;
+    /* 移动端胶囊只有 60px 高，播放键收到 36 与其余按钮同高，仍保留实心主色以维持主操作地位 */
+    --gp-play-size: var(--sp-touch-target);
+    /* 传输键也收到 20：60px 高的窄条里，24px 的下一页箭头会比实心播放键更抢眼 */
+    --gp-ico-nav: var(--sp-icon-md);
   }
   .gp-right {
     display: none;
@@ -703,16 +910,24 @@ onUnmounted(() => {
   .gp-progress-line {
     display: block;
   }
-  .cover {
-    width: 40px;
-    height: 40px;
-    border-radius: var(--sp-radius-md);
+  .title {
+    font-size: var(--sp-fs-small);
   }
 }
 @media (prefers-reduced-motion: reduce) {
   .slide-up-enter-active,
   .slide-up-leave-active {
     transition: none;
+  }
+  .cover,
+  .gp-play,
+  .gp-ico {
+    transition: none;
+  }
+  .gp-left:hover .cover,
+  .gp-play:hover,
+  .gp-play:active {
+    transform: none;
   }
 }
 </style>

@@ -31,7 +31,7 @@
 
 **非目标**：多用户、公网商用、版权绕过。仅供个人学习与备份。
 
-当前版本（以代码为准）：`0.15.2-rc15`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
+当前版本（以代码为准）：`0.15.2-rc16`（`setup_app.py` / `web/package.json` / `app/main.py` 的 `APP_VERSION` 必须一致）。
 
 - **品牌视觉**：设计系统规范见 `DESIGN.md`（唯一权威）；品牌**资产**（LOGO / 20 图标 / 吉祥物 PNG）见 `web/public/brand/` 与 `docs/brand-guidelines.md`，设计稿在 Ardot 文件《Sonpick 拾音 · 品牌视觉系统》。
 
@@ -373,6 +373,29 @@ Naive 的 modal / drawer / popover 会被 teleport 到 `body`，脱离 `.app-lay
 - 胶囊宽度：`left/right: 24px` + `margin: 0 auto` + `max-width: 880px`（移动端 ±14px）。
 - 圆角：`border-radius: 999px`（等于高度一半的"真胶囊"；CSS 会自动钳制，改高度不用改圆角）。**禁止**用 `border-radius: 50%`——那会变成橄榄形并让弧线侵入内容区。
 - 新增任何"浮在内容之上的底部条"时，改这里的变量，不要逐个页面调 padding。
+
+**胶囊内部尺度（v0.15.2-rc16 收敛，见 `DESIGN.md §2.3`）**
+
+- 图标只有两档：次级（音质 / 模式 / 队列 / 音量 / 展开 / 关闭）= `--sp-icon-md`(20)，传输键（上一曲 / 下一曲）= `--sp-icon-lg`(24)；播放/暂停 = 播放键直径 × 0.55（桌面 40→22，手机 36→20）。**新增图标只许选这两档，不要再写第三个数。**
+- 音质（闪电 / 钻石）叠加 `.gp-ico--optical` 的 +1px 光学补偿，同时把 `--n-icon-size` 一起加 1px；否则图标槽比图标窄 1px，图标会左右各偏半像素。
+- 圆钮尺寸统一 `--sp-touch-target`(36)，播放键 40（≤768px 收到 36）；次级图标色 `--gp-text-2`、展开/关闭 `--gp-text-3`，靠**颜色分层而非尺寸分层**表达主次。
+- Naive 把 `--n-width` / `--n-height` / `--n-icon-size` / 颜色类变量全部写在元素 **inline style** 上 → 类选择器覆盖必须 `!important`，漏了就会出现「静息态对、hover 闪回品牌绿」。
+
+**⚠️ 音量浮层被 teleport 到 body**：`.n-popover` 的内容**不在 `.global-player` 子树里**，拿不到挂在它上面的 `--gp-*`。实测后果：竖向滑杆的 `--n-rail-color: var(--gp-track)` 变成 invalid at computed-value time → **整条轨道透明**，只剩一截红色填充悬空。因此「浮层也要用」的尺度/前景色变量必须**同时声明在 `.global-player` 与 `.gp-volume-panel` 两个根上**（组件内的共享变量块），且只能引用 `:root` 的 `--sp-*` 与 `--sp-touch-target`。
+
+**全屏播放器（`GlobalPlayerDrawer` / `PlayerPanel`）的尺度（v0.15.2-rc16 收敛）**
+
+- 尺度变量定义在 `PlayerPanel` 的 `.player-panel` 上，**子组件全部继承**，不许再各写一套 px：
+  `--pp-btn`(36) / `--pp-play`(48) / `--pp-ico`(20 = `ICON.md`) / `--pp-ico-nav`(24 = `ICON.lg`) / `--pp-ico-play`(= 播放键 × 0.55)。
+- **传输键不再接收 `size` prop**：卡片曾传 46、沉浸带传 50，同一个按钮两个直径；现在只有 `--pp-play` 一处。
+- 顶栏（收起 / 皮肤 / ⋯ / A±）、元信息（喜欢 / 加歌单）、工具簇（音质 / 模式 / 音量 / 队列）统一圆钮 36 + 图标 20；`pp-round-btn` 类负责把 Naive 的 inline `--n-width/--n-height/--n-icon-size` 钉住。
+- 音质（闪电 / 钻石）与胶囊同规则叠 `.pu-ico--opt`（+1px 光学补偿，图标槽同步 +1）。
+- **卡片（叠层卡）里音量只留图标**：360px 卡宽装不下「36 圆钮 + 可用长度的滑杆 + 队列」，强行塞会挤成一根 44px 的短线并让整行溢出 20px（实测 `scrollWidth 372 > 352`）。滑杆只出现在沉浸带的控制带。
+- `.c-transport` 的收缩规则：**只有右簇允许收缩**（左簇与传输键 `flex: none`）——让固定尺寸的按钮参与 flex-shrink 只会把按钮框压小、内容照样溢出。
+- **`.skin` 不能 `overflow: hidden`**：模糊封面铺底 `.bgart` 靠 `-16%` 负 inset 出血，裁掉会在顶栏下沿留一道硬边（上是纯色、下是彩色模糊）。顶栏因此要 `z-index: 3` 抬到铺底之上；真正的裁剪交给 `.gp-drawer`。
+- **纯封面皮肤要为盘面出血留空间**：`.body-art` 用 `--art-size` 一处定义封面尺寸，`.art-stage` 的上下外边距按 `--art-size × (--disc-ratio − 1) / 2` 等量吸收。**别用百分比外边距**——百分比按包含块宽度解析（这里等于整屏），会把技术信息行推到盘面内部（rc15 及以前「MP3 · 3:54 · 9.00 MB」就是这样被盘面压住看不见的）。
+- 皮肤切换激活态用封面主色派生（`color-mix(accent 16%)` + 26% 内描边）；历史值 `rgba(100,108,255)` 是色板外的靛蓝。
+- 播放队列行内删除键走 `ICON.sm`(16) + 28 命中框（列表行操作档，不是尺度外值），行标题用 `--sp-fs-body`(14)。
 
 ### 5.8 工具函数的单一入口（格式化 / 媒体常量）
 

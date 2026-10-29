@@ -2,8 +2,9 @@
   <div class="band">
     <player-seek />
     <div class="band-main">
-      <player-meta />
-      <player-transport :size="50" />
+      <!-- 移动端不显示迷你封面：整屏背景就是这张封面，再放一张 46px 缩略图只会挤掉歌名 -->
+      <player-meta :show-cover="!isMobile" />
+      <player-transport />
       <player-utils :compact="isMobile" />
     </div>
   </div>
@@ -23,9 +24,10 @@ const isMobile = useIsMobile()
 
 <style scoped>
 .band {
-  padding: 8px 26px 14px;
+  /* 左右 26 与顶栏的视觉左缘（图标 28）对齐；上下留白按 48px 播放键重新分配 */
+  padding: 10px 26px 16px;
   display: grid;
-  gap: 8px;
+  gap: 10px;
   flex: none;
   position: relative;
   z-index: 2;
@@ -35,7 +37,8 @@ const isMobile = useIsMobile()
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 16px;
-  min-height: 52px;
+  /* 与播放键同高：三栏在 48px 的行高里垂直居中，传输键不再比两侧高出一截 */
+  min-height: var(--pp-play, 48px);
 }
 .band-main > :first-child {
   justify-self: start;

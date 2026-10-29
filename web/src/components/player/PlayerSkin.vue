@@ -14,8 +14,11 @@
         <player-seek />
         <div class="c-transport">
           <player-utils :show="['quality', 'mode']" />
-          <player-transport :size="46" />
-          <player-utils :show="['volume', 'queue']" :compact="isMobile" />
+          <player-transport />
+          <!-- 卡片里音量只留图标：360px 卡宽装不下「36 圆钮 + 可用长度的滑杆 + 队列」，
+               强行塞会挤成一根 44px 的短线（实测整行还溢出 20px）。滑杆留在沉浸带的控制带，
+               那里有整屏宽度。 -->
+          <player-utils :show="['volume', 'queue']" compact />
         </div>
       </div>
       <div class="stage-lrc">
@@ -147,7 +150,10 @@ function onLyricSeek(time) {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  /* 不能 overflow:hidden：模糊封面铺底（.bgart）靠 -16% 的负 inset 出血，
+     裁掉就会在顶栏下沿留下一条硬边（顶栏区是纯色、下面是彩色模糊 = 一道缝）。
+     真正的裁剪由 .gp-drawer（overflow:hidden）负责。 */
+  overflow: visible;
   z-index: 1;
 }
 
@@ -161,18 +167,22 @@ function onLyricSeek(time) {
   opacity: 0.9;
   pointer-events: none;
 }
+/* 亮色：提亮不能过头。原来 brightness(1.18) + opacity .55 + 0.86 的白暗角，
+   整屏被洗成一层米色雾，封面信息（色相）几乎不可读；现在保留色相、只压一档亮度，
+   由暗角（见 .vignette）负责把边角收回去，文字对比度仍靠面板底与暗角双层保证。 */
 .player-panel.light .bgart {
-  filter: blur(58px) saturate(1.05) brightness(1.18);
-  opacity: 0.55;
+  filter: blur(58px) saturate(1.2) brightness(1);
+  opacity: 0.82;
 }
 .vignette {
   position: absolute;
-  inset: 0;
+  /* 与 .bgart 同尺寸，暗角才能盖住同一块区域（含顶栏底下那一条） */
+  inset: -16%;
   pointer-events: none;
   background: radial-gradient(64% 74% at 50% 44%, rgba(5, 6, 10, 0.04), rgba(5, 6, 10, 0.72) 92%);
 }
 .player-panel.light .vignette {
-  background: radial-gradient(64% 74% at 50% 44%, rgba(245, 246, 248, 0.3), rgba(245, 246, 248, 0.86) 90%);
+  background: radial-gradient(64% 74% at 50% 44%, rgba(245, 246, 248, 0.18), rgba(245, 246, 248, 0.74) 92%);
 }
 
 .body {
@@ -189,7 +199,7 @@ function onLyricSeek(time) {
      → [卡片 + 合适宽歌词] 这一块近似居中；卡片右侧的剩余空间全部归歌词，
        略超「合适宽」的单行歌词不必换行/省略，直接往右伸即可（容器只在纵向滚动）。 */
 .body-card {
-  --card-w: 352px;
+  --card-w: 360px;
   --card-gap: 72px;
   --lyr-w: 560px;
   /* 叠层卡唱片的唯一几何常量：盘面直径 = 封面 × 1.3（PlayerArt 的 record 模式）。
@@ -222,10 +232,22 @@ function onLyricSeek(time) {
   margin-bottom: calc((var(--disc-ratio) - 1) * 50% + 18px);
 }
 .c-transport {
-  margin-top: 16px;
+  margin-top: 18px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+}
+/* 只有右簇可以收缩：左簇（音质·模式）与传输键尺寸固定，
+   让它们参与 flex-shrink 只会把按钮框压小、内容溢出（实测 scrollWidth 398 > 360）。
+   右簇内部由音量滑杆让位，其余按钮不缩。 */
+.c-transport > :first-child,
+.c-transport > .tp {
+  flex: none;
+}
+.c-transport > :last-child {
+  flex: 0 1 auto;
+  min-width: 0;
 }
 .c-transport > :first-child,
 .c-transport > :last-child {
@@ -344,7 +366,9 @@ function onLyricSeek(time) {
 }
 .body-vinyl {
   flex-direction: column;
-  padding: 22px 24px 0 88px;
+  /* 左缘 26 与沉浸带（.band 的 26）对齐：标题、进度时间、迷你封面落在同一条竖线上。
+     历史值 88px 是旧版布局的遗留，让大标题比底部控制带缩进 60px，画面左右不对称。 */
+  padding: 20px 24px 0 26px;
 }
 .v-title {
   font-size: var(--sp-fs-display);
@@ -392,13 +416,20 @@ function onLyricSeek(time) {
 
 /* ---- 纯封面 ---- */
 .body-art {
+  /* 封面尺寸的唯一来源：盘面（= 封面 × --disc-ratio）四边各出血 (ratio − 1) / 2 = 15%，
+     必须由 .art-stage 的上下外边距等量吸收，否则盘面会压住下面的技术信息行
+     （实测「MP3 · 3:54 · 9.00 MB」整行落在盘面内部、对比度不足而看不见）。
+     百分比外边距按**包含块宽度**解析（这里等于整屏），不能用来换算这里的出血，故用尺寸变量。 */
+  --art-size: min(46vh, 420px);
+  --disc-ratio: 1.3;
   align-items: center;
   justify-content: center;
   flex-direction: column;
   gap: 0;
 }
 .art-stage {
-  width: min(46vh, 420px);
+  width: var(--art-size);
+  margin-block: calc(var(--art-size) * (var(--disc-ratio) - 1) / 2);
 }
 .art-stage :deep(.art-wrap) {
   width: 100%;
@@ -422,8 +453,9 @@ function onLyricSeek(time) {
   .v-title {
     font-size: var(--sp-fs-h2);
   }
-  .art-stage {
-    width: min(52vw, 300px);
+  .body-art {
+    /* 竖屏：52vw 在 390 宽下只有 203px，四周空得太厉害；放到 68vw 让封面成为主体 */
+    --art-size: min(68vw, 320px);
   }
 }
 </style>

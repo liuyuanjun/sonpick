@@ -2,7 +2,7 @@
   <div class="pmeta">
     <template v-if="showCover">
       <img v-if="player.cover && !coverBroken" class="mini" :src="player.cover" alt="cover" @error="coverBroken = true" @load="coverBroken = false" />
-      <div v-else class="mini placeholder"><n-icon :size="18"><musical-notes /></n-icon></div>
+      <div v-else class="mini placeholder"><n-icon class="pm-ico"><musical-notes /></n-icon></div>
     </template>
     <div class="tx">
       <div class="tt" :title="player.current?.title || '未在播放'">{{ player.current?.title || '未在播放' }}</div>
@@ -12,14 +12,14 @@
       <n-tooltip>
         <template #trigger>
           <n-button
-            quaternary circle size="small" class="act fav"
+            quaternary circle class="act fav pp-round-btn"
             :class="{ on: player.current?.is_favorite }"
-            :type="player.current?.is_favorite ? 'error' : 'default'"
             :disabled="!player.current"
             aria-label="喜欢"
+            :aria-pressed="!!player.current?.is_favorite"
             @click="toggleFavorite"
           >
-            <n-icon :size="19"><heart v-if="player.current?.is_favorite" /><heart-outline v-else /></n-icon>
+            <n-icon class="pm-ico"><heart v-if="player.current?.is_favorite" /><heart-outline v-else /></n-icon>
           </n-button>
         </template>
         {{ player.current?.is_favorite ? '取消喜欢' : '加入我喜欢的' }}
@@ -35,12 +35,12 @@
       >
         <template #trigger>
           <n-button
-            quaternary circle size="small" class="act"
+            quaternary circle class="act pp-round-btn"
             :class="{ on: pickerOpen }"
             :disabled="!player.current"
             aria-label="加入歌单"
           >
-            <n-icon :size="19"><add-circle-outline /></n-icon>
+            <n-icon class="pm-ico"><add-circle-outline /></n-icon>
           </n-button>
         </template>
         <playlist-picker
@@ -157,16 +157,24 @@ async function toggleFavorite() {
 .acts {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   flex: none;
 }
 .act {
   color: var(--fg-2);
 }
+.act:hover {
+  color: var(--fg);
+}
 .act.on {
   color: var(--accent, var(--sp-ui-primary));
 }
+/* 喜欢用语义色（红），但只用在这一处状态上，不参与其余任何着色 */
 .fav.on {
   color: var(--sp-ui-error);
+}
+/* 图标一档 20（继承 PlayerPanel 的 --pp-ico），不再出现 18/19 两个近邻值 */
+.pm-ico {
+  font-size: var(--pp-ico) !important;
 }
 </style>

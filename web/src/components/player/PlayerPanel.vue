@@ -11,11 +11,10 @@
               class="icon-top-btn"
               quaternary
               circle
-              size="small"
               aria-label="收起播放器"
               @click="player.fullPlayerOpen = false"
             >
-              <n-icon size="20"><chevron-down /></n-icon>
+              <n-icon class="pp-ico"><chevron-down /></n-icon>
             </n-button>
           </template>
           收起
@@ -26,15 +25,13 @@
               <n-button
                 class="view-toggle icon-top-btn"
                 :class="{ active: player.playerSkin === skin.id }"
-                :type="player.playerSkin === skin.id ? 'primary' : 'default'"
-                :secondary="player.playerSkin === skin.id"
-                :quaternary="player.playerSkin !== skin.id"
+                quaternary
                 circle
-                size="small"
                 :aria-label="skin.label"
+                :aria-pressed="player.playerSkin === skin.id"
                 @click="player.setPlayerSkin(skin.id)"
               >
-                <n-icon size="18"><component :is="skinIcons[skin.id]" /></n-icon>
+                <n-icon class="pp-ico"><component :is="skinIcons[skin.id]" /></n-icon>
               </n-button>
             </template>
             {{ skin.label }}
@@ -42,14 +39,14 @@
         </div>
       </div>
       <div class="top-right">
-        <div v-if="player.showLyrics" class="font-size-ctrl" @click.stop>
-          <n-button quaternary size="tiny" class="font-btn" :disabled="player.lyricFontSize <= 14" @click="player.setLyricFontSize(player.lyricFontSize - 1)">A-</n-button>
+        <div v-if="player.showLyrics" class="font-size-ctrl" role="group" aria-label="歌词字号">
+          <n-button quaternary class="font-btn" aria-label="缩小歌词字号" :disabled="player.lyricFontSize <= 14" @click="player.setLyricFontSize(player.lyricFontSize - 1)">A-</n-button>
           <span class="font-size-label">{{ player.lyricFontSize }}</span>
-          <n-button quaternary size="tiny" class="font-btn" :disabled="player.lyricFontSize >= 28" @click="player.setLyricFontSize(player.lyricFontSize + 1)">A+</n-button>
+          <n-button quaternary class="font-btn" aria-label="放大歌词字号" :disabled="player.lyricFontSize >= 28" @click="player.setLyricFontSize(player.lyricFontSize + 1)">A+</n-button>
         </div>
         <n-dropdown trigger="click" placement="bottom-end" :options="moreMenuOptions" @select="onMoreSelect">
-          <n-button class="icon-top-btn" quaternary circle size="small" aria-label="更多歌曲操作" :disabled="!player.current">
-            <n-icon size="18"><ellipsis-horizontal /></n-icon>
+          <n-button class="icon-top-btn" quaternary circle aria-label="更多歌曲操作" :disabled="!player.current">
+            <n-icon class="pp-ico"><ellipsis-horizontal /></n-icon>
           </n-button>
         </n-dropdown>
       </div>
@@ -1149,6 +1146,17 @@ async function applyCandidate() {
   overflow: hidden;
   isolation: isolate;
   transition: background 0.45s ease, color 0.25s ease;
+
+  /* ══ 播放器壳的尺度（唯一一套，与悬浮胶囊同一档位，见 DESIGN.md §2.3）══
+     按钮 36（= 全局触控目标）/ 播放键 48（卡片与沉浸带同尺）/
+     图标两档：次级 20（ICON.md）、传输 24（ICON.lg）/ 播放图标 = 播放键 × 0.55。
+     子组件（Transport / Utils / Meta / Seek / Band）通过继承消费，不要再各写一套 px。
+     历史值：15 / 17 / 18 / 19 / 20 / 22 / 23 / 25 八种尺寸并存，同一行里视觉重量完全不成比例。 */
+  --pp-btn: var(--sp-touch-target);
+  --pp-play: 48px;
+  --pp-ico: var(--sp-icon-md);
+  --pp-ico-nav: var(--sp-icon-lg);
+  --pp-ico-play: calc(var(--pp-play) * 0.55);
   --fg: rgba(255, 255, 255, 0.92);
   --fg-2: rgba(255, 255, 255, 0.72);
   --fg-3: rgba(255, 255, 255, 0.48);
@@ -1221,27 +1229,32 @@ async function applyCandidate() {
     radial-gradient(circle at 70% 60%, rgba(18, 22, 30, 0.03) 0 1px, transparent 1.5px);
 }
 
-.panel-top,
-
 .panel-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 14px 0;
+  /* 左缘让图标落在 28px：与沉浸带的文字左边距（26 + 时间列）视觉对齐 */
+  padding: 14px 20px 0;
   flex: 0 0 auto;
   gap: 8px;
+  /* 沉浸皮肤的模糊封面（.bgart）现在会铺到顶栏底下，顶栏必须抬到它上面 */
+  position: relative;
+  z-index: 3;
 }
 .top-left,
 .view-switch,
 .top-right {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
+/* 皮肤切换容器与相邻圆钮**同高**：padding 必须为 0，
+   否则容器比旁边的收起按钮高 4px，顶栏出现上下错位 */
 .view-switch {
-  padding: 2px;
+  padding: 0;
+  gap: 0;
   border-radius: var(--sp-radius-pill);
-  background: rgba(127, 127, 127, 0.10);
+  background: color-mix(in srgb, var(--fg-2) 8%, transparent);
 }
 .view-toggle,
 .queue-btn,
@@ -1249,32 +1262,63 @@ async function applyCandidate() {
 .icon-top-btn {
   color: var(--fg-2) !important;
 }
+.view-toggle:hover,
+.font-btn:hover,
+.icon-top-btn:hover {
+  color: var(--fg) !important;
+}
+/* 激活态用封面主色。历史值 rgba(100,108,255) 是色板外的靛蓝，与全站「只有一套颜色语言」冲突 */
 .view-toggle.active {
   color: var(--accent) !important;
-  background: rgba(100, 108, 255, 0.16) !important;
-  box-shadow: inset 0 0 0 1px rgba(100, 108, 255, 0.22);
+  background: color-mix(in srgb, var(--accent) 16%, transparent) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 26%, transparent);
 }
 .icon-top-btn {
   position: relative;
 }
+/* 顶栏 / 元信息 / 工具簇 / 传输侧键统一 36；Naive 把尺寸写在 inline style 上，覆盖必须 !important */
+.icon-top-btn,
+.pp-round-btn {
+  --n-width: var(--pp-btn) !important;
+  --n-height: var(--pp-btn) !important;
+  --n-icon-size: var(--pp-ico) !important;
+}
+/* 图标尺度只走这一条：@vicons 的 svg 没有 width/height，靠 n-icon 的 1em 撑开 */
+.pp-ico {
+  font-size: var(--pp-ico) !important;
+}
+/* Naive 把按钮的 outline 抹成 none，全局 :focus-visible 压不住 → 键盘焦点环必须显式补。
+   环色 = 封面主色掺本主题前景色（纯主色在浅封面上不可见），与悬浮胶囊同一规则。
+   :deep() 让子组件（Transport / Utils / Meta）里的 .pp-round-btn 一并吃到。 */
+.icon-top-btn:focus-visible,
+.font-btn:focus-visible,
+:deep(.pp-round-btn:focus-visible) {
+  outline: 2px solid color-mix(in srgb, var(--accent, var(--sp-ui-primary)) 72%, var(--fg)) !important;
+  outline-offset: 2px !important;
+}
 .font-size-ctrl {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 0 4px;
+  gap: 0;
+  height: var(--pp-btn);
+  padding: 0 2px;
   border-radius: var(--sp-radius-pill);
-  background: rgba(127, 127, 127, 0.12);
+  background: color-mix(in srgb, var(--fg-2) 8%, transparent);
+}
+.font-size-ctrl .font-btn {
+  --n-width: 30px !important;
+  --n-height: 30px !important;
+  --n-padding: 0 !important;
+  font-size: var(--sp-fs-caption);
+  font-weight: 600;
 }
 .font-size-label {
-  min-width: 22px;
+  min-width: 24px;
   text-align: center;
   font-size: var(--sp-fs-caption);
+  font-weight: 600;
   color: var(--fg-3);
   font-variant-numeric: tabular-nums;
-}
-.font-btn {
-  font-weight: 700;
-  letter-spacing: 0.02em;
 }
 
 

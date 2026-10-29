@@ -43,14 +43,17 @@ function onSeek(value) {
 <style scoped>
 .seek {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) auto 42px;
+  /* 时间列 44px 能容下 1:23:45；数字等宽，秒跳时整行不抖 */
+  grid-template-columns: 44px minmax(0, 1fr) auto 44px;
   align-items: center;
   gap: 10px;
 }
 .seek .t {
-  font-size: var(--sp-fs-micro);
+  font-size: var(--sp-fs-caption);
+  font-weight: var(--sp-fw-medium);
   color: var(--fg-3);
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
 }
 .seek .t:last-child {
   text-align: right;
@@ -60,21 +63,24 @@ function onSeek(value) {
    2) Naive 把滑杆的**颜色类变量写在元素的 inline style 上**（几何变量不是），
       普通类选择器覆盖不掉，颜色必须 !important。 */
 .rail {
-  --n-rail-height: 4px;
-  --n-handle-size: 11px;
+  --n-rail-height: 4px !important;
+  --n-handle-size: 11px !important;
   --n-rail-color: var(--rail) !important;
   --n-rail-color-hover: var(--rail) !important;
   --n-fill-color: var(--accent, var(--sp-ui-primary)) !important;
   --n-fill-color-hover: var(--accent, var(--sp-ui-primary)) !important;
   --n-handle-color: #fff !important;
 }
+/* 格式标签：字号跟时间刻度同档（12），只靠主色和细描边区分，不用更小的字号 */
 .chip {
   flex: none;
-  font-size: var(--sp-fs-micro);
-  letter-spacing: 0.03em;
+  font-size: var(--sp-fs-caption);
+  font-weight: var(--sp-fw-medium);
+  line-height: 1.4;
+  letter-spacing: 0.02em;
   color: var(--accent, var(--sp-ui-primary));
-  border: 1px solid color-mix(in srgb, var(--accent, var(--sp-ui-primary)) 40%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, var(--sp-ui-primary)) 38%, transparent);
   border-radius: var(--sp-radius-xs);
-  padding: 1px 6px;
+  padding: 0 6px;
 }
 </style>

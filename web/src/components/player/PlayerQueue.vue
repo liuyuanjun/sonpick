@@ -6,10 +6,10 @@
         <div class="queue-count">{{ player.queue.length }} 首</div>
       </div>
       <n-space :size="4">
-        <n-button size="tiny" quaternary :disabled="!player.queue.length" @click="player.clearQueue()">
+        <n-button size="small" quaternary :disabled="!player.queue.length" @click="player.clearQueue()">
           清空
         </n-button>
-        <n-button size="tiny" quaternary @click="player.showQueue = false">关闭</n-button>
+        <n-button size="small" quaternary @click="player.showQueue = false">关闭</n-button>
       </n-space>
     </div>
     <n-empty v-if="!player.queue.length" description="队列为空" class="queue-empty" />
@@ -27,13 +27,13 @@
           <div class="q-artist">{{ song.artist || '未知艺术家' }}</div>
         </div>
         <n-button
-          size="tiny"
           quaternary
           circle
           class="q-remove"
+          :aria-label="`从队列移除 ${song.title || ''}`"
           @click.stop="player.removeFromQueue(idx)"
         >
-          <n-icon size="14"><close /></n-icon>
+          <n-icon class="q-remove-ico"><close /></n-icon>
         </n-button>
       </div>
     </div>
@@ -72,9 +72,10 @@ const player = usePlayerStore()
   background: linear-gradient(180deg, var(--player-surface-strong, transparent), transparent);
 }
 .queue-title {
-  font-weight: 700;
+  font-weight: var(--sp-fw-bold);
   font-size: var(--sp-fs-body);
   color: var(--sp-ui-text-1);
+  letter-spacing: -0.005em;
 }
 .queue-count {
   margin-top: 2px;
@@ -144,7 +145,7 @@ const player = usePlayerStore()
   gap: 2px;
 }
 .q-title {
-  font-size: var(--sp-fs-small);
+  font-size: var(--sp-fs-body);
   font-weight: 600;
   line-height: 1.3;
   white-space: nowrap;
@@ -160,8 +161,16 @@ const player = usePlayerStore()
   text-overflow: ellipsis;
 }
 .q-remove {
+  /* 行内删除键：28 的命中框 + 16 的图标（ICON.sm —— 列表行操作走这一档，
+     不再是 14px 的尺度外值）；静息态只做淡，hover 才提亮，避免整列 × 抢视线 */
+  --n-width: 28px !important;
+  --n-height: 28px !important;
+  --n-icon-size: var(--sp-icon-sm) !important;
   opacity: 0.55;
   color: var(--sp-ui-text-2);
+}
+.q-remove-ico {
+  font-size: var(--sp-icon-sm) !important;
 }
 .queue-item:hover .q-remove {
   opacity: 1;

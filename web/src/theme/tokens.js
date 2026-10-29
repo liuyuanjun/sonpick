@@ -443,6 +443,8 @@ export function buildCssVars(isDark) {
     '--sp-layout-page-pad-y-mobile': px(LAYOUT.pagePadYMobile),
     '--sp-layout-page-pad-x-mobile': px(LAYOUT.pagePadXMobile),
     '--sp-layout-content-max': px(LAYOUT.contentMaxWidth),
+    // 触控目标下限：圆形图标按钮、侧边栏一级项等「独立可点元素」的统一尺寸
+    '--sp-touch-target': px(LAYOUT.touchTargetMin),
     // ── 侧边栏几何
     '--sp-sider-w': px(LAYOUT.siderWidth),
     '--sp-sider-rail-w': px(LAYOUT.siderRailWidth),
