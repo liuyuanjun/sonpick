@@ -137,6 +137,7 @@ CSS 变量：`--sp-fs-display|h1|h2|h3|body|strong|small|caption|micro`、`--sp-
 2. **切换态必须同尺寸**（音量三档、音质二态）。凡是"切换后图标变大变小"的，一律自绘一套共用轮廓的图标，而不是靠 `font-size` 补偿多个库图标。
 3. **换图标库不解决度量问题**：实测 Lucide（同为 24 网格 stroke）`volume-2` 墨高 16 / `repeat` 墨高 20，差 20%，`volume-1` 中心同样偏左；Phosphor 是填充式，换过去等于推翻「单一线性语言」。**结论：保持 Tabler，对不达标的族自绘。**
 4. 现有的自绘族：`components/icons/VolumeIcon.vue`（静音 / 低 1 波 / 高 2 波，同一扬声器轮廓 + 统一 1.14 倍放大，墨高 18.1）。新增自绘图标必须沿用同一网格、`stroke-width="2"`、round cap/join，并保证墨高落在 17–18。
+5. **播放三角的右移补偿只能有一处**。Tabler 的 `PlayerPlay` 已内置 1.5/24 em 右移（包围盒中心 13.5）；再叠 `translateX` 会把它推到圆心右侧（实测胶囊 2.9px / 抽屉 3.6px），并让暂停↔播放切换时图标横向跳动。胶囊与抽屉统一用 `translateX(-0.0625em)` 抵消内置值，使三角与暂停竖条同口径居中（实测两态偏移 0.00px）。
 
 
 **实测教训**：封面占位字形曾用 `font-size: 40px` 表达，混进 Type Scale 后被误判为「尺度外字号」——其实是口径问题，用 `--sp-icon-2xl` 即可。

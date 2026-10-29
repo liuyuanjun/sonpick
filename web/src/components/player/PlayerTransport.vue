@@ -118,9 +118,11 @@ const player = usePlayerStore()
 .tp-play :deep(.n-icon) {
   color: var(--play-fg);
 }
-/* 播放三角的光学重心偏左，往右轻推一点才是"看起来居中"（暂停的双竖条对称，不用推） */
+/* 与悬浮胶囊同一条规则：抵消 Tabler 播放三角自带的 1.5/24 em 右移（-0.0625em，随字号缩放），
+   使三角包围盒与暂停条同口径落在圆心。原先叠加的 translateX(2px) 会让 26.4px 图标偏右 3.6px，
+   并在暂停↔播放切换时横向跳动。 */
 .tp-play :deep(.n-icon.is-play) {
-  transform: translateX(2px);
+  transform: translateX(-0.0625em);
 }
 @media (prefers-reduced-motion: reduce) {
   .tp-play,
