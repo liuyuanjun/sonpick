@@ -43,7 +43,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$VERSION" ]]; then
-  VERSION=$(grep -E 'APP_VERSION\s*=' app/main.py | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+  # ⚠️ 本机 grep 是 BSD 版，**不支持 \s**（写成 'APP_VERSION\s*=' 会静默匹配不到），
+  # 配合 set -e 表现为「脚本一声不吭 exit 1」。字符类必须用 [[:space:]]。
+  VERSION=$(grep -E 'APP_VERSION[[:space:]]*=' app/main.py | head -1 | sed -E 's/.*"([^"]+)".*/\1/') || true
 fi
 [[ -n "$VERSION" ]] || die "cannot resolve version; pass --version"
 
